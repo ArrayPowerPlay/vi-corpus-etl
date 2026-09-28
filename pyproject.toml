@@ -1,12 +1,13 @@
-# Cấu hình dự án sea-vi-crawler, quản lý thư viện bằng uv (uv sync / uv run).
+# Cấu hình dự án vi-corpus-etl, quản lý thư viện bằng uv (uv sync / uv run).
 [project]
-name = "sea-vi-crawler"
+name = "vi-corpus-etl"
 version = "0.1.0"
-description = "Tải phần tiếng Việt của SEA-PILE-v2, SEA-LION-Pile v1, SEA-Instruct-2602 từ Hugging Face, có checkpoint"
+description = "ETL corpus tiếng Việt cho LLM từ nhiều nguồn: SEA (Hugging Face), Google Drive, VISTA/VJOL"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "huggingface_hub>=1.0",
+    "pyarrow>=25.0.1",
     "python-dotenv>=1.0",
     "tqdm>=4.66",
 ]

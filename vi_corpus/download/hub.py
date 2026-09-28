@@ -25,7 +25,7 @@ from huggingface_hub.hf_api import RepoFile
 
 from .datasets import DatasetSpec
 
-logger = logging.getLogger("sea_crawl")
+logger = logging.getLogger("vi_corpus")
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 T = TypeVar("T")

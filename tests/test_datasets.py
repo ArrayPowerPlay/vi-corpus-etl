@@ -1,13 +1,13 @@
 """
-Test cho sổ đăng ký bộ dữ liệu (sea_crawl.datasets) và việc phân loại lỗi retry (sea_crawl.hub).
+Test cho sổ đăng ký bộ dữ liệu (vi_corpus.download.datasets) và việc phân loại lỗi retry (vi_corpus.download.hub).
 
 Không cần mạng.
 """
 
 import pytest
 
-from sea_crawl.datasets import DATASETS, get_spec
-from sea_crawl.hub import CorruptDownloadError, _is_retryable
+from vi_corpus.download.datasets import DATASETS, get_spec
+from vi_corpus.download.hub import CorruptDownloadError, _is_retryable
 
 
 def test_three_datasets_in_order():

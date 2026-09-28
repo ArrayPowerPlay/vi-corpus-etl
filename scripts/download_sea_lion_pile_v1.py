@@ -10,9 +10,9 @@ Ví dụ:
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # để import được sea_crawl
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # để import được vi_corpus
 
-from sea_crawl.cli import main  # noqa: E402
+from vi_corpus.download.cli import main  # noqa: E402
 
 if __name__ == "__main__":
     sys.exit(main(["sea_lion_pile_v1"], "Tải phần tiếng Việt của SEA-LION-Pile v1 (aisingapore/SEA-PILE-v1, thư mục sea-pile-mc4/vi/)."))

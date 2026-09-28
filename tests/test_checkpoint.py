@@ -1,5 +1,5 @@
 """
-Test cho sea_crawl.checkpoint và logic "file đã xong chưa" trong downloader.
+Test cho vi_corpus.download.checkpoint và logic "file đã xong chưa" trong downloader.
 
 Không cần mạng: chỉ làm việc với file tạm trên đĩa.
 """
@@ -8,9 +8,9 @@ import json
 
 import pytest
 
-from sea_crawl.checkpoint import Checkpoint, write_json_atomic
-from sea_crawl.downloader import _is_complete, acquire_run_lock, cleanup_incomplete
-from sea_crawl.hub import RemoteFile
+from vi_corpus.download.checkpoint import Checkpoint, write_json_atomic
+from vi_corpus.download.downloader import _is_complete, acquire_run_lock, cleanup_incomplete
+from vi_corpus.download.hub import RemoteFile
 
 
 def test_write_json_atomic_leaves_no_tmp(tmp_path):

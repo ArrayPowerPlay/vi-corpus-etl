@@ -35,7 +35,7 @@ from .checkpoint import Checkpoint
 from .datasets import DatasetSpec, get_spec
 from .hub import RemoteFile, download_file, list_remote_files, load_token, resolve_revision
 
-logger = logging.getLogger("sea_crawl")
+logger = logging.getLogger("vi_corpus")
 
 GB = 1000**3  # dùng GB thập phân, khớp với số liệu trên HF
 
@@ -146,7 +146,7 @@ def run_dataset(
     Tải toàn bộ phần tiếng Việt của một bộ dữ liệu, có checkpoint để chạy tiếp.
 
     Args:
-        key:           Mã bộ dữ liệu (xem sea_crawl.datasets.DATASETS).
+        key:           Mã bộ dữ liệu (xem vi_corpus.download.datasets.DATASETS).
         data_root:     Thư mục gốc lưu dữ liệu.
         workers:       Số file tải cùng lúc.
         limit_files:   Chỉ xử lý N file đầu tiên (để chạy thử). None = tất cả.

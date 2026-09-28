@@ -1,4 +1,20 @@
-# sea-vi-crawler
+# vi-corpus-etl
+
+ETL xây **corpus tiếng Việt cho LLM** từ nhiều nguồn, có truy vết nguồn gốc (provenance) cho từng bản ghi.
+
+| Nguồn | Nội dung | Trạng thái |
+|---|---|---|
+| SEA (3 bộ của AI Singapore) | Văn bản web + hội thoại instruct, phần tiếng Việt | Đã có bước **tải** (mục 1–7 bên dưới); bước xử lý: kế hoạch |
+| Google Drive | Các dataset bổ sung | Kế hoạch (chờ xác định định dạng, xem `docs/SOURCES.md`) |
+| VISTA + VJOL | Bài báo khoa học (PDF), **chỉ xử lý** dữ liệu có sẵn, không crawl | Kế hoạch (đường dẫn cấu hình sau) |
+
+Chiến lược xử lý (nguồn → parse → ngôn ngữ → làm sạch → chất lượng → loại trùng → knowledge unit → audit):
+xem [`docs/PIPELINE.md`](docs/PIPELINE.md), [`docs/SOURCES.md`](docs/SOURCES.md) và lộ trình [`docs/ROADMAP.md`](docs/ROADMAP.md).
+Phần còn lại của README này mô tả **bước tải dữ liệu SEA**, hiện là phần duy nhất đã có code.
+
+---
+
+# Phần A — Tải dữ liệu SEA
 
 Tải **phần tiếng Việt** của 3 bộ dữ liệu do AI Singapore công bố trên Hugging Face, giữ nguyên file gốc.
 Có **checkpoint**: nếu bị crash, mất mạng hoặc máy khởi động lại, chỉ cần chạy lại đúng lệnh cũ là tải tiếp.
@@ -10,7 +26,7 @@ Có **checkpoint**: nếu bị crash, mất mạng hoặc máy khởi động l�
 | SEA-LION-Pile v1 | [`aisingapore/SEA-PILE-v1`](https://huggingface.co/datasets/aisingapore/SEA-PILE-v1) | `sea-pile-mc4/vi/` | 329 | ~107 GB | jsonl.gz |
 | **Tổng** | | | **594** | **~242 GB** | |
 
-> Hiện tại repo **chỉ tải về, chưa lọc**. Thư mục tiếng Việt đã được tác giả chia sẵn theo ngôn ngữ.
+> Bước tải **chỉ tải về, chưa lọc**. Thư mục tiếng Việt đã được tác giả chia sẵn theo ngôn ngữ.
 > Nếu sau này cần lọc thì bước lọc sẽ đọc từ `data/raw/` và ghi ra một thư mục riêng, không phải tải lại.
 
 ---
@@ -30,8 +46,8 @@ Có **checkpoint**: nếu bị crash, mất mạng hoặc máy khởi động l�
 ### 1.2. Lấy code về máy chủ Jupyter
 Mở **Terminal** trong Jupyter Lab (File → New → Terminal):
 ```bash
-git clone https://github.com/ArrayPowerPlay/sea-vi-crawler.git
-cd sea-vi-crawler
+git clone https://github.com/ArrayPowerPlay/vi-corpus-etl.git
+cd vi-corpus-etl
 uv sync --no-dev     # tạo .venv và cài đúng phiên bản thư viện ghi trong uv.lock
 ```
 - `uv sync --no-dev` chỉ cài thư viện cần để tải. Bỏ `--no-dev` nếu muốn chạy test.
@@ -88,7 +104,7 @@ Nếu thấy `Xong 1/1 file` là token và mạng đều ổn.
 **Chạy trong Terminal của Jupyter, không chạy trong ô notebook.** Nếu chạy trong notebook, kernel chết hoặc bấm Restart sẽ làm dừng việc tải.
 
 ```bash
-cd sea-vi-crawler
+cd vi-corpus-etl
 nohup uv run python scripts/download_all.py --data-root /duong/dan/data --workers 8 --verify-sha256 \
       > download_all.out 2>&1 &
 ```
@@ -107,7 +123,7 @@ Nếu buộc phải chạy từ notebook, dùng ô sau. Nó khởi động tiế
 import subprocess
 subprocess.Popen(
     "nohup uv run python scripts/download_all.py --data-root /duong/dan/data --workers 8 > download_all.out 2>&1 &",
-    shell=True, cwd="/duong/dan/sea-vi-crawler",
+    shell=True, cwd="/duong/dan/vi-corpus-etl",
 )
 ```
 
@@ -217,17 +233,18 @@ Khi thử nghiệm, tốc độ tải từ Hugging Face là 16–34 MB/s. Thời
 ## 7. Cấu trúc code
 
 ```
-sea_crawl/
-├── datasets.py    # danh sách 3 bộ: repo, thư mục tiếng Việt, mã ngắn
-├── hub.py         # đọc token từ .env, liệt kê file, tải có retry, kiểm tra kích thước/sha256
-├── checkpoint.py  # ghi/đọc trạng thái từng file (ghi an toàn)
-├── downloader.py  # vòng tải song song, khoá chống chạy trùng, dọn file dở, --status
-└── cli.py         # tham số dòng lệnh dùng chung
+vi_corpus/
+└── download/
+    ├── datasets.py    # danh sách 3 bộ: repo, thư mục tiếng Việt, mã ngắn
+    ├── hub.py         # đọc token từ .env, liệt kê file, tải có retry, kiểm tra kích thước/sha256
+    ├── checkpoint.py  # ghi/đọc trạng thái từng file (ghi an toàn)
+    ├── downloader.py  # vòng tải song song, khoá chống chạy trùng, dọn file dở, --status
+    └── cli.py         # tham số dòng lệnh dùng chung
 scripts/           # 4 script chạy
 tests/             # test (không cần mạng): uv run pytest
 pyproject.toml     # khai báo thư viện; uv.lock ghi phiên bản chính xác (commit cả hai)
 ```
-Muốn thêm một bộ dữ liệu mới: thêm một `DatasetSpec` vào `sea_crawl/datasets.py`, rồi tạo script mới theo mẫu của một script có sẵn.
+Muốn thêm một bộ dữ liệu mới: thêm một `DatasetSpec` vào `vi_corpus/download/datasets.py`, rồi tạo script mới theo mẫu của một script có sẵn.
 
 ## Giấy phép dữ liệu
 Các bộ dữ liệu dùng giấy phép [ODC-By 1.0](https://opendatacommons.org/licenses/by/1-0/), và người dùng cần tuân thủ [CommonCrawl ToU](https://commoncrawl.org/terms-of-use/).

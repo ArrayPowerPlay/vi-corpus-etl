@@ -11,10 +11,10 @@ Ví dụ:
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # để import được sea_crawl
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # để import được vi_corpus
 
-from sea_crawl.cli import main  # noqa: E402
-from sea_crawl.datasets import DATASETS  # noqa: E402
+from vi_corpus.download.cli import main  # noqa: E402
+from vi_corpus.download.datasets import DATASETS  # noqa: E402
 
 if __name__ == "__main__":
     sys.exit(main(list(DATASETS), "Tải phần tiếng Việt của cả 3 bộ SEA."))
