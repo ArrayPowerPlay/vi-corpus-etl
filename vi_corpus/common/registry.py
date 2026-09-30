@@ -2,7 +2,7 @@
 Sổ đăng ký nguồn (source registry): owner, license, domain, định dạng, đường dẫn.
 
 Đáp ứng KPI W1 "mỗi nguồn có owner, provenance/license, domain". Đường dẫn của
-Drive/VISTA/VJOL là tạm; ghi đè bằng file JSON cấu hình (configs/sources.json)
+VISTA/VJOL là tạm; ghi đè bằng file JSON cấu hình (configs/sources.json)
 thay vì sửa code khi có dữ liệu thật.
 """
 
@@ -40,18 +40,21 @@ class SourceSpec:
 SOURCES: dict[str, SourceSpec] = {
     s.key: s
     for s in (
-        SourceSpec("sea_instruct_2602", "parquet", "raw/sea_instruct_2602/Vietnamese",
+        SourceSpec("sea_instruct_2602", "parquet", "raw/sea_vi/sea_instruct_2602/Vietnamese",
                    "AI Singapore", "ODC-By 1.0", "instruction", text_col="conversations"),
-        SourceSpec("sea_pile_v2", "parquet", "raw/sea_pile_v2/vi",
+        SourceSpec("sea_pile_v2", "parquet", "raw/sea_vi/sea_pile_v2/vi",
                    "AI Singapore", "ODC-By 1.0 + CommonCrawl ToU", "web"),
-        SourceSpec("sea_lion_pile_v1", "jsonl.gz", "raw/sea_lion_pile_v1/sea-pile-mc4/vi",
+        SourceSpec("sea_lion_pile_v1", "jsonl.gz", "raw/sea_vi/sea_lion_pile_v1/sea-pile-mc4/vi",
                    "AI Singapore", "ODC-By 1.0 + CommonCrawl ToU", "web"),
         SourceSpec("stbook", "stbook_pdf", "raw/stbook", "NXB Chính trị quốc gia Sự thật",
                    "bản quyền NXB (đọc miễn phí online, chưa rõ quyền tái sử dụng)",
                    "sách chính trị - xã hội", text_col=""),
-        # Đường dẫn dưới đây là tạm, cập nhật trong configs/sources.json khi có dữ liệu.
+        SourceSpec("giao_trinh", "giao_trinh", "raw/giao_trinh", "nhiều tác giả / trường / NXB (tổng hợp từ Google Drive)",
+                   "chưa rõ (có sách từ PDFDrive, z-lib)", "giáo trình đại học đa ngành", text_col=""),
+        # vista: đường dẫn tạm. vjol: raw/VJOL, cấu trúc thư mục bên trong sẽ bổ sung khi có dữ liệu.
+        # Cập nhật trong configs/sources.json khi có dữ liệu thật.
         SourceSpec("vista", "pdf", "external/vista", "chưa rõ", "chưa rõ", "scientific"),
-        SourceSpec("vjol", "pdf", "external/vjol", "chưa rõ", "chưa rõ", "scientific"),
+        SourceSpec("vjol", "pdf", "raw/VJOL", "chưa rõ", "chưa rõ", "scientific"),
     )
 }
 

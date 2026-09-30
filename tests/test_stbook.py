@@ -1,14 +1,12 @@
 """
-Test cho nguồn stbook (vi_corpus.sources.stbook) và phần gom dòng của OCR, không cần mô hình.
+Test cho nguồn stbook (vi_corpus.stbook.ocr_books) và phần gom dòng của OCR, không cần mô hình.
 """
 
 import json
 
-import pytest
-
-from vi_corpus.schema import CORPUS_SCHEMA, lineage_rate
-from vi_corpus.sources.registry import SOURCES
-from vi_corpus.sources.stbook import find_books, iter_records, ocr_status
+from vi_corpus.common.schema import CORPUS_SCHEMA, lineage_rate
+from vi_corpus.common.registry import SOURCES
+from vi_corpus.stbook.ocr_books import find_books, iter_records, ocr_status
 
 
 def _make_stbook(root):
@@ -50,8 +48,7 @@ def test_iter_records_tu_ket_qua_ocr(tmp_path):
 
 def test_group_lines_theo_thu_tu_doc():
     """Khung cùng hàng gom thành một dòng (trái sang phải), các dòng xếp từ trên xuống."""
-    pytest.importorskip("PIL", reason="cần nhóm ocr: uv sync --group ocr")
-    from vi_corpus.ocr import group_lines
+    from vi_corpus.common.ocr import group_lines
 
     boxes = [(500, 12, 900, 48), (10, 100, 400, 140), (10, 10, 400, 50)]
     assert group_lines(boxes) == [[(10, 10, 400, 50), (500, 12, 900, 48)], [(10, 100, 400, 140)]]

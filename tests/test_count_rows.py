@@ -1,11 +1,11 @@
-"""Kiểm tra scripts/count_rows.py: đếm đúng số dòng parquet/jsonl.gz và bỏ qua .cache/."""
+"""Kiểm tra scripts/sea/count_rows.py: đếm đúng số dòng parquet/jsonl.gz và bỏ qua .cache/."""
 
 import gzip
 
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-from scripts.count_rows import count_rows, find_files
+from scripts.sea.count_rows import count_rows, find_files
 
 
 def test_count_rows_and_skip_cache(tmp_path):

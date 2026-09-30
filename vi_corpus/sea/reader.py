@@ -14,8 +14,8 @@ from pathlib import Path
 
 import pyarrow.parquet as pq
 
-from vi_corpus.schema import make_doc_id, text_sha256
-from vi_corpus.sources.registry import SourceSpec
+from vi_corpus.common.schema import make_doc_id, text_sha256
+from vi_corpus.common.registry import SourceSpec
 
 
 def conversations_to_text(raw: str) -> str:
@@ -52,7 +52,7 @@ def _iter_rows(path: Path, fmt: str) -> Iterator[dict]:
 
 def iter_records(spec: SourceSpec, data_root: Path, limit_files: int | None = None) -> Iterator[dict]:
     """
-    Sinh các bản ghi theo schema chung (vi_corpus.schema.CORPUS_SCHEMA) cho một nguồn text.
+    Sinh các bản ghi theo schema chung (vi_corpus.common.schema.CORPUS_SCHEMA) cho một nguồn text.
 
     Các trường language, quality_band, dedup_family_id để None: các stage sau sẽ điền.
     Dòng không có text (rỗng) bị bỏ qua ở stage quality, không bị bỏ ở đây để giữ số liệu funnel.

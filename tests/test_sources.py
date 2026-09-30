@@ -1,5 +1,5 @@
 """
-Test cho schema chung và adapter nguồn text (vi_corpus.schema, vi_corpus.sources), không cần mạng.
+Test cho schema chung và adapter nguồn text (vi_corpus.common.schema, vi_corpus.sea.reader), không cần mạng.
 """
 
 import gzip
@@ -8,9 +8,9 @@ import json
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-from vi_corpus.schema import CORPUS_SCHEMA, lineage_rate
-from vi_corpus.sources.registry import SOURCES, load_sources
-from vi_corpus.sources.text import conversations_to_text, iter_records
+from vi_corpus.common.schema import CORPUS_SCHEMA, lineage_rate
+from vi_corpus.common.registry import SOURCES, load_sources
+from vi_corpus.sea.reader import conversations_to_text, iter_records
 
 
 def test_conversations_dung_literal_eval():
@@ -22,10 +22,10 @@ def test_conversations_dung_literal_eval():
 
 def test_iter_records_parquet_va_jsonl(tmp_path):
     """Đọc được cả parquet lẫn jsonl.gz, ra đủ trường schema và lineage 100%."""
-    d1 = tmp_path / "raw/sea_pile_v2/vi"
+    d1 = tmp_path / "raw/sea_vi/sea_pile_v2/vi"
     d1.mkdir(parents=True)
     pq.write_table(pa.table({"text": ["một", "hai"]}), d1 / "a.parquet")
-    d2 = tmp_path / "raw/sea_lion_pile_v1/sea-pile-mc4/vi"
+    d2 = tmp_path / "raw/sea_vi/sea_lion_pile_v1/sea-pile-mc4/vi"
     d2.mkdir(parents=True)
     with gzip.open(d2 / "b.jsonl.gz", "wt", encoding="utf-8") as f:
         f.write(json.dumps({"text": "ba"}) + "\n")

@@ -4,9 +4,9 @@ OCR sách stbook.vn (PDF dạng ảnh do stbook-crawler tải) thành text, mỗ
 Đọc <stbook-root> (mặc định <data-root>/raw/stbook), ghi <data-root>/interim/stbook_ocr/.
 Có checkpoint theo cuốn: bị ngắt thì chạy lại đúng lệnh cũ. Cần `uv sync --group ocr`.
 Ví dụ:
-    uv run python scripts/ocr_stbook.py --data-root /duong/dan/data --limit-books 1 --device cpu
-    uv run python scripts/ocr_stbook.py --data-root /duong/dan/data
-    uv run python scripts/ocr_stbook.py --data-root /duong/dan/data --status
+    uv run python scripts/stbook/ocr.py --data-root /duong/dan/data --limit-books 1 --device cpu
+    uv run python scripts/stbook/ocr.py --data-root /duong/dan/data
+    uv run python scripts/stbook/ocr.py --data-root /duong/dan/data --status
 """
 
 import argparse
@@ -14,11 +14,11 @@ import os
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # để import được vi_corpus
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))  # để import được vi_corpus
 
-from vi_corpus.download.downloader import acquire_run_lock, setup_logging  # noqa: E402
-from vi_corpus.sources.registry import SOURCES  # noqa: E402
-from vi_corpus.sources.stbook import ocr_status, run_ocr  # noqa: E402
+from vi_corpus.common.state import acquire_run_lock, setup_logging  # noqa: E402
+from vi_corpus.common.registry import SOURCES  # noqa: E402
+from vi_corpus.stbook.ocr_books import ocr_status, run_ocr  # noqa: E402
 
 
 def main() -> int:

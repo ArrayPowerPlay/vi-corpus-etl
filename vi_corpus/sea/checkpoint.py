@@ -9,37 +9,11 @@ Ngoài ra còn một file _manifest.json lưu danh sách toàn bộ file cần t
 giúp lệnh --status báo tiến độ mà không cần mạng.
 """
 
-import json
-import os
 from pathlib import Path
-from typing import Any
+
+from vi_corpus.common.state import read_json, write_json_atomic
 
 MANIFEST_NAME = "_manifest.json"
-
-
-def write_json_atomic(path: Path, data: Any) -> None:
-    """
-    Ghi `data` ra `path` dưới dạng JSON một cách nguyên tử.
-
-    Ghi vào file tạm cùng thư mục, fsync xuống đĩa, rồi os.replace sang tên thật.
-    os.replace là thao tác nguyên tử, nên người đọc chỉ thấy bản cũ hoặc bản mới hoàn chỉnh.
-    """
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(path.name + ".tmp")
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-        f.flush()
-        os.fsync(f.fileno())
-    os.replace(tmp, path)
-
-
-def read_json(path: Path) -> Any | None:
-    """Đọc file JSON; trả về None nếu file không tồn tại hoặc bị hỏng."""
-    try:
-        with open(path, encoding="utf-8") as f:
-            return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return None
 
 
 class Checkpoint:

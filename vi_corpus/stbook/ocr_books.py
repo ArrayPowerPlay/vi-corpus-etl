@@ -21,9 +21,9 @@ from pathlib import Path
 
 from tqdm import tqdm
 
-from vi_corpus.download.checkpoint import read_json, write_json_atomic
-from vi_corpus.schema import make_doc_id, text_sha256
-from vi_corpus.sources.registry import SourceSpec
+from vi_corpus.common.state import read_json, write_json_atomic
+from vi_corpus.common.schema import make_doc_id, text_sha256
+from vi_corpus.common.registry import SourceSpec
 
 logger = logging.getLogger("vi_corpus")
 
@@ -72,7 +72,7 @@ def run_ocr(stbook_root: Path, data_root: Path, device: str, limit_books: int | 
     Returns:
         Số cuốn bị lỗi.
     """
-    from vi_corpus.ocr import PageOcr, pdf_page_images
+    from vi_corpus.common.ocr import PageOcr, pdf_page_images
 
     todo = []
     for slug, book, pdf in find_books(stbook_root):
@@ -108,7 +108,7 @@ def run_ocr(stbook_root: Path, data_root: Path, device: str, limit_books: int | 
 
 def iter_records(spec: SourceSpec, data_root: Path, limit_files: int | None = None) -> Iterator[dict]:
     """
-    Sinh bản ghi schema chung (vi_corpus.schema.CORPUS_SCHEMA) từ kết quả OCR, mỗi cuốn một bản ghi.
+    Sinh bản ghi schema chung (vi_corpus.common.schema.CORPUS_SCHEMA) từ kết quả OCR, mỗi cuốn một bản ghi.
 
     Text là các trang nối bằng dòng trống, giữ nguyên kết quả OCR (làm sạch ở stage normalize).
     source_path trỏ về PDF gốc. Chỉ đọc sách đã OCR xong; chạy run_ocr trước.

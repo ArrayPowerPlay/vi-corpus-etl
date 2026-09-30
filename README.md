@@ -6,12 +6,13 @@ ETL xây **corpus tiếng Việt cho LLM** từ nhiều nguồn, có truy vết 
 |---|---|---|
 | SEA (3 bộ của AI Singapore) | Văn bản web + hội thoại instruct, phần tiếng Việt | Đã có bước **tải** (mục 1–7 bên dưới); bước xử lý: kế hoạch |
 | stbook.vn | Sách NXB Chính trị quốc gia Sự thật (PDF dạng ảnh, tải bằng repo `stbook-crawler`) | Đã có bước **OCR → text** (Phần B) |
-| Google Drive | Các dataset bổ sung | Kế hoạch (chờ xác định định dạng, xem `docs/SOURCES.md`) |
-| VISTA + VJOL | Bài báo khoa học (PDF), **chỉ xử lý** dữ liệu có sẵn, không crawl | Kế hoạch (đường dẫn cấu hình sau) |
+| Giáo trình (Google Drive) | Giáo trình đại học 16 ngành (PDF, pptx), tải bằng rclone | Đang viết bước xử lý (`docs/GIAO_TRINH.md`) |
+| VJOL, VISTA | Bài báo khoa học (PDF), **chỉ xử lý** dữ liệu có sẵn, không crawl | Kế hoạch: `raw/VJOL/`, cấu trúc sẽ bổ sung khi có dữ liệu |
 
 Chiến lược xử lý (nguồn → parse → ngôn ngữ → làm sạch → chất lượng → loại trùng → knowledge unit → audit):
 xem [`docs/PIPELINE.md`](docs/PIPELINE.md), [`docs/SOURCES.md`](docs/SOURCES.md) và lộ trình [`docs/ROADMAP.md`](docs/ROADMAP.md).
-Phần còn lại của README mô tả phần đã có code: **Phần A** tải dữ liệu SEA, **Phần B** OCR sách stbook.
+Cấu trúc repo và thư mục dữ liệu: [`PROJECT_ARCHITECTURE.md`](PROJECT_ARCHITECTURE.md).
+Phần còn lại của README mô tả phần đã có code: **Phần A** tải dữ liệu SEA, **Phần B** OCR sách stbook, **Phần C** chạy tất cả bằng `scripts/run_all.py`.
 
 ---
 
@@ -28,7 +29,7 @@ Có **checkpoint**: nếu bị crash, mất mạng hoặc máy khởi động l�
 | **Tổng** | | | **594** | **~242 GB** | |
 
 > Bước tải **chỉ tải về, chưa lọc**. Thư mục tiếng Việt đã được tác giả chia sẵn theo ngôn ngữ.
-> Nếu sau này cần lọc thì bước lọc sẽ đọc từ `data/raw/` và ghi ra một thư mục riêng, không phải tải lại.
+> Nếu sau này cần lọc thì bước lọc sẽ đọc từ `data/raw/sea_vi/` và ghi ra một thư mục riêng, không phải tải lại.
 
 ---
 
@@ -75,10 +76,10 @@ HF_TOKEN=hf_xxxxxxxxxxxxxxxxxxxxxxxx
 
 | Script | Tải bộ nào |
 |---|---|
-| `scripts/download_sea_instruct_2602.py` | SEA-Instruct-2602 |
-| `scripts/download_sea_pile_v2.py` | SEA-PILE-v2 |
-| `scripts/download_sea_lion_pile_v1.py` | SEA-LION-Pile v1 |
-| `scripts/download_all.py` | Cả 3 bộ, lần lượt: Instruct → v2 → v1 (bộ nhỏ trước) |
+| `scripts/sea/download_sea_instruct_2602.py` | SEA-Instruct-2602 |
+| `scripts/sea/download_sea_pile_v2.py` | SEA-PILE-v2 |
+| `scripts/sea/download_sea_lion_pile_v1.py` | SEA-LION-Pile v1 |
+| `scripts/sea/download_all.py` | Cả 3 bộ, lần lượt: Instruct → v2 → v1 (bộ nhỏ trước) |
 
 Cả 4 script dùng **chung một bộ tham số**.
 
@@ -96,8 +97,8 @@ Cả 4 script dùng **chung một bộ tham số**.
 
 ### 2.3. Chạy thử trước (khuyên làm)
 ```bash
-uv run python scripts/download_sea_instruct_2602.py --data-root /duong/dan/data --limit-files 1 --verify-sha256
-uv run python scripts/download_sea_instruct_2602.py --data-root /duong/dan/data --status
+uv run python scripts/sea/download_sea_instruct_2602.py --data-root /duong/dan/data --limit-files 1 --verify-sha256
+uv run python scripts/sea/download_sea_instruct_2602.py --data-root /duong/dan/data --status
 ```
 Nếu thấy `Xong 1/1 file` là token và mạng đều ổn.
 
@@ -106,7 +107,7 @@ Nếu thấy `Xong 1/1 file` là token và mạng đều ổn.
 
 ```bash
 cd vi-corpus-etl
-nohup uv run python scripts/download_all.py --data-root /duong/dan/data --workers 8 --verify-sha256 \
+nohup uv run python scripts/sea/download_all.py --data-root /duong/dan/data --workers 8 --verify-sha256 \
       > download_all.out 2>&1 &
 ```
 - Sau lệnh này có thể đóng tab, tắt máy tính cá nhân; máy chủ vẫn tiếp tục tải.
@@ -115,7 +116,7 @@ nohup uv run python scripts/download_all.py --data-root /duong/dan/data --worker
 Cách khác là dùng `tmux`, nếu máy chủ có sẵn:
 ```bash
 tmux new -s sea
-uv run python scripts/download_all.py --data-root /duong/dan/data --workers 8
+uv run python scripts/sea/download_all.py --data-root /duong/dan/data --workers 8
 # Ctrl+B rồi D để thoát ra, tiến trình vẫn chạy. Quay lại: tmux attach -t sea
 ```
 
@@ -123,14 +124,14 @@ Nếu buộc phải chạy từ notebook, dùng ô sau. Nó khởi động tiế
 ```python
 import subprocess
 subprocess.Popen(
-    "nohup uv run python scripts/download_all.py --data-root /duong/dan/data --workers 8 > download_all.out 2>&1 &",
+    "nohup uv run python scripts/sea/download_all.py --data-root /duong/dan/data --workers 8 > download_all.out 2>&1 &",
     shell=True, cwd="/duong/dan/vi-corpus-etl",
 )
 ```
 
 ### 2.5. Theo dõi
 ```bash
-uv run python scripts/download_all.py --data-root /duong/dan/data --status   # tiến độ từng bộ
+uv run python scripts/sea/download_all.py --data-root /duong/dan/data --status   # tiến độ từng bộ
 tail -f download_all.out                                              # log trực tiếp (Ctrl+C để thoát xem)
 ls /duong/dan/data/logs/                                              # log chi tiết từng lần chạy
 ```
@@ -172,7 +173,7 @@ Ví dụ kết quả `--status`:
 
 ```
 <data-root>/
-├── raw/                                   # BẢN GỐC, giữ nguyên file và cấu trúc thư mục như trên HF
+├── raw/sea_vi/                            # BẢN GỐC, giữ nguyên file và cấu trúc thư mục như trên HF
 │   ├── sea_instruct_2602/Vietnamese/train-000xx-of-00012.parquet
 │   ├── sea_pile_v2/vi/train-00xxx-of-00253.parquet
 │   └── sea_lion_pile_v1/sea-pile-mc4/vi/mc4-vi-00xxx-00328.jsonl.gz
@@ -181,7 +182,17 @@ Ví dụ kết quả `--status`:
 │   └── <tên-file>.json                    #   trạng thái từng file: done / failed + kích thước, sha256, thời gian
 └── logs/<bộ>_<ngày_giờ>.log               # log từng lần chạy
 ```
-Mỗi `raw/<bộ>/` còn có thư mục ẩn `.cache/huggingface/` do thư viện HF tạo ra. Thư mục này nhỏ, **đừng xoá khi đang tải**.
+Mỗi `raw/sea_vi/<bộ>/` còn có thư mục ẩn `.cache/huggingface/` do thư viện HF tạo ra. Thư mục này nhỏ, **đừng xoá khi đang tải**.
+
+### Đã tải theo cấu trúc cũ (`raw/<bộ>/`)? Chuyển sang cấu trúc mới, không phải tải lại
+Trước đây dữ liệu nằm ở `raw/<bộ>/`. Trên máy chủ, chạy đúng các lệnh sau (thay đường dẫn cho đúng), **không cần di chuyển `state/`**:
+```bash
+cd /duong/dan/data/raw
+mkdir -p sea_vi
+mv sea_instruct_2602 sea_pile_v2 sea_lion_pile_v1 sea_vi/
+```
+`state/<bộ>/` chỉ lưu đường dẫn tương đối trong repo HF, kích thước và sha256, nên chạy lại lệnh tải cũ (hoặc `--status`) sẽ thấy `Xong N/N file` và không tải lại gì.
+Chỉ chuyển các thư mục SEA; `raw/stbook/` giữ nguyên chỗ cũ.
 
 ### Cột dữ liệu
 - **SEA-PILE-v2** (parquet): `text, dump, timestamp, url, warc-record-id`
@@ -193,11 +204,11 @@ Mỗi `raw/<bộ>/` còn có thư mục ẩn `.cache/huggingface/` do thư việ
 ```python
 from datasets import load_dataset   # cần thêm thư viện: uv add datasets
 
-pile_v2 = load_dataset("parquet", data_files="/duong/dan/data/raw/sea_pile_v2/vi/*.parquet",
+pile_v2 = load_dataset("parquet", data_files="/duong/dan/data/raw/sea_vi/sea_pile_v2/vi/*.parquet",
                        split="train", streaming=True)
-pile_v1 = load_dataset("json", data_files="/duong/dan/data/raw/sea_lion_pile_v1/sea-pile-mc4/vi/*.jsonl.gz",
+pile_v1 = load_dataset("json", data_files="/duong/dan/data/raw/sea_vi/sea_lion_pile_v1/sea-pile-mc4/vi/*.jsonl.gz",
                        split="train", streaming=True)
-instruct = load_dataset("parquet", data_files="/duong/dan/data/raw/sea_instruct_2602/Vietnamese/*.parquet",
+instruct = load_dataset("parquet", data_files="/duong/dan/data/raw/sea_vi/sea_instruct_2602/Vietnamese/*.parquet",
                         split="train")
 
 import ast
@@ -251,6 +262,7 @@ Chép (hoặc tạo symlink) **nguyên thư mục `data/` của stbook-crawler**
 ln -s /duong/dan/stbook_crawler/data /duong/dan/data/raw/stbook
 ```
 Hoặc để nguyên chỗ cũ và truyền `--stbook-root /duong/dan/stbook_crawler/data`.
+Có thể tải sách ngay trong repo này: `uv run python scripts/stbook/crawl.py --download-pdf` (ghi vào `<data-root>/raw/stbook`).
 
 Cấu trúc stbook-crawler tạo ra (chỉ đọc, không sửa):
 ```
@@ -265,13 +277,13 @@ raw/stbook/
 
 ```bash
 # chạy thử 1 cuốn (máy không có GPU thì thêm --device cpu)
-uv run python scripts/ocr_stbook.py --data-root /duong/dan/data --limit-books 1
+uv run python scripts/stbook/ocr.py --data-root /duong/dan/data --limit-books 1
 
 # chạy thật, chạy nền trong Terminal của Jupyter
-nohup uv run python scripts/ocr_stbook.py --data-root /duong/dan/data > ocr_stbook.out 2>&1 &
+nohup uv run python scripts/stbook/ocr.py --data-root /duong/dan/data > ocr_stbook.out 2>&1 &
 
 # xem tiến độ
-uv run python scripts/ocr_stbook.py --data-root /duong/dan/data --status
+uv run python scripts/stbook/ocr.py --data-root /duong/dan/data --status
 ```
 
 | Tham số | Mặc định | Ý nghĩa |
@@ -300,7 +312,7 @@ uv run python scripts/ocr_stbook.py --data-root /duong/dan/data --status
 Mỗi file gồm: `book` (metadata gốc trong `books.json`), `pdf_path`, `pdf_size`, `ocr` (tên mô hình), `created_at`,
 và `pages` (danh sách text từng trang, giữ nguyên xuống dòng như trên trang sách).
 
-Để đưa vào pipeline, `vi_corpus.sources.stbook.iter_records` đọc các file này và sinh **mỗi cuốn một bản ghi** theo schema chung
+Để đưa vào pipeline, `vi_corpus.stbook.ocr_books.iter_records` đọc các file này và sinh **mỗi cuốn một bản ghi** theo schema chung
 (`source_key = "stbook"`, `source_path` trỏ về PDF gốc). Lưu ý:
 - Text là **kết quả OCR thô**: còn số trang, chú thích cuối trang, trang bìa/trang ban biên tập. Làm sạch ở bước normalize/quality sau.
 - Có vài sách tiếng Anh (vd bản dịch Cương lĩnh), bước nhận diện ngôn ngữ sẽ lọc.
@@ -308,27 +320,43 @@ và `pages` (danh sách text từng trang, giữ nguyên xuống dòng như trê
 
 ---
 
+# Phần C — Chạy tất cả bằng `scripts/run_all.py`
+
+Mỗi nguồn có một thư mục script riêng (`scripts/sea/`, `scripts/stbook/`, `scripts/giao_trinh/`); `run_all.py` chạy lần lượt script của từng phần
+(SEA tải → stbook OCR → giáo trình trích text), truyền `--data-root` cho từng script:
+
+```bash
+uv run python scripts/run_all.py --data-root /duong/dan/data                     # cả 3 phần
+uv run python scripts/run_all.py --data-root /duong/dan/data --only sea,giao_trinh   # chọn phần
+uv run python scripts/run_all.py --data-root /duong/dan/data --status            # xem tiến độ từng phần
+```
+- Phần xử lý (`stbook`, `giao_trinh`) thiếu thư mục `raw/...` thì bị bỏ qua, có dòng log nói rõ. `sea` là bước tải nên luôn chạy.
+- Một phần lỗi không làm dừng các phần sau; cuối cùng in tóm tắt và thoát với mã khác 0 nếu có phần lỗi.
+- Tham số riêng của từng script (`--workers`, `--device cpu`, ...) không đi qua `run_all`; muốn dùng thì chạy trực tiếp script của phần đó.
+- Giáo trình tải bằng `rclone` (xem `docs/GIAO_TRINH.md`), không nằm trong `run_all`.
+
+---
+
 # Cấu trúc code
+
+Xem chi tiết (cây thư mục, cấu trúc `data/`, luồng từng nguồn) trong [`PROJECT_ARCHITECTURE.md`](PROJECT_ARCHITECTURE.md). Tóm tắt:
 
 ```
 vi_corpus/
-├── ocr.py             # OCR một trang: PaddleOCR tìm dòng + VietOCR đọc chữ
-├── sources/
-│   ├── registry.py    # sổ đăng ký nguồn (owner, license, domain, đường dẫn)
-│   ├── text.py        # đọc nguồn đã là text (SEA) về schema chung
-│   └── stbook.py      # tìm sách stbook, chạy OCR có checkpoint, đọc kết quả về schema chung
-├── schema.py          # schema chung của clean corpus
-└── download/
-    ├── datasets.py    # danh sách 3 bộ: repo, thư mục tiếng Việt, mã ngắn
-    ├── hub.py         # đọc token từ .env, liệt kê file, tải có retry, kiểm tra kích thước/sha256
-    ├── checkpoint.py  # ghi/đọc trạng thái từng file (ghi an toàn)
-    ├── downloader.py  # vòng tải song song, khoá chống chạy trùng, dọn file dở, --status
-    └── cli.py         # tham số dòng lệnh dùng chung
-scripts/           # 4 script tải SEA, count_rows.py, ocr_stbook.py
-tests/             # test (không cần mạng): uv run pytest
-pyproject.toml     # khai báo thư viện; uv.lock ghi phiên bản chính xác (commit cả hai)
+├── common/            # dùng chung: registry (sổ đăng ký nguồn), schema, state (checkpoint/khoá/log), ocr, pdf_text
+├── sea/               # tải SEA (datasets, hub, checkpoint, downloader, cli) + reader về schema chung
+├── stbook/            # crawler stbook.vn + ocr_books (OCR có checkpoint, đọc kết quả về schema chung)
+├── giao_trinh/        # xử lý giáo trình (đang triển khai)
+└── vista/, vjol/      # chỗ trống, chưa có code
+scripts/
+├── run_all.py         # chạy script của các phần theo thứ tự
+├── sea/               # 4 script tải, count_rows.py
+├── stbook/            # crawl.py, ocr.py
+└── giao_trinh/        # extract.py (đang viết), profile.py
+tests/                 # test (không cần mạng): uv run pytest
+pyproject.toml         # khai báo thư viện; uv.lock ghi phiên bản chính xác (commit cả hai)
 ```
-Muốn thêm một bộ dữ liệu HF mới: thêm một `DatasetSpec` vào `vi_corpus/download/datasets.py`, rồi tạo script mới theo mẫu của một script có sẵn.
+Muốn thêm một bộ dữ liệu HF mới: thêm một `DatasetSpec` vào `vi_corpus/sea/datasets.py`, rồi tạo script mới theo mẫu của một script có sẵn.
 
 ## Giấy phép dữ liệu
 Các bộ SEA dùng giấy phép [ODC-By 1.0](https://opendatacommons.org/licenses/by/1-0/), và người dùng cần tuân thủ [CommonCrawl ToU](https://commoncrawl.org/terms-of-use/).

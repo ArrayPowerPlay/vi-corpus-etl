@@ -11,12 +11,12 @@ Quy trình run_dataset():
     5. In tổng kết. File lỗi sẽ được thử lại khi chạy lại đúng lệnh cũ.
 
 Cấu trúc thư mục dưới data_root:
-    raw/<ds>/<đường dẫn gốc trên HF>   bản gốc
-    state/<ds>/*.json                  checkpoint
-    logs/<ds>_<thời-gian>.log          log
+    raw/sea_vi/<ds>/<đường dẫn gốc trên HF>   bản gốc
+    state/<ds>/*.json                         checkpoint (state chỉ lưu đường dẫn tương đối trong repo HF,
+                                              nên di chuyển thư mục raw không làm mất checkpoint)
+    logs/<ds>_<thời-gian>.log                 log
 """
 
-import fcntl
 import logging
 import os
 import sys
@@ -25,11 +25,12 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import TextIO
 
 from huggingface_hub import HfApi
 from huggingface_hub.utils import disable_progress_bars
 from tqdm import tqdm
+
+from vi_corpus.common.state import acquire_run_lock, setup_logging
 
 from .checkpoint import Checkpoint
 from .datasets import DatasetSpec, get_spec
@@ -38,6 +39,7 @@ from .hub import RemoteFile, download_file, list_remote_files, load_token, resol
 logger = logging.getLogger("vi_corpus")
 
 GB = 1000**3  # dùng GB thập phân, khớp với số liệu trên HF
+SEA_RAW = "raw/sea_vi"  # thư mục gốc của 3 bộ SEA dưới data_root
 
 
 @dataclass
@@ -52,7 +54,7 @@ class DatasetPaths:
     def for_dataset(cls, data_root: Path, key: str) -> "DatasetPaths":
         """Tính các thư mục raw/state/logs cho bộ dữ liệu `key`."""
         root = Path(data_root)
-        return cls(raw=root / "raw" / key, state=root / "state" / key, logs=root / "logs")
+        return cls(raw=root / SEA_RAW / key, state=root / "state" / key, logs=root / "logs")
 
 
 @dataclass
@@ -62,51 +64,6 @@ class RunResult:
     skipped: int = 0
     downloaded: int = 0
     failed: int = 0
-
-
-def setup_logging(log_dir: Path, key: str) -> Path:
-    """
-    Cấu hình log ra màn hình và ra file logs/<key>_<thời-gian>.log.
-
-    Returns:
-        Đường dẫn file log.
-    """
-    log_dir.mkdir(parents=True, exist_ok=True)
-    log_file = log_dir / f"{key}_{datetime.now():%Y%m%d_%H%M%S}.log"
-    fmt = logging.Formatter("%(asctime)s %(levelname)s %(message)s", "%Y-%m-%d %H:%M:%S")
-
-    logger.setLevel(logging.INFO)
-    logger.propagate = False  # paddle gắn handler vào root logger, tránh in log 2 lần
-    logger.handlers.clear()
-    for handler in (logging.StreamHandler(sys.stdout), logging.FileHandler(log_file, encoding="utf-8")):
-        handler.setFormatter(fmt)
-        logger.addHandler(handler)
-    return log_file
-
-
-def acquire_run_lock(state_dir: Path) -> TextIO:
-    """
-    Đảm bảo mỗi bộ dữ liệu chỉ có một tiến trình tải tại một thời điểm.
-
-    Dùng flock trên state/<ds>/.run.lock; hệ điều hành tự nhả khoá khi tiến trình
-    chết (kể cả kill -9), nên không bao giờ bị kẹt khoá sau crash.
-
-    Returns:
-        File đang giữ khoá. Phải giữ biến này sống suốt lần chạy.
-
-    Raises:
-        SystemExit: nếu đã có tiến trình khác đang tải bộ này.
-    """
-    state_dir.mkdir(parents=True, exist_ok=True)
-    lock_file = open(state_dir / ".run.lock", "w")  # noqa: SIM115 — giữ mở suốt lần chạy
-    try:
-        fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except BlockingIOError:
-        raise SystemExit(
-            f"Đang có một tiến trình khác tải bộ này ({state_dir.name}). "
-            "Xem tiến độ bằng --status, hoặc dừng tiến trình kia trước."
-        ) from None
-    return lock_file
 
 
 def cleanup_incomplete(raw_dir: Path) -> None:
@@ -147,7 +104,7 @@ def run_dataset(
     Tải toàn bộ phần tiếng Việt của một bộ dữ liệu, có checkpoint để chạy tiếp.
 
     Args:
-        key:           Mã bộ dữ liệu (xem vi_corpus.download.datasets.DATASETS).
+        key:           Mã bộ dữ liệu (xem vi_corpus.sea.datasets.DATASETS).
         data_root:     Thư mục gốc lưu dữ liệu.
         workers:       Số file tải cùng lúc.
         limit_files:   Chỉ xử lý N file đầu tiên (để chạy thử). None = tất cả.

@@ -9,3 +9,5 @@ __pycache__/
 .pytest_cache/
 # Log chạy nền
 *.out
+# Log job chạy nền (run_with_gpu_keepalive.sh)
+logs/

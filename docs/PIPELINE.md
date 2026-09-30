@@ -4,7 +4,7 @@
 > đã rà soát và điều chỉnh (xem mục 5). Lộ trình theo tuần xem `docs/ROADMAP.md`.
 
 ## 1. Nguyên tắc
-- **Disk-chained**: mỗi stage đọc Parquet của stage trước, ghi Parquet + manifest mới; chạy lại từng stage độc lập, có checkpoint theo file (dùng lại cơ chế `vi_corpus/download/checkpoint.py`).
+- **Disk-chained**: mỗi stage đọc Parquet của stage trước, ghi Parquet + manifest mới; chạy lại từng stage độc lập, có checkpoint theo file (dùng lại cơ chế `vi_corpus/sea/checkpoint.py` và `vi_corpus/common/state.py`).
 - **Raw-first**: dữ liệu gốc giữ nguyên, mọi bước xử lý ghi ra thư mục riêng (`data/raw/` không bị sửa).
 - **Kiến trúc lai**: stage tự viết (Python + Parquet/DuckDB, chạy được trên Jupyter). Stage nặng (fuzzy dedup, quality filter) có adapter NeMo Curator, chỉ bật khi có Ray/GPU.
 - **Không sửa nội dung**: chỉ chuẩn hóa Unicode/định dạng; không paraphrase, dịch, hay sửa số liệu/tên/DOI.
@@ -15,8 +15,8 @@
 ```mermaid
 flowchart TD
     R["Source registry\n(owner, license, domain, path, format)"] --> I["1. ingest\nadapter theo nguồn -> schema chung"]
-    I -->|"nguồn PDF (VISTA/VJOL, stbook)"| T["2. triage + parse\nPyMuPDF -> Docling/Marker -> OCR"]
-    I -->|"nguồn đã là text (SEA, Drive)"| L
+    I -->|"nguồn PDF (VISTA/VJOL, stbook, giáo trình)"| T["2. triage + parse\nPyMuPDF -> Docling/Marker -> OCR"]
+    I -->|"nguồn đã là text (SEA)"| L
     T --> L["3. language id"]
     L --> N["4. normalize\nNFC, header/footer, boilerplate"]
     N --> Q["5. quality score\nband A/B/C/D + reason code + quarantine"]
@@ -36,8 +36,8 @@ KPI "≥95% truy vết nguồn" = tỷ lệ bản ghi có đủ `source_key`, `s
 | Nguồn | Điểm cần nhớ |
 |---|---|
 | SEA | Đã là text nên bỏ bước parse. `conversations` của SEA-Instruct-2602 là chuỗi Python-repr → `ast.literal_eval`, không dùng `json.loads`. |
-| stbook | PDF toàn ảnh (mỗi trang 1 JPEG) nên bỏ triage, OCR thẳng: PaddleOCR detect + VietOCR nhận dạng (`vi_corpus/ocr.py`), kết quả ở `interim/stbook_ocr/`. Mỗi cuốn một bản ghi; text là OCR thô (còn số trang, chú thích) → normalize xử lý. |
-| Drive | Chưa biết định dạng; thiết kế adapter generic đọc thư mục cấu hình. |
+| stbook | PDF toàn ảnh (mỗi trang 1 JPEG) nên bỏ triage, OCR thẳng: PaddleOCR detect + VietOCR nhận dạng (`vi_corpus/common/ocr.py`), kết quả ở `interim/stbook_ocr/`. Mỗi cuốn một bản ghi; text là OCR thô (còn số trang, chú thích) → normalize xử lý. |
+| Giáo trình (Drive) | PDF/pptx, phần lớn có lớp chữ; trích bằng `vi_corpus/common/pdf_text.py`, làm sạch theo trang (header/footer, ghép dòng) trước khi ghép văn bản. Giữ sách tiếng Anh. Chi tiết: `docs/GIAO_TRINH.md`. |
 | VISTA / VJOL | Chỉ **xử lý**, không crawl. PDF đã đặt tên theo sha256 (dùng làm khóa exact dedup). Cần triage (`text_native`, `mixed`, `image_only`, `corrupt`, `protected`, `non_article`) rồi parse "rẻ trước, đắt sau". Bài ở VJOL/VISTA chưa rõ quyền → `rights_quarantine`. |
 
 ## 5. Điểm đã điều chỉnh so với repo tham khảo

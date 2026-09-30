@@ -6,7 +6,7 @@ Hai bước cho mỗi trang:
 2. VietOCR (vgg_transformer) đọc chữ trong từng khung. Mô hình nhận dạng của PaddleOCR
    không đọc được dấu tiếng Việt (đã thử: "đánh du bưc ngot"), nên chỉ dùng phần detect.
 
-Cần cài nhóm thư viện `ocr`: `uv sync --group ocr`. Lần chạy đầu tự tải trọng số mô hình
+Lớp PageOcr cần nhóm thư viện `ocr`: `uv sync --group ocr` (các hàm còn lại thì không). Lần chạy đầu tự tải trọng số mô hình
 (~600 MB). Các khung được cắt rộng thêm PADDING px: nếu cắt sát, VietOCR hay bịa thêm chữ
 ở đầu/cuối dòng.
 """
@@ -16,7 +16,7 @@ import os
 from collections.abc import Iterator
 from pathlib import Path
 
-import numpy as np
+import pymupdf
 from PIL import Image
 
 PADDING = 6
@@ -42,27 +42,32 @@ def group_lines(boxes: list[tuple[int, int, int, int]]) -> list[list[tuple[int, 
 
 def pdf_page_images(pdf_path: Path) -> Iterator[Image.Image]:
     """
-    Sinh ảnh từng trang của PDF.
-
-    PDF của stbook mỗi trang là đúng một ảnh JPEG, nên lấy thẳng ảnh gốc (không mất chất lượng).
-    Trang không có ảnh hoặc có nhiều ảnh thì render ở 200 dpi.
+    Sinh ảnh từng trang của PDF (xem page_image).
 
     Raises:
         ValueError: PDF bị cắt cụt / hỏng (vd crawler bị kill lúc đang ghi) mà PyMuPDF phải
                     tự sửa khi mở; nếu OCR tiếp sẽ chỉ được một phần sách.
     """
-    import pymupdf
-
     with pymupdf.open(pdf_path) as doc:
         if doc.is_repaired:
             raise ValueError("PDF hỏng, cần xoá và tải lại bằng stbook-crawler")
         for page in doc:
-            images = page.get_images()
-            if len(images) == 1:
-                data = doc.extract_image(images[0][0])["image"]
-            else:
-                data = page.get_pixmap(dpi=200).tobytes("png")
-            yield Image.open(io.BytesIO(data)).convert("RGB")
+            yield page_image(page)
+
+
+def page_image(page: "pymupdf.Page") -> Image.Image:
+    """
+    Ảnh của một trang PDF để OCR.
+
+    Trang đúng một ảnh (sách scan, PDF stbook) thì lấy thẳng ảnh gốc (không mất chất lượng);
+    trang không có ảnh hoặc nhiều ảnh thì render ở 200 dpi.
+    """
+    images = page.get_images()
+    if len(images) == 1:
+        data = page.parent.extract_image(images[0][0])["image"]
+    else:
+        data = page.get_pixmap(dpi=200).tobytes("png")
+    return Image.open(io.BytesIO(data)).convert("RGB")
 
 
 class PageOcr:
@@ -96,6 +101,8 @@ class PageOcr:
 
     def page_text(self, image: Image.Image) -> str:
         """Trả về text của một trang, mỗi dòng in một dòng; trang trắng trả về ""."""
+        import numpy as np
+
         polys = self.det.predict(np.array(image)[:, :, ::-1])[0]["dt_polys"]
         boxes = [
             (max(int(p[:, 0].min()) - PADDING, 0), max(int(p[:, 1].min()) - PADDING, 0),

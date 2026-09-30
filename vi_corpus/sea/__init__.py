@@ -1,5 +1,5 @@
 """
-vi_corpus.download — tải phần tiếng Việt của các bộ dữ liệu SEA (AI Singapore) từ Hugging Face.
+vi_corpus.sea — tải phần tiếng Việt của các bộ dữ liệu SEA (AI Singapore) từ Hugging Face.
 
 Các module:
     datasets    : "sổ đăng ký" các bộ dữ liệu (repo, thư mục tiếng Việt).
