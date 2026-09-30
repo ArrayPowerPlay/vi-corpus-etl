@@ -76,6 +76,7 @@ def setup_logging(log_dir: Path, key: str) -> Path:
     fmt = logging.Formatter("%(asctime)s %(levelname)s %(message)s", "%Y-%m-%d %H:%M:%S")
 
     logger.setLevel(logging.INFO)
+    logger.propagate = False  # paddle gắn handler vào root logger, tránh in log 2 lần
     logger.handlers.clear()
     for handler in (logging.StreamHandler(sys.stdout), logging.FileHandler(log_file, encoding="utf-8")):
         handler.setFormatter(fmt)

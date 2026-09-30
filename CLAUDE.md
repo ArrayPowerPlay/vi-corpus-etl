@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Purpose
 
-`vi-corpus-etl` (renamed from `sea-vi-crawler`) builds a Vietnamese LLM corpus from several sources: the AI Singapore SEA datasets (Hugging Face), datasets shared via a Google Drive folder, and VISTA/VJOL scientific papers (PDFs that are only **processed**, never crawled here; their paths are placeholders in config until the data arrives). Target metrics come from the weekly goals table: >=300M clean tokens, >=95% source lineage, exact+fuzzy dedup, knowledge units for CPT/SFT/Hybrid.
+`vi-corpus-etl` (renamed from `sea-vi-crawler`) builds a Vietnamese LLM corpus from several sources: the AI Singapore SEA datasets (Hugging Face), stbook.vn books (image PDFs, OCR'd here), datasets shared via a Google Drive folder, and VISTA/VJOL scientific papers (PDFs that are only **processed**, never crawled here; their paths are placeholders in config until the data arrives). Target metrics come from the weekly goals table: >=300M clean tokens, >=95% source lineage, exact+fuzzy dedup, knowledge units for CPT/SFT/Hybrid.
 
-**Current state**: only the download step exists in code (`vi_corpus/download/`). The processing pipeline (ingest -> parse -> language -> normalize -> quality -> dedup -> knowledge unit -> audit) is a design: see `docs/PIPELINE.md`, `docs/SOURCES.md`, `docs/ROADMAP.md`. Decisions already made with the user: hybrid architecture (own disk-chained Parquet stages plus optional NeMo Curator adapters), **no train/val/test split at the corpus level** (split later at knowledge-unit level, by dedup family), repo/package name `vi-corpus-etl` / `vi_corpus`. Google Drive folder contents were not readable yet (connector failed), so the Drive source is generic.
+**Current state**: code exists for the SEA download step (`vi_corpus/download/`) and for OCR of stbook.vn books (`vi_corpus/ocr.py`, `vi_corpus/sources/stbook.py`, `scripts/ocr_stbook.py`). The processing pipeline (ingest -> parse -> language -> normalize -> quality -> dedup -> knowledge unit -> audit) is a design: see `docs/PIPELINE.md`, `docs/SOURCES.md`, `docs/ROADMAP.md`. Decisions already made with the user: hybrid architecture (own disk-chained Parquet stages plus optional NeMo Curator adapters), **no train/val/test split at the corpus level** (split later at knowledge-unit level, by dedup family), repo/package name `vi-corpus-etl` / `vi_corpus`. Google Drive folder contents were not readable yet (connector failed), so the Drive source is generic.
 
 ### SEA download step
 Downloads **only the Vietnamese partition** of three AI Singapore datasets from Hugging Face, keeping the original files byte-for-byte, with per-file checkpointing so a crashed run resumes by re-running the same command. It is meant to run on a remote Jupyter Lab server (Linux), launched from the Jupyter Terminal with `nohup`/`tmux`, not from notebook cells. Processing must read from `data/raw/` and write to a separate folder, never re-download.
@@ -16,6 +16,9 @@ Downloads **only the Vietnamese partition** of three AI Singapore datasets from 
 | `sea_instruct_2602` | `aisingapore/SEA-Instruct-2602` (gated) | `Vietnamese/` | 12 parquet, ~2.7 GB |
 | `sea_pile_v2` | `aisingapore/SEA-PILE-v2` | `vi/` | 253 parquet, ~132 GB |
 | `sea_lion_pile_v1` | `aisingapore/SEA-PILE-v1` | `sea-pile-mc4/vi/` | 329 jsonl.gz, ~107 GB |
+
+### stbook OCR step
+Books from stbook.vn are downloaded by the separate repo `~/workspace/Repo/stbook-crawler` (GitHub `stbook_crawler`), whose `data/` folder is copied/symlinked unchanged into `<data-root>/raw/stbook/` (`<slug>/books.json`, `<slug>/content/<product_id>.pdf`; `<id>_pages/` = book still downloading, ignored). The PDFs are image-only (one JPEG per page), so `run_ocr` OCRs each book with PaddleOCR detection (`PP-OCRv5_mobile_det`) + VietOCR recognition (`vgg_transformer`) and writes `interim/stbook_ocr/<slug>/<product_id>.json` (book metadata + per-page text) atomically. Checkpoint is per book, redone if the PDF size changes. `iter_records` turns those JSONs into one schema record per book.
 
 ## Commands
 
@@ -29,7 +32,12 @@ uv add <pkg> / uv add --dev <pkg>         # add a dependency; commit pyproject.t
 uv run python scripts/download_sea_instruct_2602.py --data-root <scratch>/data --limit-files 1 --verify-sha256
 uv run python scripts/download_all.py --data-root <scratch>/data --status
 ```
-All four scripts share the flags `--data-root` (default: env `SEA_DATA_ROOT`, otherwise `./data`), `--workers` (8), `--limit-files`, `--verify-sha256`, `--max-retries` (5), and `--status`. Dependencies are managed with uv only (`pyproject.toml` + `uv.lock`); there is no requirements.txt. The project is not an installable package (repo/package names: `vi-corpus-etl` / `vi_corpus`): pytest gets `pythonpath = .` from `[tool.pytest.ini_options]`. The scripts add the repo root to `sys.path` themselves.
+```bash
+uv sync --group ocr                       # OCR deps (paddleocr, paddlepaddle CPU, vietocr, torch, pymupdf); not installed by plain `uv sync`
+uv run python scripts/ocr_stbook.py --data-root <scratch>/data --limit-books 1 --device cpu   # needs <scratch>/data/raw/stbook
+uv run python scripts/ocr_stbook.py --data-root <scratch>/data --status
+```
+The four download scripts share the flags `--data-root` (default: env `SEA_DATA_ROOT`, otherwise `./data`), `--workers` (8), `--limit-files`, `--verify-sha256`, `--max-retries` (5), and `--status`. Dependencies are managed with uv only (`pyproject.toml` + `uv.lock`); there is no requirements.txt. The project is not an installable package (repo/package names: `vi-corpus-etl` / `vi_corpus`): pytest gets `pythonpath = .` from `[tool.pytest.ini_options]`. The scripts add the repo root to `sys.path` themselves.
 
 ## Architecture
 
@@ -51,9 +59,11 @@ The flow goes `scripts/*.py` → `vi_corpus.download.cli.main(keys)` → `vi_cor
 - huggingface_hub 1.x **does not resume partial downloads**: each attempt writes to a uniquely named `*.incomplete`. The checkpoint unit is therefore the whole file, and a crash costs at most `--workers` in-flight files. Do not promise byte-level resume.
 - Keep `raw/<key>/` mirroring the HF path layout, and keep the hidden `.cache/huggingface/` folder that HF writes there. Paths are relative to `--data-root`, so a data folder can be moved to another disk and resumed.
 - In SEA-Instruct-2602, `conversations` is a Python-repr **string** (single quotes, `None`). Parse it with `ast.literal_eval`, not `json.loads`.
+- OCR quirks, all verified on real stbook pages: PaddleOCR's own recognizer drops Vietnamese diacritics, so only its detector is used. Crops need `PADDING` px or VietOCR hallucinates words at line ends. vietocr still calls `Image.ANTIALIAS` (shimmed in `PageOcr`). gdown needs `pkg_resources`, hence `setuptools<81`. paddle 3.3 on CPU needs `enable_mkldnn=False`.
+- A PDF truncated by a killed crawler still opens (PyMuPDF repairs it); `pdf_page_images` rejects it via `doc.is_repaired`.
 - `SEA-PILE-v1` is the repo name for what the user calls "SEA-LION-Pile v1". Only its mC4 portion is on HF.
 
 ## Conventions (from the user's global instructions)
 - Every file starts with a header docstring, and every class and function has a docstring. Comments, docstrings, log messages, and README are written in **Vietnamese** with full diacritics.
 - Commit messages must **not** include a Claude co-author line.
-- For bug fixes, first reproduce the bug end-to-end against real HF data (small `--limit-files` into a scratch `--data-root`, `kill -9` mid-run to test resume).
+- For bug fixes, first reproduce the bug end-to-end against real data in a scratch `--data-root`, with `kill -9` mid-run to test resume. For downloads use a small `--limit-files`; for OCR build a few real stbook PDFs with stbook-crawler's `download_book_pages(..., num_pages=8)` + `assemble_pdf`.

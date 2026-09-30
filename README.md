@@ -5,12 +5,13 @@ ETL xây **corpus tiếng Việt cho LLM** từ nhiều nguồn, có truy vết 
 | Nguồn | Nội dung | Trạng thái |
 |---|---|---|
 | SEA (3 bộ của AI Singapore) | Văn bản web + hội thoại instruct, phần tiếng Việt | Đã có bước **tải** (mục 1–7 bên dưới); bước xử lý: kế hoạch |
+| stbook.vn | Sách NXB Chính trị quốc gia Sự thật (PDF dạng ảnh, tải bằng repo `stbook-crawler`) | Đã có bước **OCR → text** (Phần B) |
 | Google Drive | Các dataset bổ sung | Kế hoạch (chờ xác định định dạng, xem `docs/SOURCES.md`) |
 | VISTA + VJOL | Bài báo khoa học (PDF), **chỉ xử lý** dữ liệu có sẵn, không crawl | Kế hoạch (đường dẫn cấu hình sau) |
 
 Chiến lược xử lý (nguồn → parse → ngôn ngữ → làm sạch → chất lượng → loại trùng → knowledge unit → audit):
 xem [`docs/PIPELINE.md`](docs/PIPELINE.md), [`docs/SOURCES.md`](docs/SOURCES.md) và lộ trình [`docs/ROADMAP.md`](docs/ROADMAP.md).
-Phần còn lại của README này mô tả **bước tải dữ liệu SEA**, hiện là phần duy nhất đã có code.
+Phần còn lại của README mô tả phần đã có code: **Phần A** tải dữ liệu SEA, **Phần B** OCR sách stbook.
 
 ---
 
@@ -230,22 +231,106 @@ Khi thử nghiệm, tốc độ tải từ Hugging Face là 16–34 MB/s. Thời
 
 ---
 
-## 7. Cấu trúc code
+# Phần B — OCR sách stbook.vn
+
+Sách do repo [`stbook_crawler`](https://github.com/ArrayPowerPlay/stbook_crawler) tải về là **PDF dạng ảnh** (mỗi trang là một ảnh JPEG, không có chữ để copy).
+Muốn đưa vào corpus thì phải **OCR** (nhận dạng chữ trong ảnh):
+
+1. **PaddleOCR** tìm vị trí các dòng chữ trên trang.
+2. **VietOCR** đọc chữ trong từng dòng. (Bộ đọc chữ của PaddleOCR làm mất dấu tiếng Việt nên không dùng.)
+
+Kết quả thử trên sách thật: gần như đúng hoàn toàn, thỉnh thoảng sai chữ hoa/thường hoặc dấu câu.
+
+## B1. Chuẩn bị
+
+```bash
+uv sync --group ocr     # cài thêm PaddleOCR, VietOCR, torch, PyMuPDF (vài GB, lần đầu hơi lâu)
+```
+Chép (hoặc tạo symlink) **nguyên thư mục `data/` của stbook-crawler** vào `<data-root>/raw/stbook/`, không sửa gì bên trong:
+```bash
+ln -s /duong/dan/stbook_crawler/data /duong/dan/data/raw/stbook
+```
+Hoặc để nguyên chỗ cũ và truyền `--stbook-root /duong/dan/stbook_crawler/data`.
+
+Cấu trúc stbook-crawler tạo ra (chỉ đọc, không sửa):
+```
+raw/stbook/
+├── <danh-mục>/books.json                 # metadata sách: tên, tác giả, năm XB, số trang, ...
+├── <danh-mục>/content/<product_id>.pdf   # PDF sách miễn phí
+├── <danh-mục>/content/<product_id>_pages/  # sách đang tải dở → bỏ qua
+└── crawl.log
+```
+
+## B2. Chạy
+
+```bash
+# chạy thử 1 cuốn (máy không có GPU thì thêm --device cpu)
+uv run python scripts/ocr_stbook.py --data-root /duong/dan/data --limit-books 1
+
+# chạy thật, chạy nền trong Terminal của Jupyter
+nohup uv run python scripts/ocr_stbook.py --data-root /duong/dan/data > ocr_stbook.out 2>&1 &
+
+# xem tiến độ
+uv run python scripts/ocr_stbook.py --data-root /duong/dan/data --status
+```
+
+| Tham số | Mặc định | Ý nghĩa |
+|---|---|---|
+| `--data-root` | biến `SEA_DATA_ROOT`, nếu không có thì `./data` | Thư mục gốc dữ liệu (dùng chung với Phần A). |
+| `--stbook-root` | `<data-root>/raw/stbook` | Thư mục `data/` của stbook-crawler. |
+| `--device` | `cuda` | Chạy VietOCR trên GPU (`cuda`) hay CPU (`cpu`). |
+| `--limit-books N` | không giới hạn | Chỉ OCR N cuốn, để chạy thử. |
+| `--status` | tắt | Chỉ in số cuốn đã OCR xong / tổng số cuốn có PDF. |
+
+- **Checkpoint theo cuốn**: xong cuốn nào ghi file kết quả cuốn đó ngay. Bị ngắt (kể cả `kill -9`) thì chạy lại đúng lệnh cũ,
+  chỉ mất cuốn đang làm dở. Nếu PDF được tải lại (kích thước đổi) thì cuốn đó được OCR lại.
+- **PDF hỏng** (stbook-crawler bị kill đúng lúc đang ghi PDF) được phát hiện và bỏ qua, log ghi
+  `PDF hỏng, cần xoá và tải lại bằng stbook-crawler`. Xoá file PDF đó, chạy lại stbook-crawler rồi chạy lại lệnh OCR.
+- Stbook-crawler vẫn đang tải thì vẫn OCR được: lần chạy sau sẽ làm tiếp các cuốn mới tải xong.
+- Chống chạy trùng giống Phần A (khoá trong `state/stbook_ocr/`), log trong `logs/stbook_ocr_<ngày_giờ>.log`.
+- Tốc độ: khi thử trên CPU là ~3,5 giây/trang. Trên GPU nhanh hơn nhiều. Bước tìm dòng chữ (PaddleOCR) mặc định chạy CPU;
+  muốn nó chạy GPU thì cài thêm `paddlepaddle-gpu` theo [hướng dẫn của Paddle](https://www.paddlepaddle.org.cn/install/quick).
+- Lần chạy đầu tự tải trọng số mô hình (~600 MB) về `~/.paddlex/` và `/tmp/`.
+
+## B3. Kết quả
+
+```
+<data-root>/interim/stbook_ocr/<danh-mục>/<product_id>.json
+```
+Mỗi file gồm: `book` (metadata gốc trong `books.json`), `pdf_path`, `pdf_size`, `ocr` (tên mô hình), `created_at`,
+và `pages` (danh sách text từng trang, giữ nguyên xuống dòng như trên trang sách).
+
+Để đưa vào pipeline, `vi_corpus.sources.stbook.iter_records` đọc các file này và sinh **mỗi cuốn một bản ghi** theo schema chung
+(`source_key = "stbook"`, `source_path` trỏ về PDF gốc). Lưu ý:
+- Text là **kết quả OCR thô**: còn số trang, chú thích cuối trang, trang bìa/trang ban biên tập. Làm sạch ở bước normalize/quality sau.
+- Có vài sách tiếng Anh (vd bản dịch Cương lĩnh), bước nhận diện ngôn ngữ sẽ lọc.
+- Sách có bản quyền của NXB (chỉ được đọc miễn phí online), nên `rights_status = "unknown"` → sẽ bị quarantine cho tới khi xác nhận quyền.
+
+---
+
+# Cấu trúc code
 
 ```
 vi_corpus/
+├── ocr.py             # OCR một trang: PaddleOCR tìm dòng + VietOCR đọc chữ
+├── sources/
+│   ├── registry.py    # sổ đăng ký nguồn (owner, license, domain, đường dẫn)
+│   ├── text.py        # đọc nguồn đã là text (SEA) về schema chung
+│   └── stbook.py      # tìm sách stbook, chạy OCR có checkpoint, đọc kết quả về schema chung
+├── schema.py          # schema chung của clean corpus
 └── download/
     ├── datasets.py    # danh sách 3 bộ: repo, thư mục tiếng Việt, mã ngắn
     ├── hub.py         # đọc token từ .env, liệt kê file, tải có retry, kiểm tra kích thước/sha256
     ├── checkpoint.py  # ghi/đọc trạng thái từng file (ghi an toàn)
     ├── downloader.py  # vòng tải song song, khoá chống chạy trùng, dọn file dở, --status
     └── cli.py         # tham số dòng lệnh dùng chung
-scripts/           # 4 script chạy
+scripts/           # 4 script tải SEA, count_rows.py, ocr_stbook.py
 tests/             # test (không cần mạng): uv run pytest
 pyproject.toml     # khai báo thư viện; uv.lock ghi phiên bản chính xác (commit cả hai)
 ```
-Muốn thêm một bộ dữ liệu mới: thêm một `DatasetSpec` vào `vi_corpus/download/datasets.py`, rồi tạo script mới theo mẫu của một script có sẵn.
+Muốn thêm một bộ dữ liệu HF mới: thêm một `DatasetSpec` vào `vi_corpus/download/datasets.py`, rồi tạo script mới theo mẫu của một script có sẵn.
 
 ## Giấy phép dữ liệu
-Các bộ dữ liệu dùng giấy phép [ODC-By 1.0](https://opendatacommons.org/licenses/by/1-0/), và người dùng cần tuân thủ [CommonCrawl ToU](https://commoncrawl.org/terms-of-use/).
+Các bộ SEA dùng giấy phép [ODC-By 1.0](https://opendatacommons.org/licenses/by/1-0/), và người dùng cần tuân thủ [CommonCrawl ToU](https://commoncrawl.org/terms-of-use/).
 Khi dùng dữ liệu, hãy trích dẫn AI Singapore theo hướng dẫn trên trang của từng dataset.
+Sách stbook.vn thuộc bản quyền NXB Chính trị quốc gia Sự thật; chỉ dùng cho nghiên cứu cho tới khi xác nhận được quyền sử dụng.

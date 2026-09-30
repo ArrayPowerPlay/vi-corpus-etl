@@ -2,7 +2,7 @@
 [project]
 name = "vi-corpus-etl"
 version = "0.1.0"
-description = "ETL corpus tiếng Việt cho LLM từ nhiều nguồn: SEA (Hugging Face), Google Drive, VISTA/VJOL"
+description = "ETL corpus tiếng Việt cho LLM từ nhiều nguồn: SEA (Hugging Face), sách stbook.vn, Google Drive, VISTA/VJOL"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
@@ -17,6 +17,16 @@ dependencies = [
 dev = [
     "pytest>=8.0",
     "pyarrow>=15.0",
+]
+# OCR sách stbook (PDF dạng ảnh): uv sync --group ocr. setuptools<81 vì vietocr -> gdown cần pkg_resources.
+ocr = [
+    "paddleocr>=3.7.0",
+    "paddlepaddle>=3.3.1",
+    "pymupdf>=1.28.2",
+    "setuptools<81",
+    "torch>=2.14.0",
+    "torchvision>=0.29.0",
+    "vietocr>=0.3.12",
 ]
 
 [tool.pytest.ini_options]

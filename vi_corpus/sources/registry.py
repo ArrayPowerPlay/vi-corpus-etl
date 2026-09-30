@@ -18,7 +18,7 @@ class SourceSpec:
 
     Attributes:
         key:      Mã nguồn (vd "sea_pile_v2").
-        fmt:      Định dạng file: "parquet", "jsonl.gz" hoặc "pdf".
+        fmt:      Định dạng file: "parquet", "jsonl.gz", "pdf" hoặc "stbook_pdf" (thư mục của stbook-crawler).
         path:     Thư mục chứa dữ liệu, tương đối so với data_root (hoặc tuyệt đối).
         owner:    Chủ sở hữu dữ liệu.
         license:  Giấy phép / điều khoản sử dụng.
@@ -46,6 +46,9 @@ SOURCES: dict[str, SourceSpec] = {
                    "AI Singapore", "ODC-By 1.0 + CommonCrawl ToU", "web"),
         SourceSpec("sea_lion_pile_v1", "jsonl.gz", "raw/sea_lion_pile_v1/sea-pile-mc4/vi",
                    "AI Singapore", "ODC-By 1.0 + CommonCrawl ToU", "web"),
+        SourceSpec("stbook", "stbook_pdf", "raw/stbook", "NXB Chính trị quốc gia Sự thật",
+                   "bản quyền NXB (đọc miễn phí online, chưa rõ quyền tái sử dụng)",
+                   "sách chính trị - xã hội", text_col=""),
         # Đường dẫn dưới đây là tạm, cập nhật trong configs/sources.json khi có dữ liệu.
         SourceSpec("vista", "pdf", "external/vista", "chưa rõ", "chưa rõ", "scientific"),
         SourceSpec("vjol", "pdf", "external/vjol", "chưa rõ", "chưa rõ", "scientific"),

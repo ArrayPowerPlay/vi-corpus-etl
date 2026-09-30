@@ -15,7 +15,7 @@
 ```mermaid
 flowchart TD
     R["Source registry\n(owner, license, domain, path, format)"] --> I["1. ingest\nadapter theo nguồn -> schema chung"]
-    I -->|"chỉ nguồn PDF (VISTA/VJOL)"| T["2. triage + parse\nPyMuPDF -> Docling/Marker -> OCR"]
+    I -->|"nguồn PDF (VISTA/VJOL, stbook)"| T["2. triage + parse\nPyMuPDF -> Docling/Marker -> OCR"]
     I -->|"nguồn đã là text (SEA, Drive)"| L
     T --> L["3. language id"]
     L --> N["4. normalize\nNFC, header/footer, boilerplate"]
@@ -36,6 +36,7 @@ KPI "≥95% truy vết nguồn" = tỷ lệ bản ghi có đủ `source_key`, `s
 | Nguồn | Điểm cần nhớ |
 |---|---|
 | SEA | Đã là text nên bỏ bước parse. `conversations` của SEA-Instruct-2602 là chuỗi Python-repr → `ast.literal_eval`, không dùng `json.loads`. |
+| stbook | PDF toàn ảnh (mỗi trang 1 JPEG) nên bỏ triage, OCR thẳng: PaddleOCR detect + VietOCR nhận dạng (`vi_corpus/ocr.py`), kết quả ở `interim/stbook_ocr/`. Mỗi cuốn một bản ghi; text là OCR thô (còn số trang, chú thích) → normalize xử lý. |
 | Drive | Chưa biết định dạng; thiết kế adapter generic đọc thư mục cấu hình. |
 | VISTA / VJOL | Chỉ **xử lý**, không crawl. PDF đã đặt tên theo sha256 (dùng làm khóa exact dedup). Cần triage (`text_native`, `mixed`, `image_only`, `corrupt`, `protected`, `non_article`) rồi parse "rẻ trước, đắt sau". Bài ở VJOL/VISTA chưa rõ quyền → `rights_quarantine`. |
 
