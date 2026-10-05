@@ -1,6 +1,6 @@
 # Chiến lược xử lý dữ liệu (vi-corpus-etl)
 
-> Trạng thái: **thiết kế** (chưa có code, trừ bước tải SEA). Tham khảo `paper-data-etl` và `ViLA`,
+> Trạng thái: **đã có code bản đầu** ở `vi_corpus/pipeline/` (ingest, normalize, chunk, language, quality, dedup, knowledge unit, audit, report) chạy bằng `scripts/run_pipeline.py`; ngưỡng chất lượng và language id (heuristic) là điểm khởi đầu, cần chỉnh sau khi xem `report.html` trên dữ liệu thật. Đã có adapter NeMo Curator + Ray (`vi_corpus/pipeline/curator.py`) chạy song song language/quality/embed/OCR trên nhiều CPU/GPU, và bản đồ embedding plotly (stage embed/reduce, `viz.py`); hướng dẫn chạy ở README Phần D. Chưa có: VISTA/VJOL, quét rò rỉ benchmark, adapter Curator cho fuzzy dedup. Tham khảo `paper-data-etl` và `ViLA`,
 > đã rà soát và điều chỉnh (xem mục 5). Lộ trình theo tuần xem `docs/ROADMAP.md`.
 
 ## 1. Nguyên tắc
@@ -12,6 +12,11 @@
 - **Không chia train/val/test ở tầng corpus**; việc chia (CPT/SFT/Hybrid) làm ở tầng knowledge unit, luôn chia theo `dedup_family_id`.
 
 ## 2. Luồng xử lý
+Sơ đồ theo code hiện tại (nguồn SVG: [pipeline.svg](pipeline.svg), bản PNG: [pipeline.png](pipeline.png)):
+
+![Luồng xử lý vi-corpus-etl](pipeline.svg)
+
+Thiết kế đầy đủ, gồm cả phần chưa code (triage + parse PDF cho VISTA/VJOL, exact và fuzzy dedup tách bước):
 ```mermaid
 flowchart TD
     R["Source registry\n(owner, license, domain, path, format)"] --> I["1. ingest\nadapter theo nguồn -> schema chung"]
@@ -42,7 +47,7 @@ KPI "≥95% truy vết nguồn" = tỷ lệ bản ghi có đủ `source_key`, `s
 
 ## 5. Điểm đã điều chỉnh so với repo tham khảo
 1. Split train/val/test chuyển xuống tầng knowledge unit (ảnh yêu cầu ma trận CPT/SFT/Hybrid).
-2. Reducer/visualize: fit UMAP/PCA trên mẫu phân tầng, một `cluster_id` chung (HDBSCAN chạy một lần), dùng Datashader khi trên 100k điểm.
+2. Reducer/visualize: một `cluster_id` chung (HDBSCAN chạy một lần, fit trên toàn bộ ma trận). **Chưa làm**: fit trên mẫu phân tầng và dùng Datashader khi trên 100k điểm (`reduce.py` đang fit toàn bộ, `viz.py` vẽ plotly WebGL).
 3. Dedup viết mới (ViLA chưa có): exact + fuzzy, gán `dedup_family_id`.
 4. Không dùng normalizer/NER pháp lý của ViLA cho văn bản khoa học hoặc SEA.
 5. Rights gate cấu hình trong source registry, mặc định `unknown -> quarantine`.

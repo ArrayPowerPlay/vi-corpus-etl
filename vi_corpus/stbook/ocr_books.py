@@ -14,6 +14,7 @@ Vì PDF không có lớp chữ, xử lý qua 2 bước:
 2. iter_records: đọc kết quả OCR, sinh bản ghi theo schema chung (mỗi cuốn một bản ghi).
 """
 
+import json
 import logging
 from collections.abc import Iterator
 from datetime import datetime, timezone
@@ -21,6 +22,7 @@ from pathlib import Path
 
 from tqdm import tqdm
 
+from vi_corpus.common.pdf_text import clean_pages
 from vi_corpus.common.state import read_json, write_json_atomic
 from vi_corpus.common.schema import make_doc_id, text_sha256
 from vi_corpus.common.registry import SourceSpec
@@ -60,26 +62,59 @@ def ocr_status(stbook_root: Path, data_root: Path) -> tuple[int, int]:
     return done, len(books)
 
 
+def books_to_ocr(stbook_root: Path, data_root: Path, limit_books: int | None = None) -> list[tuple[str, dict, Path]]:
+    """
+    Các cuốn cần OCR: chưa có kết quả, hoặc kích thước PDF đã đổi so với lúc OCR (PDF tải lại thì OCR lại).
+
+    Returns:
+        Danh sách (slug danh mục, metadata sách, đường dẫn PDF), tối đa limit_books cuốn.
+    """
+    todo = []
+    for slug, book, pdf in find_books(stbook_root):
+        done = read_json(_ocr_path(data_root, slug, book["product_id"]))
+        if not (done and done.get("pdf_size") == pdf.stat().st_size):
+            todo.append((slug, book, pdf))
+    return todo[:limit_books]
+
+
+def ocr_one_book(ocr, slug: str, book: dict, pdf: Path, data_root: Path) -> None:
+    """
+    OCR một cuốn bằng bộ OCR `ocr` (vi_corpus.common.ocr.PageOcr) và ghi kết quả nguyên tử ngay khi xong.
+
+    Dùng chung cho chạy tuần tự (run_ocr) và chạy song song nhiều GPU (vi_corpus.stbook.ocr_parallel).
+
+    Raises:
+        ValueError: PDF hỏng / bị cắt cụt (xem pdf_page_images). Các lỗi OCR khác cũng được ném lên cho nơi gọi xử lý.
+    """
+    from vi_corpus.common.ocr import pdf_page_images
+
+    pages = [ocr.page_text(img) for img in pdf_page_images(pdf)]
+    write_json_atomic(_ocr_path(data_root, slug, book["product_id"]), {
+        "category_slug": slug,
+        "book": book,
+        "pdf_path": str(pdf.relative_to(data_root)) if pdf.is_relative_to(data_root) else str(pdf),
+        "pdf_size": pdf.stat().st_size,
+        "ocr": {"det": "PP-OCRv5_mobile_det", "rec": "vietocr/vgg_transformer"},
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "pages": pages,
+    })
+
+
 def run_ocr(stbook_root: Path, data_root: Path, device: str, limit_books: int | None = None) -> int:
     """
-    OCR mọi sách chưa làm, ghi kết quả từng cuốn ngay khi xong (chạy lại để làm tiếp).
+    OCR mọi sách chưa làm trên MỘT thiết bị, ghi kết quả từng cuốn ngay khi xong (chạy lại để làm tiếp).
 
-    Cuốn đã có kết quả được bỏ qua nếu kích thước PDF không đổi (PDF tải lại thì OCR lại).
     Lỗi ở một cuốn (PDF hỏng do crawler bị kill giữa lúc ghi, ...) chỉ ghi log rồi làm cuốn khác.
+    Muốn dùng nhiều GPU thì dùng vi_corpus.stbook.ocr_parallel.run_ocr_parallel (cùng checkpoint, cùng kết quả).
     ponytail: checkpoint theo cuốn, crash mất tối đa 1 cuốn (~15 phút với sách 900 trang);
     chuyển sang checkpoint theo trang nếu thấy lãng phí.
 
     Returns:
         Số cuốn bị lỗi.
     """
-    from vi_corpus.common.ocr import PageOcr, pdf_page_images
+    from vi_corpus.common.ocr import PageOcr
 
-    todo = []
-    for slug, book, pdf in find_books(stbook_root):
-        done = read_json(_ocr_path(data_root, slug, book["product_id"]))
-        if not (done and done.get("pdf_size") == pdf.stat().st_size):
-            todo.append((slug, book, pdf))
-    todo = todo[:limit_books]
+    todo = books_to_ocr(stbook_root, data_root, limit_books)
     logger.info("Cần OCR %d cuốn", len(todo))
     if not todo:
         return 0
@@ -88,42 +123,36 @@ def run_ocr(stbook_root: Path, data_root: Path, device: str, limit_books: int | 
     failed = 0
     for slug, book, pdf in tqdm(todo, desc="OCR stbook", unit="cuốn"):
         try:
-            pages = [ocr.page_text(img) for img in pdf_page_images(pdf)]
+            ocr_one_book(ocr, slug, book, pdf, data_root)
         except Exception as exc:  # noqa: BLE001 — một cuốn lỗi không được dừng cả lượt
             failed += 1
             logger.warning("Lỗi OCR %s: %s", pdf, exc)
-            continue
-        write_json_atomic(_ocr_path(data_root, slug, book["product_id"]), {
-            "category_slug": slug,
-            "book": book,
-            "pdf_path": str(pdf.relative_to(data_root)) if pdf.is_relative_to(data_root) else str(pdf),
-            "pdf_size": pdf.stat().st_size,
-            "ocr": {"det": "PP-OCRv5_mobile_det", "rec": "vietocr/vgg_transformer"},
-            "created_at": datetime.now(timezone.utc).isoformat(),
-            "pages": pages,
-        })
     logger.info("Xong OCR: %d cuốn thành công, %d lỗi", len(todo) - failed, failed)
     return failed
 
 
-def iter_records(spec: SourceSpec, data_root: Path, limit_files: int | None = None) -> Iterator[dict]:
+def iter_records(spec: SourceSpec, data_root: Path, limit_files: int | None = None,
+                 clean: bool = False, with_meta: bool = False) -> Iterator[dict]:
     """
     Sinh bản ghi schema chung (vi_corpus.common.schema.CORPUS_SCHEMA) từ kết quả OCR, mỗi cuốn một bản ghi.
 
-    Text là các trang nối bằng dòng trống, giữ nguyên kết quả OCR (làm sạch ở stage normalize).
+    Mặc định text là các trang nối bằng dòng trống, giữ nguyên kết quả OCR. Với clean=True thì làm sạch theo
+    trang bằng vi_corpus.common.pdf_text.clean_pages (bỏ tiêu đề/chân trang chạy, số trang lẻ, ghép dòng thành đoạn).
     source_path trỏ về PDF gốc. Chỉ đọc sách đã OCR xong; chạy run_ocr trước.
 
     Args:
         spec:        Nguồn stbook trong registry.
         data_root:   Thư mục gốc dữ liệu.
         limit_files: Chỉ đọc N cuốn đầu (chạy thử).
+        clean:       Làm sạch theo trang (xem trên).
+        with_meta:   Thêm khoá "meta" (JSON: tên sách, danh mục, số trang).
     """
     for path in sorted((data_root / OCR_DIR).glob("*/*.json"))[:limit_files]:
         done = read_json(path)
         if done is None:
             continue
-        text = "\n\n".join(done["pages"])
-        yield {
+        text = clean_pages(done["pages"]) if clean else "\n\n".join(done["pages"])
+        rec = {
             "doc_id": make_doc_id(spec.key, done["pdf_path"], 0),
             "source_key": spec.key,
             "source_path": done["pdf_path"],
@@ -139,3 +168,8 @@ def iter_records(spec: SourceSpec, data_root: Path, limit_files: int | None = No
             "token_count": None,
             "dedup_family_id": None,
         }
+        if with_meta:
+            book = done.get("book") or {}
+            rec["meta"] = json.dumps({"title": book.get("title"), "category": done.get("category_slug"),
+                                      "pages": len(done["pages"])}, ensure_ascii=False)
+        yield rec

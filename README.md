@@ -12,7 +12,7 @@ ETL xây **corpus tiếng Việt cho LLM** từ nhiều nguồn, có truy vết 
 Chiến lược xử lý (nguồn → parse → ngôn ngữ → làm sạch → chất lượng → loại trùng → knowledge unit → audit):
 xem [`docs/PIPELINE.md`](docs/PIPELINE.md), [`docs/SOURCES.md`](docs/SOURCES.md) và lộ trình [`docs/ROADMAP.md`](docs/ROADMAP.md).
 Cấu trúc repo và thư mục dữ liệu: [`PROJECT_ARCHITECTURE.md`](PROJECT_ARCHITECTURE.md).
-Phần còn lại của README mô tả phần đã có code: **Phần A** tải dữ liệu SEA, **Phần B** OCR sách stbook, **Phần C** chạy tất cả bằng `scripts/run_all.py`.
+Phần còn lại của README mô tả phần đã có code: **Phần A** tải dữ liệu SEA, **Phần B** OCR sách stbook, **Phần C** chạy tất cả bằng `scripts/run_all.py`, **Phần D** pipeline xử lý end-to-end trên N mẫu (có visualize, chạy nhiều GPU).
 
 ---
 
@@ -337,6 +337,114 @@ uv run python scripts/run_all.py --data-root /duong/dan/data --status           
 
 ---
 
+# Phần D — Pipeline xử lý end-to-end (thử trên N mẫu, có visualize, chạy nhiều GPU)
+
+Lấy mẫu **N bản ghi** từ `raw/` (SEA + stbook) rồi cho chạy qua toàn bộ pipeline, cuối cùng ra bộ sạch, knowledge unit, audit và **report.html** có bản đồ embedding.
+Mục đích: kiểm tra pipeline và chất lượng dữ liệu trước khi chạy toàn bộ. Thiết kế từng stage: [`docs/PIPELINE.md`](docs/PIPELINE.md).
+
+| # | Stage (`--until`) | Làm gì | File kết quả trong thư mục run |
+|---|---|---|---|
+| 1 | `ingest` | Lấy mẫu từ `raw/` theo `--total` và `--mix` (stbook: nguyên cuốn đã OCR) | `01_ingest.parquet` |
+| 2 | `prepare` | Chuẩn hóa Unicode, cắt sách thành đoạn, đếm từ/token | `02_prepare.parquet` |
+| 3 | `language` | Nhận diện ngôn ngữ (vi/en/other) — **song song CPU** | `03_language.parquet` |
+| 4 | `quality` | Số đo, điểm 0–100, band A/B/C/D, reason code — **song song CPU** | `04_quality.parquet` |
+| 5 | `dedup` | Trùng chính xác + gần trùng (MinHash), cổng quyền (`unknown` → quarantine) | `05_dedup.parquet` |
+| 6 | `embed` | Vector hóa văn bản — **song song nhiều GPU** | `06_embeddings.parquet` |
+| 7 | `reduce` | PCA + UMAP xuống 2D, gom cụm HDBSCAN (cuML nếu có, không thì scikit-learn/umap-learn) | `07_reduced.parquet` |
+| 8 | `finalize` | Bộ sạch, knowledge unit, audit, bản đồ plotly, báo cáo | `clean.parquet`, `knowledge_units.parquet`, `audit.json`, `viz/*.html`, `report.html` |
+
+Mọi kết quả nằm ở `<data-root>/processed/pipeline_runs/<run-name>/` (mặc định `run_<total>_seed<seed>`). Mỗi stage có checkpoint: chạy lại **đúng lệnh cũ** thì stage nào đã có file sẽ được bỏ qua.
+
+## D1. Chuẩn bị (làm một lần)
+
+```bash
+uv sync                                 # thư viện cơ bản
+uv sync --group viz                     # bản đồ embedding: pandas, plotly, scikit-learn, umap-learn
+uv sync --group curator                 # chạy song song: NeMo Curator + Ray + transformers + torch
+# Server GPU: nên dùng bản CUDA của Curator (giống ViLA)
+uv pip install "nemo-curator[text_cuda12]>=0.7"
+# Muốn OCR sách còn chưa OCR:  uv sync --group ocr --group curator --group viz
+```
+Cần có sẵn `data/raw/sea_vi/...` (SEA đã tải, Phần A) và sách stbook đã OCR ở `data/interim/stbook_ocr/` (Phần B, hoặc `--ocr-books`). `--data-root` mặc định lấy từ biến môi trường `SEA_DATA_ROOT`, nếu không có thì `./data`.
+Không có GPU/mạng (thử trên máy nhỏ): dùng `--embedder tfidf` (CPU, không tải mô hình).
+
+## D2. Chạy thử nhanh (khuyên làm trước)
+
+```bash
+uv run python scripts/run_pipeline.py --data-root /duong/dan/data --total 500 --run-name thu \
+    --embedder tfidf                    # 500 mẫu, chạy tuần tự, không cần GPU
+```
+Xong thì mở `.../pipeline_runs/thu/report.html`.
+
+## D3. Chạy toàn bộ
+
+Tham số chọn số mẫu: **`--total`** (tổng số mẫu của mọi nguồn cộng lại; mặc định 10000), **`--mix`** (tỉ lệ giữa các nguồn, mặc định `sea_pile_v2=30,sea_lion_pile_v1=30,sea_instruct_2602=15,stbook=25`), `--seed` (đổi seed ra mẫu khác).
+
+```bash
+# 10.000 mẫu, tuần tự trong một tiến trình
+uv run python scripts/run_pipeline.py --data-root /duong/dan/data --total 10000
+
+# 2.000 mẫu, chỉ SEA-PILE-v2 và stbook, tỉ lệ 60/40
+uv run python scripts/run_pipeline.py --data-root /duong/dan/data --total 2000 --mix sea_pile_v2=60,stbook=40
+
+# 10.000 mẫu, song song trên 4 GPU A100 (Ray cục bộ, executor Xenna như ViLA)
+uv run python scripts/run_pipeline.py --data-root /duong/dan/data --total 10000 --executor xenna --num-gpus 4
+```
+Với stbook, `--total` tính theo số **đoạn** (sách được cắt đoạn ~600 từ), không phải số cuốn.
+Chạy lâu thì chạy nền: `tmux new -s pipe` rồi chạy lệnh trong đó (Ctrl+B rồi D để thoát ra, `tmux attach -t pipe` để quay lại).
+
+## D4. Chạy từng bước
+
+Mỗi lệnh dừng sau stage chọn bằng `--until`; lệnh sau (cùng `--data-root`, `--total`, `--mix`, `--seed`) làm tiếp từ checkpoint:
+
+```bash
+R="--data-root /duong/dan/data --total 10000"
+uv run python scripts/run_pipeline.py $R --until ingest       # 1. lấy mẫu
+uv run python scripts/run_pipeline.py $R --until prepare      # 2. chuẩn hóa + cắt đoạn
+uv run python scripts/run_pipeline.py $R --until language     # 3. ngôn ngữ
+uv run python scripts/run_pipeline.py $R --until quality      # 4. chất lượng
+uv run python scripts/run_pipeline.py $R --until dedup        # 5. loại trùng
+uv run python scripts/run_pipeline.py $R --until embed        # 6. embedding (GPU)
+uv run python scripts/run_pipeline.py $R --until reduce       # 7. giảm chiều + gom cụm
+uv run python scripts/run_pipeline.py $R                      # 8. finalize: bộ sạch + bản đồ + report
+```
+Sửa ngưỡng hay code của một stage rồi muốn làm lại từ stage đó: thêm `--force-from quality` (xoá kết quả từ `quality` trở đi, giữ các stage trước).
+
+## D5. Chạy song song nhiều GPU
+
+Dùng **NeMo Curator + Ray** như ViLA: mỗi stage nặng là một `ProcessingStage` khai báo tài nguyên, executor tạo nhiều actor và chia các phân vùng (mặc định 500 bản ghi) cho chúng.
+Ở stage `embed` mỗi actor giữ một bản mô hình trên **một GPU riêng** (4 GPU = 4 actor chạy cùng lúc); `language`, `quality` chạy nhiều actor CPU. `dedup` và `reduce` cần nhìn toàn bộ corpus nên chạy trong tiến trình chính.
+
+| Tham số | Ý nghĩa |
+|---|---|
+| `--executor xenna\|ray_actor_pool\|ray_data` | Bật chạy song song bằng executor này (không có = tuần tự). `xenna` là mặc định của ViLA |
+| `--num-gpus N`, `--num-cpus N` | Số GPU / CPU Ray được dùng (mặc định tự phát hiện) |
+| `--ray-address auto` | Nối vào cụm Ray có sẵn thay vì chạy Ray cục bộ |
+| `--rows-per-task N` | Số bản ghi mỗi phân vùng (nhỏ = cân tải tốt hơn, nhiều overhead hơn) |
+| `--gpus-per-worker 0.5` | Hai actor chia một GPU (mô hình nhỏ); mặc định 1.0 = một actor / GPU |
+| `--embedder hf:<model>` | Mô hình nhúng HF, mặc định `hf:intfloat/multilingual-e5-base`; `--embed-prompt` đặt tiền tố (E5 cần `passage: `) |
+| `--embed-batch-size N` | Số văn bản mỗi lần chạy mô hình (giảm nếu hết VRAM) |
+
+OCR sách chưa OCR cũng chạy được nhiều GPU (mỗi GPU một cuốn): thêm `--ocr-books N --executor xenna --num-gpus 4` (cần `--group ocr`).
+Kiểm tra GPU đang chạy bằng `nvidia-smi` ở terminal khác. Kết quả song song **giống hệt** chạy tuần tự (đã kiểm bằng test).
+
+## D6. Xem kết quả
+
+- `report.html`: số liệu từng stage, phân bố band/ngôn ngữ/điểm, lý do loại, mẫu văn bản, và mục **Bản đồ embedding** (chọn cách tô màu bằng các nút).
+- `viz/scatter-<umap|pca>-<nguồn|trạng thái|band|ngôn ngữ|cụm>.html`: bản đồ plotly tương tác, rê chuột vào điểm để đọc đoạn đầu văn bản và reason code. Cách đọc: tô theo **nguồn** để xem các nguồn tách nhau thế nào; tô theo **trạng thái** để xem mẫu bị loại (chất lượng / trùng / quyền) nằm ở vùng nào — mẫu rác thường dồn thành cụm riêng.
+- Mở file HTML trên server Jupyter: tải về máy hoặc mở từ trình duyệt file của JupyterLab (cả thư mục `viz/` đi cùng nhau vì chung `plotly.min.js`).
+- `audit.json`: tỉ lệ lineage, số trùng, số bị quarantine. `manifest.json`: cấu hình và thời gian từng stage.
+
+## D7. Xử lý sự cố
+
+- `Không import được umap-learn` / `Chưa cài plotly`: chạy `uv sync --group viz`. Thiếu UMAP thì bản đồ vẫn có PCA.
+- Hết VRAM ở `embed`: giảm `--embed-batch-size`; hoặc `--gpus-per-worker 1.0`.
+- Ray báo nhiều cụm (`multiple Ray instances`): chạy `ray stop` rồi thử lại, hoặc nối cụm cố định bằng `--ray-address`.
+- `ray_actor_pool`/`xenna` treo ở stage đầu: thử `--executor ray_actor_pool`, và kiểm tra `--num-gpus` không lớn hơn số GPU thật.
+- Một run bị chặn "đã có tiến trình đang chạy": chỉ một lệnh được chạy cho mỗi `--run-name` cùng lúc.
+
+---
+
 # Cấu trúc code
 
 Xem chi tiết (cây thư mục, cấu trúc `data/`, luồng từng nguồn) trong [`PROJECT_ARCHITECTURE.md`](PROJECT_ARCHITECTURE.md). Tóm tắt:
@@ -347,9 +455,11 @@ vi_corpus/
 ├── sea/               # tải SEA (datasets, hub, checkpoint, downloader, cli) + reader về schema chung
 ├── stbook/            # crawler stbook.vn + ocr_books (OCR có checkpoint, đọc kết quả về schema chung)
 ├── giao_trinh/        # xử lý giáo trình (đang triển khai)
+├── pipeline/          # pipeline end-to-end: ingest…finalize, embed/reduce/viz, report, curator (chạy song song)
 └── vista/, vjol/      # chỗ trống, chưa có code
 scripts/
 ├── run_all.py         # chạy script của các phần theo thứ tự
+├── run_pipeline.py    # pipeline end-to-end trên N mẫu (Phần D)
 ├── sea/               # 4 script tải, count_rows.py
 ├── stbook/            # crawl.py, ocr.py
 └── giao_trinh/        # extract.py (đang viết), profile.py

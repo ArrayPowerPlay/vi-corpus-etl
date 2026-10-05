@@ -1,0 +1,146 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 905" width="1000" height="905" font-family="DejaVu Sans, Arial, sans-serif">
+<title>vi-corpus-etl: luồng xử lý dữ liệu</title>
+<defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#455566"/></marker></defs>
+<rect width="1000" height="905" fill="#ffffff"/>
+<text x="500" y="32" text-anchor="middle" font-size="20" font-weight="700" fill="#1b2733">vi-corpus-etl: luồng xử lý dữ liệu</text>
+<rect x="31" y="56" width="178" height="70" rx="9" fill="#eef2f7" stroke="#7a8aa0" stroke-width="1.6"/>
+<text x="120.0" y="78" text-anchor="middle" font-size="14.5" font-weight="700" fill="#1b2733">SEA (Hugging Face)</text>
+<text x="120.0" y="98" text-anchor="middle" font-size="12" fill="#1b2733">Instruct-2602, PILE v2, v1</text>
+<text x="120.0" y="114" text-anchor="middle" font-size="12" fill="#1b2733">chỉ phần tiếng Việt</text>
+<rect x="223" y="56" width="178" height="70" rx="9" fill="#eef2f7" stroke="#7a8aa0" stroke-width="1.6"/>
+<text x="312.0" y="78" text-anchor="middle" font-size="14.5" font-weight="700" fill="#1b2733">stbook.vn</text>
+<text x="312.0" y="98" text-anchor="middle" font-size="12" fill="#1b2733">sách PDF toàn ảnh</text>
+<text x="312.0" y="114" text-anchor="middle" font-size="12" fill="#1b2733">(mỗi trang 1 JPEG)</text>
+<rect x="415" y="56" width="178" height="70" rx="9" fill="#eef2f7" stroke="#7a8aa0" stroke-width="1.6"/>
+<text x="504.0" y="78" text-anchor="middle" font-size="14.5" font-weight="700" fill="#1b2733">giao_trinh</text>
+<text x="504.0" y="98" text-anchor="middle" font-size="12" fill="#1b2733">giáo trình đại học</text>
+<text x="504.0" y="114" text-anchor="middle" font-size="12" fill="#1b2733">Google Drive: PDF / pptx</text>
+<rect x="607" y="56" width="178" height="70" rx="9" fill="#f5f5f5" stroke="#9a9a9a" stroke-width="1.6" stroke-dasharray="6 4"/>
+<text x="696.0" y="78" text-anchor="middle" font-size="14.5" font-weight="700" fill="#6a6a6a">VJOL</text>
+<text x="696.0" y="98" text-anchor="middle" font-size="12" fill="#6a6a6a">bài báo khoa học (PDF)</text>
+<text x="696.0" y="114" text-anchor="middle" font-size="12" fill="#6a6a6a">chỉ xử lý, không crawl</text>
+<rect x="799" y="56" width="178" height="70" rx="9" fill="#f5f5f5" stroke="#9a9a9a" stroke-width="1.6" stroke-dasharray="6 4"/>
+<text x="888.0" y="78" text-anchor="middle" font-size="14.5" font-weight="700" fill="#6a6a6a">VISTA</text>
+<text x="888.0" y="98" text-anchor="middle" font-size="12" fill="#6a6a6a">bài báo khoa học (PDF)</text>
+<text x="888.0" y="114" text-anchor="middle" font-size="12" fill="#6a6a6a">chỉ xử lý, không crawl</text>
+<rect x="31" y="164" width="178" height="84" rx="9" fill="#fff4dc" stroke="#d19a1f" stroke-width="1.6"/>
+<text x="120.0" y="186" text-anchor="middle" font-size="14.5" font-weight="700" fill="#1b2733">Tải về (hub.py)</text>
+<text x="120.0" y="206" text-anchor="middle" font-size="12" fill="#1b2733">scripts/sea/*.py</text>
+<text x="120.0" y="222" text-anchor="middle" font-size="12" fill="#1b2733">checkpoint theo file</text>
+<text x="120.0" y="238" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, monospace" font-size="11" fill="#455566">raw/sea_vi/&lt;key&gt;/</text>
+<line x1="120" y1="126" x2="120" y2="164" stroke="#455566" stroke-width="1.8" marker-end="url(#ah)"/>
+<rect x="223" y="164" width="178" height="84" rx="9" fill="#fff4dc" stroke="#d19a1f" stroke-width="1.6"/>
+<text x="312.0" y="186" text-anchor="middle" font-size="14.5" font-weight="700" fill="#1b2733">Crawl + OCR</text>
+<text x="312.0" y="206" text-anchor="middle" font-size="12" fill="#1b2733">PaddleOCR (detect) +</text>
+<text x="312.0" y="222" text-anchor="middle" font-size="12" fill="#1b2733">VietOCR (nhận dạng)</text>
+<text x="312.0" y="238" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, monospace" font-size="11" fill="#455566">interim/stbook_ocr/</text>
+<line x1="312" y1="126" x2="312" y2="164" stroke="#455566" stroke-width="1.8" marker-end="url(#ah)"/>
+<rect x="415" y="164" width="178" height="84" rx="9" fill="#fff4dc" stroke="#d19a1f" stroke-width="1.6"/>
+<text x="504.0" y="186" text-anchor="middle" font-size="14.5" font-weight="700" fill="#1b2733">Trích text</text>
+<text x="504.0" y="206" text-anchor="middle" font-size="12" fill="#1b2733">rclone → extract.py</text>
+<text x="504.0" y="222" text-anchor="middle" font-size="12" fill="#1b2733">PyMuPDF, TCVN3, OCR</text>
+<text x="504.0" y="238" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, monospace" font-size="11" fill="#455566">interim/giao_trinh_text/</text>
+<line x1="504" y1="126" x2="504" y2="164" stroke="#455566" stroke-width="1.8" marker-end="url(#ah)"/>
+<rect x="607" y="164" width="370" height="84" rx="9" fill="#f5f5f5" stroke="#9a9a9a" stroke-width="1.6" stroke-dasharray="6 4"/>
+<text x="792.0" y="186" text-anchor="middle" font-size="14.5" font-weight="700" fill="#6a6a6a">Chưa có script</text>
+<text x="792.0" y="206" text-anchor="middle" font-size="12" fill="#6a6a6a">chờ cấu trúc dữ liệu từ nhóm;</text>
+<text x="792.0" y="222" text-anchor="middle" font-size="12" fill="#6a6a6a">dự kiến: triage PDF → parse rẻ trước, đắt sau</text>
+<line x1="696" y1="126" x2="696" y2="164" stroke="#9a9a9a" stroke-width="1.8" stroke-dasharray="5 4" marker-end="url(#ah)"/>
+<line x1="888" y1="126" x2="888" y2="164" stroke="#9a9a9a" stroke-width="1.8" stroke-dasharray="5 4" marker-end="url(#ah)"/>
+<rect x="31" y="282" width="938" height="44" rx="9" fill="#fafafa" stroke="#7a8aa0" stroke-width="1.6"/>
+<text x="500" y="301" text-anchor="middle" font-size="13.5" font-weight="700" fill="#1b2733">data/raw/ (giữ nguyên, không sửa)  +  data/interim/ (kết quả OCR / trích text)</text>
+<text x="500" y="318" text-anchor="middle" font-size="12" fill="#1b2733">Source registry: owner, license, rights_status, path, format (mặc định rights_status = unknown → quarantine)</text>
+<line x1="120" y1="248" x2="120" y2="282" stroke="#455566" stroke-width="1.8" marker-end="url(#ah)"/>
+<line x1="312" y1="248" x2="312" y2="282" stroke="#455566" stroke-width="1.8" marker-end="url(#ah)"/>
+<line x1="504" y1="248" x2="504" y2="282" stroke="#455566" stroke-width="1.8" marker-end="url(#ah)"/>
+<line x1="792" y1="248" x2="792" y2="282" stroke="#9a9a9a" stroke-width="1.8" stroke-dasharray="5 4" marker-end="url(#ah)"/>
+<rect x="20" y="346" width="960" height="352" rx="12" fill="none" stroke="#2a78d6" stroke-width="1.4" stroke-dasharray="2 5"/>
+<text x="560" y="368" text-anchor="middle" font-size="13" font-weight="700" fill="#1f5fae">scripts/run_pipeline.py: mỗi stage ghi 1 file Parquet; chạy lại thì bỏ qua stage đã có</text>
+<line x1="120" y1="326" x2="120" y2="392" stroke="#455566" stroke-width="1.8" marker-end="url(#ah)"/>
+<rect x="45" y="392" width="190" height="100" rx="9" fill="#e3efff" stroke="#2a78d6" stroke-width="1.6"/>
+<text x="140.0" y="414" text-anchor="middle" font-size="14.5" font-weight="700" fill="#1b2733">1. ingest</text>
+<text x="140.0" y="434" text-anchor="middle" font-size="12" fill="#1b2733">lấy mẫu từ raw / interim</text>
+<text x="140.0" y="450" text-anchor="middle" font-size="12" fill="#1b2733">về schema chung, giữ</text>
+<text x="140.0" y="466" text-anchor="middle" font-size="12" fill="#1b2733">source_path + sha256</text>
+<text x="140.0" y="482" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, monospace" font-size="11" fill="#455566">01_ingest.parquet</text>
+<rect x="285" y="392" width="190" height="100" rx="9" fill="#e3efff" stroke="#2a78d6" stroke-width="1.6"/>
+<text x="380.0" y="414" text-anchor="middle" font-size="14.5" font-weight="700" fill="#1b2733">2. prepare</text>
+<text x="380.0" y="434" text-anchor="middle" font-size="12" fill="#1b2733">NFC, bỏ ký tự ẩn</text>
+<text x="380.0" y="450" text-anchor="middle" font-size="12" fill="#1b2733">cắt sách ~600 từ/đoạn</text>
+<text x="380.0" y="466" text-anchor="middle" font-size="12" fill="#1b2733">đếm từ / token</text>
+<text x="380.0" y="482" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, monospace" font-size="11" fill="#455566">02_prepare.parquet</text>
+<rect x="525" y="392" width="190" height="100" rx="9" fill="#e3efff" stroke="#2a78d6" stroke-width="1.6"/>
+<text x="620.0" y="414" text-anchor="middle" font-size="14.5" font-weight="700" fill="#1b2733">3. language</text>
+<text x="620.0" y="434" text-anchor="middle" font-size="12" fill="#1b2733">nhận diện vi / en / other</text>
+<text x="620.0" y="450" text-anchor="middle" font-size="12" fill="#1b2733">(heuristic, chưa fastText)</text>
+<text x="620.0" y="482" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, monospace" font-size="11" fill="#455566">03_language.parquet</text>
+<rect x="680" y="383" width="29" height="18" rx="9" fill="#6b4fc9"/>
+<text x="694.5" y="396" text-anchor="middle" font-size="11" font-weight="700" fill="#fff">Ray</text>
+<rect x="765" y="392" width="190" height="100" rx="9" fill="#e3efff" stroke="#2a78d6" stroke-width="1.6"/>
+<text x="860.0" y="414" text-anchor="middle" font-size="14.5" font-weight="700" fill="#1b2733">4. quality</text>
+<text x="860.0" y="434" text-anchor="middle" font-size="12" fill="#1b2733">điểm 0-100, band A/B/C/D</text>
+<text x="860.0" y="450" text-anchor="middle" font-size="12" fill="#1b2733">reason code, số đo thô</text>
+<text x="860.0" y="482" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, monospace" font-size="11" fill="#455566">04_quality.parquet</text>
+<rect x="920" y="383" width="29" height="18" rx="9" fill="#6b4fc9"/>
+<text x="934.5" y="396" text-anchor="middle" font-size="11" font-weight="700" fill="#fff">Ray</text>
+<line x1="235" y1="442" x2="285" y2="442" stroke="#455566" stroke-width="1.8" marker-end="url(#ah)"/>
+<line x1="475" y1="442" x2="525" y2="442" stroke="#455566" stroke-width="1.8" marker-end="url(#ah)"/>
+<line x1="715" y1="442" x2="765" y2="442" stroke="#455566" stroke-width="1.8" marker-end="url(#ah)"/>
+<rect x="765" y="560" width="190" height="100" rx="9" fill="#e3efff" stroke="#2a78d6" stroke-width="1.6"/>
+<text x="860.0" y="582" text-anchor="middle" font-size="14.5" font-weight="700" fill="#1b2733">5. dedup</text>
+<text x="860.0" y="602" text-anchor="middle" font-size="12" fill="#1b2733">rights gate, exact sha256,</text>
+<text x="860.0" y="618" text-anchor="middle" font-size="12" fill="#1b2733">fuzzy MinHash-LSH,</text>
+<text x="860.0" y="634" text-anchor="middle" font-size="12" fill="#1b2733">gán dedup_family_id</text>
+<text x="860.0" y="650" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, monospace" font-size="11" fill="#455566">05_dedup.parquet</text>
+<rect x="525" y="560" width="190" height="100" rx="9" fill="#e3efff" stroke="#2a78d6" stroke-width="1.6" stroke-dasharray="6 4"/>
+<text x="620.0" y="582" text-anchor="middle" font-size="14.5" font-weight="700" fill="#1b2733">6. embed (tùy chọn)</text>
+<text x="620.0" y="602" text-anchor="middle" font-size="12" fill="#1b2733">multilingual-e5-base</text>
+<text x="620.0" y="618" text-anchor="middle" font-size="12" fill="#1b2733">hoặc tfidf (CPU)</text>
+<text x="620.0" y="650" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, monospace" font-size="11" fill="#455566">06_embeddings.parquet</text>
+<rect x="680" y="551" width="29" height="18" rx="9" fill="#6b4fc9"/>
+<text x="694.5" y="564" text-anchor="middle" font-size="11" font-weight="700" fill="#fff">Ray</text>
+<rect x="285" y="560" width="190" height="100" rx="9" fill="#e3efff" stroke="#2a78d6" stroke-width="1.6" stroke-dasharray="6 4"/>
+<text x="380.0" y="582" text-anchor="middle" font-size="14.5" font-weight="700" fill="#1b2733">7. reduce (tùy chọn)</text>
+<text x="380.0" y="602" text-anchor="middle" font-size="12" fill="#1b2733">PCA, UMAP, HDBSCAN</text>
+<text x="380.0" y="618" text-anchor="middle" font-size="12" fill="#1b2733">cuML (GPU) hoặc sklearn</text>
+<text x="380.0" y="650" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, monospace" font-size="11" fill="#455566">07_reduced.parquet</text>
+<rect x="45" y="560" width="190" height="100" rx="9" fill="#e3efff" stroke="#2a78d6" stroke-width="1.6"/>
+<text x="140.0" y="582" text-anchor="middle" font-size="14.5" font-weight="700" fill="#1b2733">8. finalize</text>
+<text x="140.0" y="602" text-anchor="middle" font-size="12" fill="#1b2733">lọc status = kept,</text>
+<text x="140.0" y="618" text-anchor="middle" font-size="12" fill="#1b2733">sinh knowledge unit,</text>
+<text x="140.0" y="634" text-anchor="middle" font-size="12" fill="#1b2733">audit, bản đồ, report</text>
+<text x="140.0" y="650" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, monospace" font-size="11" fill="#455566">clean.parquet ...</text>
+<line x1="860" y1="492" x2="860" y2="560" stroke="#455566" stroke-width="1.8" marker-end="url(#ah)"/>
+<line x1="765" y1="610" x2="715" y2="610" stroke="#455566" stroke-width="1.8" marker-end="url(#ah)"/>
+<line x1="525" y1="610" x2="475" y2="610" stroke="#455566" stroke-width="1.8" marker-end="url(#ah)"/>
+<line x1="285" y1="610" x2="235" y2="610" stroke="#455566" stroke-width="1.8" marker-end="url(#ah)"/>
+<text x="852" y="530" text-anchor="end" font-size="11" fill="#455566">mọi bản ghi, kể cả bị loại</text>
+<line x1="140" y1="660" x2="140" y2="726" stroke="#455566" stroke-width="1.8"/>
+<line x1="140" y1="726" x2="860" y2="726" stroke="#455566" stroke-width="1.8"/>
+<line x1="140" y1="726" x2="140" y2="742" stroke="#455566" stroke-width="1.8" marker-end="url(#ah)"/>
+<rect x="45" y="742" width="190" height="62" rx="9" fill="#dff5ea" stroke="#1baf7a" stroke-width="1.6"/>
+<text x="140" y="762" text-anchor="middle" font-size="12" font-weight="700" font-family="DejaVu Sans Mono, Menlo, monospace" fill="#1b2733">clean.parquet</text>
+<text x="140" y="781" text-anchor="middle" font-size="12" fill="#1b2733">bản ghi status = kept</text>
+<text x="140" y="796" text-anchor="middle" font-size="12" fill="#1b2733">+ provenance, rights, band</text>
+<line x1="380" y1="726" x2="380" y2="742" stroke="#455566" stroke-width="1.8" marker-end="url(#ah)"/>
+<rect x="285" y="742" width="190" height="62" rx="9" fill="#dff5ea" stroke="#1baf7a" stroke-width="1.6"/>
+<text x="380" y="762" text-anchor="middle" font-size="12" font-weight="700" font-family="DejaVu Sans Mono, Menlo, monospace" fill="#1b2733">knowledge_units.parquet</text>
+<text x="380" y="781" text-anchor="middle" font-size="12" fill="#1b2733">CPT / SFT, split_bucket</text>
+<text x="380" y="796" text-anchor="middle" font-size="12" fill="#1b2733">theo họ trùng (chưa chia)</text>
+<line x1="620" y1="726" x2="620" y2="742" stroke="#455566" stroke-width="1.8" marker-end="url(#ah)"/>
+<rect x="525" y="742" width="190" height="62" rx="9" fill="#dff5ea" stroke="#1baf7a" stroke-width="1.6"/>
+<text x="620" y="762" text-anchor="middle" font-size="12" font-weight="700" font-family="DejaVu Sans Mono, Menlo, monospace" fill="#1b2733">audit.json</text>
+<text x="620" y="781" text-anchor="middle" font-size="12" fill="#1b2733">lineage ≥ 95%, funnel,</text>
+<text x="620" y="796" text-anchor="middle" font-size="12" fill="#1b2733">token, PII (rò rỉ: chưa chạy)</text>
+<line x1="860" y1="726" x2="860" y2="742" stroke="#455566" stroke-width="1.8" marker-end="url(#ah)"/>
+<rect x="765" y="742" width="190" height="62" rx="9" fill="#dff5ea" stroke="#1baf7a" stroke-width="1.6"/>
+<text x="860" y="762" text-anchor="middle" font-size="12" font-weight="700" font-family="DejaVu Sans Mono, Menlo, monospace" fill="#1b2733">report.html + viz/</text>
+<text x="860" y="781" text-anchor="middle" font-size="12" fill="#1b2733">bản đồ embedding,</text>
+<text x="860" y="796" text-anchor="middle" font-size="12" fill="#1b2733">phân phối chất lượng</text>
+<rect x="31" y="826" width="938" height="62" rx="9" fill="#fafafa" stroke="#d0d5db"/>
+<rect x="46" y="836" width="32" height="16" rx="8" fill="#6b4fc9"/>
+<text x="62" y="848" text-anchor="middle" font-size="10" font-weight="700" fill="#fff">Ray</text>
+<text x="88" y="849" font-size="12" fill="#1b2733">chạy song song nhiều CPU/GPU qua CuratorBackend (NeMo Curator + Ray; --executor xenna | ray_actor_pool | ray_data)</text>
+<rect x="46" y="860" width="26" height="14" rx="3" fill="#e3efff" stroke="#2a78d6" stroke-dasharray="4 3"/>
+<text x="88" y="871" font-size="12" fill="#1b2733">stage tùy chọn (tắt bằng --embedder none), không ảnh hưởng clean corpus   |   nét đứt xám: chưa triển khai</text>
+</svg>

@@ -1,5 +1,6 @@
 """
-Khảo sát nhanh giáo trình đã tải về (mặc định <data-root>/raw/giao_trinh) trước khi viết bước xử lý.
+Khảo sát nhanh giáo trình đã tải về (mặc định <data-root>/raw/giao_trinh; dùng --root cho nguồn khác,
+vd VJOL: --root <data-root>/raw/VJOL, khi đó cột "ngành" là thư mục cấp 1 = năm) trước khi viết bước xử lý.
 
 Với mỗi PDF, lấy tối đa --max-pages trang rải đều và phân loại từng trang như extract_pdf sẽ làm:
 text / tcvn3 / scan (cần OCR) / empty. Ngoài ra đo tỉ lệ chữ có dấu tiếng Việt (để tách sách
@@ -34,7 +35,7 @@ def profile_pdf(path: Path, max_pages: int) -> dict:
     Trang được lấy rải đều tối đa `max_pages` trang để sách nghìn trang vẫn chạy nhanh.
     """
     row = {"path": str(path), "size_mb": round(path.stat().st_size / 2**20, 1), "pages": 0,
-           "error": "", "text": 0, "tcvn3": 0, "scan": 0, "empty": 0, "vi_ratio": 0.0, "bad_ratio": 0.0}
+           "error": "", "producer": "", "text": 0, "tcvn3": 0, "scan": 0, "empty": 0, "vi_ratio": 0.0, "bad_ratio": 0.0}
     try:
         with pymupdf.open(path) as doc:
             if doc.is_repaired:
@@ -43,6 +44,7 @@ def profile_pdf(path: Path, max_pages: int) -> dict:
                 row["error"] = "password"
                 return row
             row["pages"] = len(doc)
+            row["producer"] = (doc.metadata.get("creator") or doc.metadata.get("producer") or "")[:40]
             step = max(1, len(doc) // max_pages)
             texts, kinds = [], []
             for i in range(0, len(doc), step):
@@ -108,6 +110,7 @@ def main() -> int:
         print(f"{d[:45]:45} {len(rs):>5} {100*sum(r['text'] for r in rs)/pages:>6.0f} "
               f"{100*sum(r['tcvn3'] for r in rs)/pages:>7.0f} {100*sum(r['scan'] for r in rs)/pages:>6.0f} "
               f"{100*vi/len(rs):>11.0f} {sum(bool(r['error']) for r in rs):>4}")
+    print("Phần mềm tạo PDF (creator/producer):", dict(Counter(r["producer"] or "(không có)" for r in rows).most_common(8)))
     print("Chi tiết từng file:", out)
     return 0
 

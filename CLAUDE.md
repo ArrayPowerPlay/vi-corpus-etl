@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 `vi-corpus-etl` (renamed from `sea-vi-crawler`) builds a Vietnamese LLM corpus from several sources (see "Data sources"). Target metrics come from the weekly goals table: >=300M clean tokens, >=95% source lineage, exact+fuzzy dedup, knowledge units for CPT/SFT/Hybrid.
 
-**Current state**: code exists per source: SEA download (`vi_corpus/sea/`), stbook crawl + OCR (`vi_corpus/stbook/`), giáo trình raw processing (`vi_corpus/giao_trinh/`, implemented: inventory, extract, page clean, records; strategy in `docs/GIAO_TRINH.md`). The shared processing pipeline (ingest -> parse -> language -> normalize -> quality -> dedup -> knowledge unit -> audit) is a design: see `docs/PIPELINE.md`, `docs/SOURCES.md`, `docs/ROADMAP.md`. Repo layout and data layout: `PROJECT_ARCHITECTURE.md` (Vietnamese). Decisions already made with the user: hybrid architecture (own disk-chained Parquet stages plus optional NeMo Curator adapters), **no train/val/test split at the corpus level** (split later at knowledge-unit level, by dedup family), repo/package name `vi-corpus-etl` / `vi_corpus`, one folder of scripts per data source plus one orchestrator (`scripts/run_all.py`).
+**Current state**: code exists per source: SEA download (`vi_corpus/sea/`), stbook crawl + OCR (`vi_corpus/stbook/`), giáo trình raw processing (`vi_corpus/giao_trinh/`, implemented: inventory, extract, page clean, records; strategy in `docs/GIAO_TRINH.md`). The shared pipeline lives in `vi_corpus/pipeline/` (ingest -> normalize -> chunk -> language -> quality -> dedup -> knowledge unit -> audit -> report.html), run by `scripts/run_pipeline.py` on a sample of N records (first version; thresholds untuned). Design: `docs/PIPELINE.md`, `docs/SOURCES.md`, `docs/ROADMAP.md`. Repo layout and data layout: `PROJECT_ARCHITECTURE.md` (Vietnamese). Decisions already made with the user: hybrid architecture (own disk-chained Parquet stages plus optional NeMo Curator adapters), **no train/val/test split at the corpus level** (split later at knowledge-unit level, by dedup family), repo/package name `vi-corpus-etl` / `vi_corpus`, one folder of scripts per data source plus one orchestrator (`scripts/run_all.py`).
 
 ## Data sources
 
@@ -58,6 +58,13 @@ uv run python scripts/run_all.py --data-root <root> --status              # forw
 ```
 `run_all.py` keeps going when a part fails and exits non-zero with a summary. It skips `stbook` / `giao_trinh` when their raw folder does not exist (log line says so); `sea` is a download step, so it is never skipped.
 
+```bash
+# sample-based end-to-end check of the shared pipeline (stbook must be OCR'd first, or add --ocr-books N); output in <root>/processed/pipeline_runs/<name>/ (open report.html)
+uv run python scripts/run_pipeline.py --data-root <root> --total 10000 [--mix sea_pile_v2=30,stbook=25] [--force-from quality]
+# step by step: --until <ingest|prepare|language|quality|dedup|embed|reduce|finalize>; embedding map needs `uv sync --group viz`; --embedder tfidf = CPU-only smoke
+# multi-GPU (NeMo Curator + Ray, `uv sync --group curator`): --executor xenna|ray_actor_pool|ray_data --num-gpus 4 [--ray-address auto] [--ocr-books N for parallel OCR]
+```
+Gotchas: Curator executors call `ray.shutdown()` after every `pipeline.run`, so `CuratorBackend.run` re-inits Ray before each stage (else the next stage hangs on a dead RAY_ADDRESS). `Task.task_id` is framework-owned (do not pass it to `DocumentBatch`); rows travel as a JSON `payload` column so ints/None survive Arrow. Parallel results are identical to serial (tests/test_curator.py, skipped without nemo-curator). Verified on CPU Ray only; real multi-GPU untested locally. README Part D has the full user guide.
 ```bash
 # per-part scripts (one folder per source under scripts/)
 uv run python scripts/sea/download_sea_instruct_2602.py --data-root <scratch>/data --limit-files 1 --verify-sha256   # real smoke test, needs HF_TOKEN in .env; keep test data out of the repo
