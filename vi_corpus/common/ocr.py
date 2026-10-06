@@ -11,8 +11,11 @@ Lớp PageOcr cần nhóm thư viện `ocr`: `uv sync --group ocr` (các hàm c�
 ở đầu/cuối dòng.
 """
 
+import fcntl
 import io
 import os
+import tempfile
+import zipfile
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -70,6 +73,40 @@ def page_image(page: "pymupdf.Page") -> Image.Image:
     return Image.open(io.BytesIO(data)).convert("RGB")
 
 
+def ensure_rec_weights(url: str) -> str:
+    """
+    Đảm bảo file trọng số VietOCR có đủ, nguyên vẹn trong thư mục tạm, rồi trả về đường dẫn.
+
+    VietOCR tự tải vào /tmp nhưng không an toàn khi nhiều tiến trình cùng chạy: tiến trình sau thấy file đang tải dở
+    là bỏ qua tải và nạp file hỏng ("failed finding central directory"). Ở đây việc tải được khoá bằng flock,
+    ghi ra file .part rồi đổi tên nguyên tử, và file đã có nhưng hỏng (tải dở từ lần chạy trước) sẽ bị tải lại.
+
+    Args:
+        url: Địa chỉ file trọng số (cfg["weights"]).
+
+    Returns:
+        Đường dẫn file trọng số đã kiểm tra.
+    """
+    import requests
+
+    path = Path(tempfile.gettempdir()) / url.rsplit("/", 1)[-1]
+    with open(f"{path}.lock", "w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)  # tự nhả khi đóng file
+        if path.exists() and zipfile.is_zipfile(path):
+            return str(path)
+        part = Path(f"{path}.part")
+        with requests.get(url, stream=True, timeout=60) as r:
+            r.raise_for_status()
+            with open(part, "wb") as f:
+                for chunk in r.iter_content(chunk_size=1 << 20):
+                    f.write(chunk)
+        if not zipfile.is_zipfile(part):
+            part.unlink(missing_ok=True)
+            raise RuntimeError(f"File trọng số tải về từ {url} bị hỏng")
+        os.replace(part, path)
+    return str(path)
+
+
 class PageOcr:
     """Bộ OCR một trang: nạp mô hình detect + nhận dạng một lần, dùng lại cho mọi trang."""
 
@@ -97,6 +134,10 @@ class PageOcr:
             self.det = TextDetection(model_name=DET_MODEL, device="cpu", enable_mkldnn=False)
         cfg = Cfg.load_config_from_name(REC_MODEL)
         cfg["device"] = device
+        # Nhiều actor cùng nạp mô hình: tải trọng số một lần có khoá (xem ensure_rec_weights), và bỏ trọng số
+        # ImageNet của VGG (sẽ bị load_state_dict ghi đè) để khỏi tải thừa vgg19_bn về cache dùng chung.
+        cfg["weights"] = ensure_rec_weights(cfg["weights"])
+        cfg["cnn"]["pretrained"] = False
         self.rec = Predictor(cfg)
 
     def page_text(self, image: Image.Image) -> str:

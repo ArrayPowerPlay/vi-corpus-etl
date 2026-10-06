@@ -52,3 +52,60 @@ def test_group_lines_theo_thu_tu_doc():
 
     boxes = [(500, 12, 900, 48), (10, 100, 400, 140), (10, 10, 400, 50)]
     assert group_lines(boxes) == [[(10, 10, 400, 50), (500, 12, 900, 48)], [(10, 100, 400, 140)]]
+
+
+def _fake_requests(monkeypatch, calls):
+    """Thay requests.get bằng bản trả về một file zip hợp lệ (đếm số lần tải, tải chậm để dễ lộ tranh chấp)."""
+    import io
+    import time
+    import zipfile
+
+    import requests
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr("w.txt", "x" * 1000)
+    data = buf.getvalue()
+
+    class Resp:
+        """Phản hồi giả."""
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def raise_for_status(self):
+            """Không lỗi."""
+
+        def iter_content(self, chunk_size):
+            """Trả file theo hai nửa, nghỉ giữa chừng."""
+            calls.append(1)
+            yield data[: len(data) // 2]
+            time.sleep(0.2)
+            yield data[len(data) // 2:]
+
+    monkeypatch.setattr(requests, "get", lambda *a, **k: Resp())
+
+
+def test_ensure_rec_weights_tai_lai_file_hong_va_khong_tranh_chap(tmp_path, monkeypatch):
+    """File trọng số hỏng bị tải lại; nhiều luồng cùng gọi thì chỉ tải một lần và đều nhận file nguyên vẹn."""
+    import tempfile
+    import zipfile
+    from concurrent.futures import ThreadPoolExecutor
+
+    from vi_corpus.common.ocr import ensure_rec_weights
+
+    monkeypatch.setattr(tempfile, "gettempdir", lambda: str(tmp_path))
+    (tmp_path / "w.pth").write_bytes(b"tai do dang")  # file hỏng của lần chạy trước
+    calls: list[int] = []
+    _fake_requests(monkeypatch, calls)
+
+    with ThreadPoolExecutor(4) as pool:
+        paths = list(pool.map(lambda _: ensure_rec_weights("https://x.test/w.pth"), range(4)))
+
+    assert set(paths) == {str(tmp_path / "w.pth")}
+    assert zipfile.is_zipfile(tmp_path / "w.pth")
+    assert len(calls) == 1
+    assert not (tmp_path / "w.pth.part").exists()
