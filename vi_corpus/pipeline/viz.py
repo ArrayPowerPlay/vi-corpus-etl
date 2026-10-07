@@ -2,8 +2,8 @@
 Bản đồ embedding tương tác (plotly): mỗi cặp (thuật toán giảm chiều, cách tô màu) một file HTML trong <run_dir>/viz/.
 
 Giống packages/visualizer/scatter.py của ViLA (plotly express, mỗi tổ hợp một file, report nhúng bằng iframe). Khác: vẽ
-WebGL (px.scatter render_mode="webgl") để mượt với hàng chục nghìn điểm; plotly.min.js ghi một lần cạnh các file
-(include_plotlyjs="directory") nên xem được khi không có mạng. Tô theo: nguồn, trạng thái (giữ / loại và lý do),
+WebGL (px.scatter render_mode="webgl") để mượt với hàng chục nghìn điểm; mỗi file nhúng sẵn plotly.js
+(include_plotlyjs=True, ~4-5 MB/file) nên mở riêng lẻ được, không cần mạng và không cần plotly.min.js đi kèm. Tô theo: nguồn, trạng thái (giữ / loại và lý do),
 band chất lượng, ngôn ngữ, cụm. Rê chuột vào điểm để đọc đoạn đầu văn bản và reason code.
 """
 
@@ -63,6 +63,6 @@ def write_scatters(run_dir: Path, rows: list[dict], reduced: list[dict]) -> list
             fig.update_traces(marker={"size": 5})
             fig.update_layout(legend_title_text=title, margin={"l": 20, "r": 20, "t": 50, "b": 20}, height=620)
             path = out_dir / f"scatter-{algo}-{col}.html"
-            fig.write_html(path, include_plotlyjs="directory", full_html=True)
+            fig.write_html(path, include_plotlyjs=True, full_html=True)
             written.append(path)
     return written

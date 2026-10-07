@@ -432,7 +432,7 @@ Kiểm tra GPU đang chạy bằng `nvidia-smi` ở terminal khác. Kết quả 
 
 - `report.html`: số liệu từng stage, phân bố band/ngôn ngữ/điểm, lý do loại, mẫu văn bản, và mục **Bản đồ embedding** (chọn cách tô màu bằng các nút).
 - `viz/scatter-<umap|pca>-<nguồn|trạng thái|band|ngôn ngữ|cụm>.html`: bản đồ plotly tương tác, rê chuột vào điểm để đọc đoạn đầu văn bản và reason code. Cách đọc: tô theo **nguồn** để xem các nguồn tách nhau thế nào; tô theo **trạng thái** để xem mẫu bị loại (chất lượng / trùng / quyền) nằm ở vùng nào — mẫu rác thường dồn thành cụm riêng.
-- Mở file HTML trên server Jupyter: tải về máy hoặc mở từ trình duyệt file của JupyterLab (cả thư mục `viz/` đi cùng nhau vì chung `plotly.min.js`).
+- Mở file HTML trên server Jupyter: tải về máy hoặc mở từ trình duyệt file của JupyterLab (mỗi file HTML nhúng sẵn plotly.js nên mở riêng lẻ được, nặng ~4-5 MB/file).
 - `audit.json`: tỉ lệ lineage, số trùng, số bị quarantine. `manifest.json`: cấu hình và thời gian từng stage.
 
 ## D7. Xử lý sự cố
