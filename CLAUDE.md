@@ -8,6 +8,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Current state**: code exists per source: SEA download (`vi_corpus/sea/`), stbook crawl + OCR (`vi_corpus/stbook/`), giáo trình raw processing (`vi_corpus/giao_trinh/`, implemented: inventory, extract, page clean, records; strategy in `docs/GIAO_TRINH.md`). The shared pipeline lives in `vi_corpus/pipeline/` (ingest -> normalize -> chunk -> language -> quality -> dedup -> knowledge unit -> audit -> report.html), run by `scripts/run_pipeline.py` on a sample of N records (first version; thresholds untuned). Design: `docs/PIPELINE.md`, `docs/SOURCES.md`, `docs/ROADMAP.md`. Repo layout and data layout: `PROJECT_ARCHITECTURE.md` (Vietnamese). Decisions already made with the user: hybrid architecture (own disk-chained Parquet stages plus optional NeMo Curator adapters), **no train/val/test split at the corpus level** (split later at knowledge-unit level, by dedup family), repo/package name `vi-corpus-etl` / `vi_corpus`, one folder of scripts per data source plus one orchestrator (`scripts/run_all.py`).
 
+## Repo tham khảo: ViLA
+
+Pipeline dùng chung tham khảo kiến trúc của **ViLA** (https://github.com/tmquan/ViLA, bản local: `/home/dell/workspace/Repo/ViLA`). Khi viết hoặc sửa pipeline, xem ViLA trước rồi mới tự thiết kế. Phần đã lấy theo ViLA: khung chạy song song NeMo Curator + Ray (`packages/pipeline/executors.py`, `packages/embedder/stage.py` → `vi_corpus/pipeline/curator.py`, `embed.py`), reducer PCA/UMAP/HDBSCAN (`packages/reducer`), visualizer plotly (`packages/visualizer/scatter.py`). Phần **không** có ở ViLA nên tự viết (heuristic, ngưỡng chưa kiểm chứng): chấm điểm chất lượng và reason code (`quality.py`), language id (`language.py`), dedup exact + fuzzy. Chi tiết điểm đã điều chỉnh: `docs/PIPELINE.md` mục 5.
+
 ## Data sources
 
 Data root (`--data-root`, default env `SEA_DATA_ROOT`, otherwise `./data`) has `raw/` (untouched originals), `interim/`, `processed/`, `state/` (checkpoints, run locks), `logs/`. Raw layout:
