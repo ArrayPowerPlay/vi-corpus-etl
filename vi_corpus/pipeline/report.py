@@ -168,23 +168,12 @@ def _table(audit: dict) -> str:
     return f"<table>{head}{body}</table>"
 
 
-def _viz_section(run_dir: Path, files: list[Path]) -> str:
-    """Mục bản đồ embedding: các nút chọn bản đồ (iframe tới viz/*.html, plotly) hoặc ghi chú nếu chưa có."""
-    if not files:
-        return "<p class='sub'>Chưa có (cần stage embed + reduce và <code>uv sync --group viz</code>).</p>"
-    rel = [f.relative_to(run_dir).as_posix() for f in files]
-    buttons = "".join(f'<button onclick="show({json.dumps(r)})">{html.escape(Path(r).stem.replace("scatter-", ""))}</button>' for r in rel)
-    return (f'<p class="sub">Mỗi điểm là một mẫu; rê chuột để đọc đoạn đầu và reason code. Gồm cả mẫu bị loại (tô theo trạng thái).</p>'
-            f'<div class="legend">{buttons}</div><iframe id="viz" src="{html.escape(rel[0])}" style="width:100%;height:660px;border:1px solid var(--grid);border-radius:8px"></iframe>'
-            f'<script>function show(u){{document.getElementById("viz").src=u}}</script>')
-
-
-def write_report(run_dir: Path, rows: list[dict], audit: dict, manifest: dict, viz_files: list[Path] | None = None) -> Path:
+def write_report(run_dir: Path, rows: list[dict], audit: dict, manifest: dict, embedding_html: str | None = None) -> Path:
     """
     Sinh <run_dir>/report.html từ các bản ghi (đủ mọi status), kết quả audit và manifest.
 
     Args:
-        viz_files: Các file bản đồ embedding (viz.write_scatters) để nhúng bằng iframe; rỗng / None thì ghi chú chưa tính.
+        embedding_html: Khối HTML bản đồ embedding (viz.build_embedding_section) nhúng thẳng vào báo cáo; None thì ghi chú chưa tính.
 
     Returns:
         Đường dẫn file báo cáo.
@@ -216,7 +205,7 @@ def write_report(run_dir: Path, rows: list[dict], audit: dict, manifest: dict, v
 <h2>Phân phối số từ</h2><p class="sub">Mỗi nguồn một ô, cùng thang đo.</p><div class="grid">{hist_words}</div>
 <h2>Phân phối điểm chất lượng</h2><div class="grid">{hist_score}</div>
 <h2>Reason code phổ biến</h2><div class="card">{hbars(sorted(reasons.items(), key=lambda kv: -kv[1])[:14], 'Reason code phổ biến')}</div>
-<h2>Bản đồ embedding</h2>{_viz_section(run_dir, viz_files or [])}
+<h2>Bản đồ embedding</h2>{embedding_html or "<p class='sub'>Chưa có (cần stage embed + reduce và <code>uv sync --group viz</code>).</p>"}
 <h2>Số liệu</h2><div class="card">{_table(audit)}</div>
 <p class="sub">PII trong bản ghi giữ lại: {html.escape(json.dumps(audit['pii'], ensure_ascii=False))}. Quét rò rỉ benchmark: {html.escape(audit['contamination'])}.</p>
 <h2>Đọc mẫu thật</h2><p class="sub">Phần quan trọng nhất: mở vài mẫu mỗi nhóm và tự đánh giá band / lý do loại có hợp lý không.</p>

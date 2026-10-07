@@ -9,7 +9,7 @@ Runner của pipeline: nối các stage, mỗi stage ghi Parquet riêng vào <ru
       05_dedup.parquet       + rights_gate, status, họ trùng (TẤT CẢ bản ghi, kể cả bị loại)
       06_embeddings.parquet  (doc_id, embedding) của mọi bản ghi, để vẽ bản đồ
       07_reduced.parquet     (doc_id, pca, umap, cluster_id)
-      clean.parquet, knowledge_units.parquet, audit.json, manifest.json, viz/*.html, report.html   (stage finalize)
+      clean.parquet, knowledge_units.parquet, audit.json, manifest.json, report.html (đã nhúng bản đồ)   (stage finalize)
 
 Stage đã có file thì bỏ qua (chạy lại đúng lệnh cũ để làm tiếp); force_from xoá từ stage đó trở đi; `until` dừng sau một stage
 (chạy từng bước: lần lượt until=ingest, prepare, ...). Ba stage language / quality / embed chạy song song nhiều CPU / GPU
@@ -153,7 +153,7 @@ def run_pipeline(specs: dict[str, SourceSpec], data_root: Path, run_dir: Path, c
                 100 * report["lineage_rate_kept"])
     if with_report:
         from vi_corpus.pipeline.report import write_report
-        from vi_corpus.pipeline.viz import write_scatters
-        viz_files = write_scatters(run_dir, rows, reduce.read_reduced(red_path)) if red_path.exists() else []
-        write_report(run_dir, rows, report, io.read_manifest(run_dir), viz_files)
+        from vi_corpus.pipeline.viz import build_embedding_section
+        embedding_html = build_embedding_section(rows, reduce.read_reduced(red_path)) if red_path.exists() else None
+        write_report(run_dir, rows, report, io.read_manifest(run_dir), embedding_html)
     return io.read_manifest(run_dir)

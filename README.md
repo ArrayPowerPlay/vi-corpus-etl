@@ -351,7 +351,7 @@ Mục đích: kiểm tra pipeline và chất lượng dữ liệu trước khi c
 | 5 | `dedup` | Trùng chính xác + gần trùng (MinHash), cổng quyền (`unknown` → quarantine) | `05_dedup.parquet` |
 | 6 | `embed` | Vector hóa văn bản — **song song nhiều GPU** | `06_embeddings.parquet` |
 | 7 | `reduce` | PCA + UMAP xuống 2D, gom cụm HDBSCAN (cuML nếu có, không thì scikit-learn/umap-learn) | `07_reduced.parquet` |
-| 8 | `finalize` | Bộ sạch, knowledge unit, audit, bản đồ plotly, báo cáo | `clean.parquet`, `knowledge_units.parquet`, `audit.json`, `viz/*.html`, `report.html` |
+| 8 | `finalize` | Bộ sạch, knowledge unit, audit, bản đồ plotly, báo cáo | `clean.parquet`, `knowledge_units.parquet`, `audit.json`, `report.html` (đã nhúng bản đồ) |
 
 Mọi kết quả nằm ở `<data-root>/processed/pipeline_runs/<run-name>/` (mặc định `run_<total>_seed<seed>`). Mỗi stage có checkpoint: chạy lại **đúng lệnh cũ** thì stage nào đã có file sẽ được bỏ qua.
 
@@ -431,8 +431,7 @@ Kiểm tra GPU đang chạy bằng `nvidia-smi` ở terminal khác. Kết quả 
 ## D6. Xem kết quả
 
 - `report.html`: số liệu từng stage, phân bố band/ngôn ngữ/điểm, lý do loại, mẫu văn bản, và mục **Bản đồ embedding** (chọn cách tô màu bằng các nút).
-- `viz/scatter-<umap|pca>-<nguồn|trạng thái|band|ngôn ngữ|cụm>.html`: bản đồ plotly tương tác, rê chuột vào điểm để đọc đoạn đầu văn bản và reason code. Cách đọc: tô theo **nguồn** để xem các nguồn tách nhau thế nào; tô theo **trạng thái** để xem mẫu bị loại (chất lượng / trùng / quyền) nằm ở vùng nào — mẫu rác thường dồn thành cụm riêng.
-- Mở file HTML trên server Jupyter: tải về máy hoặc mở từ trình duyệt file của JupyterLab (mỗi file HTML nhúng sẵn plotly.js nên mở riêng lẻ được, nặng ~4-5 MB/file).
+- Bản đồ embedding nằm **ngay trong `report.html`** (plotly.js và dữ liệu nhúng sẵn, ~vài MB, không cần mạng, không iframe): chỉ cần tải mỗi file `report.html` về rồi mở bằng trình duyệt. Bấm nút `<umap|pca>-<nguồn|trạng thái|band|ngôn ngữ|cụm>` để đổi cách vẽ / tô màu; rê chuột vào điểm để đọc đoạn đầu văn bản và reason code. Cách đọc: tô theo **nguồn** để xem các nguồn tách nhau thế nào; tô theo **trạng thái** để xem mẫu bị loại (chất lượng / trùng / quyền) nằm ở vùng nào, mẫu rác thường dồn thành cụm riêng.
 - `audit.json`: tỉ lệ lineage, số trùng, số bị quarantine. `manifest.json`: cấu hình và thời gian từng stage.
 
 ## D7. Xử lý sự cố

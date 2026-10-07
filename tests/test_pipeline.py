@@ -170,7 +170,7 @@ def test_chay_tung_buoc_bang_until(tmp_path):
 
 
 def test_embed_reduce_viz_tfidf(tmp_path):
-    """Stage embed (tfidf, CPU) + reduce + bản đồ plotly: ra file embedding, toạ độ 2D, cụm và các file viz/*.html."""
+    """Stage embed (tfidf, CPU) + reduce + bản đồ plotly: ra file embedding, toạ độ 2D, cụm và bản đồ nhúng trong report.html."""
     pytest.importorskip("sklearn")
     pytest.importorskip("plotly")
     d = tmp_path / "raw/sea_vi/sea_pile_v2/vi"
@@ -183,5 +183,6 @@ def test_embed_reduce_viz_tfidf(tmp_path):
     assert len(ids) == 60 and matrix.shape[0] == 60
     reduced = reduce_mod.read_reduced(run / "07_reduced.parquet")
     assert len(reduced) == 60 and all(r["pca_x"] is not None for r in reduced)
-    assert any((run / "viz").glob("scatter-pca-*.html")) and "reduce" in manifest
-    assert "Bản đồ embedding" in (run / "report.html").read_text(encoding="utf-8")
+    report = (run / "report.html").read_text(encoding="utf-8")
+    assert "reduce" in manifest and "Bản đồ embedding" in report
+    assert 'id="emb-data"' in report and 'data-k="pca-status"' in report and not (run / "viz").exists()
