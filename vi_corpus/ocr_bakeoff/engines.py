@@ -14,7 +14,7 @@ Cấu hình engine ở configs/ocr_bakeoff/engines.json, mỗi engine một mụ
 Mọi engine giải mã tham lam (temperature 0). Đầu ra: <bakeoff>/runs/<engine>/outputs.jsonl, mỗi trang một dòng
 {"page_id", "raw", "text", "finish_reason", "prompt_tokens", "completion_tokens", "t_start", "t_end", "error",
 "session"}; chạy lại thì bỏ qua trang đã có kết quả không lỗi (--redo để chạy lại từ đầu). run_info.json lưu cấu hình,
-GPU, phiên bản. Tốc độ được tính ở bước chấm từ t_end của từng trang trong cùng một phiên (bỏ các trang khởi động).
+GPU, phiên bản và từng phiên chạy (bắt đầu, kết thúc, số giây, số giây chờ server tải mô hình). Tốc độ được tính ở bước chấm từ t_end của từng trang trong cùng một phiên (bỏ các trang khởi động).
 """
 
 import base64
@@ -208,8 +208,17 @@ def _gpu_info() -> str | None:
         return None
 
 
+def _update_session(info_path: Path, session: str, **fields) -> None:
+    """Ghi thêm trường vào phiên `session` trong run_info.json."""
+    info = json.loads(info_path.read_text(encoding="utf-8"))
+    for sess in info["sessions"]:
+        if sess["session"] == session:
+            sess.update(fields)
+    info_path.write_text(json.dumps(info, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
 def run_engine(bakeoff_dir: Path, name: str, cfg: dict, concurrency: int = 1, limit: int | None = None,
-               redo: bool = False, only_set: str | None = None) -> dict:
+               redo: bool = False, only_set: str | None = None, server_wait_s: float | None = None) -> dict:
     """
     Chạy engine `name` trên các trang chưa có kết quả, ghi thêm vào runs/<name>/outputs.jsonl.
 
@@ -218,6 +227,7 @@ def run_engine(bakeoff_dir: Path, name: str, cfg: dict, concurrency: int = 1, li
         limit:       Chỉ chạy chừng này trang (thử nhanh).
         redo:        Xoá kết quả cũ của các trang thuộc bộ đang chạy (only_set, hoặc mọi trang) rồi chạy lại.
         only_set:    "A" / "B": chỉ chạy một bộ.
+        server_wait_s: Số giây chờ server tải mô hình (do run_engine.py đo), lưu vào run_info.json.
 
     Returns:
         {"engine", "session", "pages", "errors", "seconds"}.
@@ -244,7 +254,7 @@ def run_engine(bakeoff_dir: Path, name: str, cfg: dict, concurrency: int = 1, li
     info = json.loads(info_path.read_text(encoding="utf-8")) if info_path.exists() else {"sessions": []}
     info.update({"engine": name, "config": cfg, "gpu": _gpu_info(), "host": platform.node()})
     info["sessions"].append({"session": session, "pages": len(todo), "concurrency": concurrency,
-                             "started": time.time()})
+                             "started": time.time(), "server_wait_s": server_wait_s})
     info_path.write_text(json.dumps(info, ensure_ascii=False, indent=2), encoding="utf-8")
     engine = ENGINE_TYPES[cfg["type"]](cfg)
     lock = threading.Lock()
@@ -290,5 +300,6 @@ def run_engine(bakeoff_dir: Path, name: str, cfg: dict, concurrency: int = 1, li
                         logger.info("[%s] %d/%d trang (%.2f trang/s)", name, i, len(todo),
                                     i / (time.time() - t_begin))
     seconds = time.time() - t_begin
+    _update_session(info_path, session, ended=time.time(), seconds=round(seconds, 1), errors=errors)
     logger.info("[%s] xong %d trang, %d lỗi, %.1fs", name, len(todo), errors, seconds)
     return {"engine": name, "session": session, "pages": len(todo), "errors": errors, "seconds": round(seconds, 1)}

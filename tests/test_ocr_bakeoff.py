@@ -224,7 +224,7 @@ def _write_run(root: Path, name: str, texts: dict[str, str], pps: float = 1.0, f
     d.mkdir(parents=True)
     with open(d / "outputs.jsonl", "w", encoding="utf-8") as f:
         f.writelines(json.dumps({"page_id": pid, "text": text, "raw": text, "finish_reason": finish, "error": None,
-                                "session": "s1", "t_start": 0, "t_end": 1000 + k / pps}, ensure_ascii=False) + "\n" for k, (pid, text) in enumerate(texts.items()))
+                                "session": "s1", "t_start": 1000 + (k - 1) / pps, "t_end": 1000 + k / pps}, ensure_ascii=False) + "\n" for k, (pid, text) in enumerate(texts.items()))
 
 
 def test_score_va_quy_tac_chon(tmp_path):
@@ -244,7 +244,7 @@ def test_score_va_quy_tac_chon(tmp_path):
     loopy[20] = full[20] + " lặp lại mãi thôi" * 10
     _write_run(tmp_path, "loopy", dict(zip(ids, loopy)), pps=5.0)
     s = score_bakeoff(tmp_path, ["baseline", "good", "swap", "loopy"], vocab=frozenset({"sách", "quét", "trang"}),
-                      gates=Gates(gpu_hour_budget=None))
+                      gates=Gates(hour_budget=None))
     a = s["set_a"]
     assert a["good"]["cer"] == 0 and a["good"]["special_recall"] == 1.0
     assert a["baseline"]["special_recall"] == 0 and a["baseline"]["cer_nodiac"] < a["baseline"]["cer"]
@@ -258,10 +258,17 @@ def test_score_va_quy_tac_chon(tmp_path):
     rep = tmp_path / "report"
     assert (rep / "report.html").read_text(encoding="utf-8").count("<details>") == 2 + 10
     assert "page_id" in (rep / "per_page.csv").read_text(encoding="utf-8").splitlines()[0]
-    # ngân sách giờ GPU: 1e6 trang / (2 trang/s x 4 GPU) / 3600 ~ 34,7 giờ > 30 -> good trượt cổng tốc độ -> phương án C
-    s = score_bakeoff(tmp_path, ["baseline", "good", "swap", "loopy"], gates=Gates(gpu_hour_budget=30))
-    assert s["gates"]["good"]["gpu_hours"] == pytest.approx(1_000_000 / (2.0 * 4) / 3600, rel=0.05)
+    # giới hạn giờ chạy: 1e6 trang / (2 trang/s x 4 GPU) / 3600 ~ 34,7 giờ > 30 -> good trượt cổng tốc độ -> phương án C
+    s = score_bakeoff(tmp_path, ["baseline", "good", "swap", "loopy"], gates=Gates(hour_budget=30))
+    h = s["hours"]["good"]
+    assert s["gates"]["good"]["corpus_hours"] == h["corpus_hours"] == pytest.approx(1e6 / (2.0 * 4) / 3600, rel=0.05)
+    assert h["corpus_gpu_hours"] == pytest.approx(4 * h["corpus_hours"])
+    assert h["corpus_hours_by_source"]["stbook"] == pytest.approx(h["corpus_hours"])
+    assert h["bakeoff_pages"] == 32 and h["bakeoff_run_hours"] == pytest.approx(32 / 2.0 / 3600)
     assert s["decision"]["status"] == "option_c"
+    rows = (tmp_path / "report/hours.csv").read_text(encoding="utf-8").splitlines()
+    assert rows[0].startswith("engine,bakeoff_pages,bakeoff_run_hours") and len(rows) == 5
+    assert "Số giờ chạy" in (tmp_path / "report/report.html").read_text(encoding="utf-8")
 
 
 def test_hoa_cer_chon_engine_nhanh_hon(tmp_path):
@@ -344,5 +351,7 @@ def test_run_engine_chay_tiep_va_ghi_loi(tmp_path, monkeypatch):
     assert r["pages"] == 1 and r["errors"] == 0 and calls.count("A1") == 2
     outs = [json.loads(x) for x in (tmp_path / "runs/f/outputs.jsonl").read_text(encoding="utf-8").splitlines()]
     assert outs[-1]["text"] == "A1" and outs[-1]["error"] is None
+    sessions = json.loads((tmp_path / "runs/f/run_info.json").read_text(encoding="utf-8"))["sessions"]
+    assert len(sessions) == 2 and all("ended" in x and "seconds" in x for x in sessions)
     with pytest.raises(ValueError):
         eng.run_engine(tmp_path, "g", {"type": "lạ"})

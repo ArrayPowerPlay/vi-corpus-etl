@@ -3,11 +3,12 @@ Bước 3 của đợt so sánh engine OCR (F-11): chấm điểm và áp quy t�
 
 Đọc <bakeoff-dir>/runs/*/outputs.jsonl, ghi <bakeoff-dir>/report/{summary.json, per_page.csv, report.html}. Chấm lại
 bao nhiêu lần cũng được (không gọi engine). --ppl tính thêm perplexity Qwen3-0.6B cho bộ B (cần GPU, lưu vào
-runs/<engine>/ppl.jsonl, lần sau không tính lại). Đặt --gpu-hour-budget khi chủ dự án đã chốt ngân sách, nếu không cổng
-tốc độ để "chưa kiểm" và kết luận chỉ là tạm.
+runs/<engine>/ppl.jsonl, lần sau không tính lại). Đặt --hour-budget khi chủ dự án đã chốt ngân sách, nếu không cổng
+tốc độ để "chưa kiểm" và kết luận chỉ là tạm. Số giờ chạy (đã chạy đợt so sánh, ước tính cho cả kho) luôn được ghi vào
+report/hours.csv, summary.json ("hours") và report.html.
 Ví dụ:
     uv run python scripts/ocr_bakeoff/score.py --data-root /duong/dan/data
-    uv run python scripts/ocr_bakeoff/score.py --data-root /duong/dan/data --ppl --gpu-hour-budget 30
+    uv run python scripts/ocr_bakeoff/score.py --data-root /duong/dan/data --ppl --hour-budget 30
 """
 
 import argparse
@@ -39,7 +40,8 @@ def main() -> int:
     p.add_argument("--ppl-device", default="cuda", choices=["cuda", "cpu"])
     p.add_argument("--ppl-model", default=PPL_MODEL, help=f"Mô hình đo perplexity (mặc định {PPL_MODEL}).")
     p.add_argument("--num-gpus", type=int, default=4, help="Số GPU dùng để quy ra giờ GPU toàn kho (mặc định 4).")
-    p.add_argument("--gpu-hour-budget", type=float, default=None, help="Ngân sách giờ GPU toàn kho.")
+    p.add_argument("--hour-budget", "--gpu-hour-budget", dest="hour_budget", type=float, default=None,
+                   help="Giới hạn số giờ server được chạy để OCR cả kho (mọi GPU chạy cùng lúc); không đặt = chưa kiểm.")
     p.add_argument("--corpus-pages", type=int, default=None,
                    help="Tổng số trang cần OCR (mặc định lấy từ selection.json: stbook + giáo trình cần OCR).")
     p.add_argument("--special-recall-min", type=float, default=Gates.special_recall_min)
@@ -66,10 +68,13 @@ def main() -> int:
     if vocab is None:
         print(f"Không có {syl_path}: bỏ số đo âm tiết lạ của bộ B (chạy build_syllables.py)")
     gates = Gates(args.special_recall_min, args.two_col_gap_max, args.bad_rate_max, args.trunc_rate_max,
-                  args.gpu_hour_budget)
+                  args.hour_budget)
     s = score_bakeoff(bakeoff, engines, baseline=args.baseline, vocab=vocab, num_gpus=args.num_gpus, gates=gates,
                       corpus_pages=args.corpus_pages)
     print(json.dumps(s["decision"], ensure_ascii=False, indent=2))
+    for name, h in s["hours"].items():
+        est = f"{h['corpus_hours']:.1f} giờ cho cả kho" if h["corpus_hours"] is not None else "chưa đo được tốc độ"
+        print(f"{name}: đã chạy {h['bakeoff_run_hours']:.2f} giờ cho {h['bakeoff_pages']} trang; {est}")
     print(f"Báo cáo: {bakeoff / 'report/report.html'}")
     return 0
 

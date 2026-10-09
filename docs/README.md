@@ -520,7 +520,7 @@ Lưu ý:
 
 Engine OCR hiện tại (Paddle detect + VietOCR) không xuất được `² ³`, nháy cong, `– —` và trộn dòng ở trang hai cột. Trước
 khi thay bằng mô hình thị giác - ngôn ngữ, chạy một đợt so sánh theo quy tắc chọn đã chốt trong `docs/DECISION_LOG.md`
-(F-11, G-02). Ứng viên khai báo ở `configs/ocr_bakeoff/engines.json`: `baseline`, `paddleocr_vl`, `dots_ocr`,
+(F-11, O-02). Ứng viên khai báo ở `configs/ocr_bakeoff/engines.json`: `baseline`, `paddleocr_vl`, `dots_ocr`,
 `qwen3vl_8b`, `qwen3vl_4b` (thêm engine = thêm một mục).
 
 | Bước | Lệnh | Kết quả trong `<data-root>/processed/ocr_bakeoff/` |
@@ -528,11 +528,11 @@ khi thay bằng mô hình thị giác - ngôn ngữ, chạy một đợt so sán
 | 1. Chọn trang (CPU) | `uv run python scripts/ocr_bakeoff/select_pages.py --data-root <root>` | `pages/`, `gt/`, `pages.jsonl`, `selection.json` (bộ A ~300 trang giáo trình có đáp án, bộ B ~40 trang stbook thật) |
 | 2. Tập âm tiết (CPU) | `uv run python scripts/ocr_bakeoff/build_syllables.py --data-root <root>` | `syllables.json` (từ SEA-PILE v2) |
 | 3. Chạy engine (GPU) | `uv run python scripts/ocr_bakeoff/run_engine.py --data-root <root> --engine <tên> --gpu <số> [--serve --vllm-bin <vllm>]` | `runs/<engine>/outputs.jsonl` (đầu ra thô từng trang), `run_info.json`, `server.log` |
-| 4. Chấm điểm | `uv run python scripts/ocr_bakeoff/score.py --data-root <root> --ppl [--gpu-hour-budget N]` | `report/summary.json`, `report/per_page.csv`, `report/report.html` |
+| 4. Chấm điểm | `uv run python scripts/ocr_bakeoff/score.py --data-root <root> --ppl [--hour-budget N]` | `report/summary.json`, `report/per_page.csv`, `report/hours.csv`, `report/report.html` |
 
 Chạy trọn cả 4 bước, mỗi engine một GPU (trong tmux):
 ```bash
-DATA_ROOT=/duong/dan/data VLLM_BIN=/opt/vllm-env/bin/vllm GPU_HOUR_BUDGET=30 ./scripts/ocr_bakeoff/run_bakeoff.sh
+DATA_ROOT=/duong/dan/data VLLM_BIN=/opt/vllm-env/bin/vllm HOUR_BUDGET=30 ./scripts/ocr_bakeoff/run_bakeoff.sh
 ```
 
 Chuẩn bị môi trường:
@@ -542,7 +542,8 @@ Chuẩn bị môi trường:
 - Thử nhanh một engine trước: `--limit 5`, rồi mở `runs/<engine>/outputs.jsonl` xem trường `text` và `error`.
 
 Đọc kết quả:
-- `summary.json` → `decision`: `winner` (engine chọn), `option_c` (có engine đủ chất lượng nhưng vượt ngân sách giờ GPU: chỉ chạy VLM cho trang bị nghi), `no_candidate` (giữ baseline). Chưa đặt `--gpu-hour-budget` thì kết luận chỉ là tạm.
+- `summary.json` → `decision`: `winner` (engine chọn), `option_c` (có engine đủ chất lượng nhưng vượt giới hạn số giờ chạy: chỉ chạy VLM cho trang bị nghi), `no_candidate` (giữ baseline). Chưa đặt `--hour-budget` (số giờ tối đa server được chạy để OCR cả kho) thì kết luận chỉ là tạm.
+- `hours.csv` (cũng có trong `summary.json` → `hours` và bảng "Số giờ chạy" của `report.html`): mỗi engine một dòng, gồm số trang và số giờ đã chạy thật trong đợt so sánh, số giờ chờ server / nạp mô hình, trang/giây trên 1 GPU, số giờ để OCR cả kho khi 4 GPU cùng chạy (`corpus_hours`), số giờ GPU tương ứng (`corpus_gpu_hours` = × 4) và số giờ tách theo nguồn.
 - `report.html`: bảng cổng loại (xanh qua, đỏ trượt, xám chưa kiểm), số đo bộ A theo tầng, bộ B (âm tiết lạ, perplexity, `?`), từng trang bộ B và vài trang hai cột bộ A đặt cạnh nhau với ảnh gốc.
 - Chạy lại được ở mọi bước: `run_engine.py` chỉ làm trang còn thiếu / lỗi (`--redo` để làm lại), `score.py` chấm lại bao nhiêu lần cũng được. Chọn lại bộ trang (`select_pages.py --overwrite`) sẽ xoá kết quả engine cũ.
 

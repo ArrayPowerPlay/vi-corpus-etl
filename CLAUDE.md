@@ -82,7 +82,7 @@ uv run python scripts/make_judge_sample.py --run-dir <run> --n 50000 --out <root
 uv run python scripts/ocr_bakeoff/select_pages.py --data-root <root>      # set A (giáo trình text-layer pages + ground truth) + set B (real stbook scans)
 uv run python scripts/ocr_bakeoff/build_syllables.py --data-root <root>   # syllable set from SEA-PILE v2 for set B
 uv run python scripts/ocr_bakeoff/run_engine.py --data-root <root> --engine qwen3vl_8b --gpu 1 --serve --vllm-bin <vllm>  # engines in configs/ocr_bakeoff/engines.json; resumable
-uv run python scripts/ocr_bakeoff/score.py --data-root <root> --ppl [--gpu-hour-budget N]   # report/{summary.json,per_page.csv,report.html}
+uv run python scripts/ocr_bakeoff/score.py --data-root <root> --ppl [--hour-budget N]   # report/{summary.json,per_page.csv,hours.csv,report.html}; hours.csv = run hours + whole-corpus estimate per engine
 DATA_ROOT=<root> VLLM_BIN=<vllm> ./scripts/ocr_bakeoff/run_bakeoff.sh     # all steps, one engine per GPU
 ```
 Bakeoff gotchas: VLM adapters (PaddleOCR-VL, vLLM serve commands) and real GPU runs are untested; only fake engines / a fake OpenAI server were tested locally. Install vLLM in a separate env and pass `--vllm-bin`. Re-selecting pages (`--overwrite`) deletes engine outputs (they are keyed by page_id).

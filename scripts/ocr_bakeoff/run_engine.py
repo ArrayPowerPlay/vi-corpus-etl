@@ -20,6 +20,7 @@ import argparse
 import json
 import os
 import sys
+import time
 from pathlib import Path
 
 sys.path[0] = str(Path(__file__).resolve().parents[2])
@@ -76,10 +77,11 @@ def main() -> int:
         try:
             if args.serve and cfg.get("serve"):
                 proc = start_server(cfg, bakeoff / "runs" / name, args.gpu, args.vllm_bin)
+            t_wait = time.time()
             if cfg.get("base_url"):
                 wait_ready(cfg["base_url"], cfg.get("health", "/models"), args.server_timeout, proc)
             res = run_engine(bakeoff, name, cfg, concurrency=args.concurrency, limit=args.limit, redo=args.redo,
-                             only_set=args.set)
+                             only_set=args.set, server_wait_s=round(time.time() - t_wait, 1))
             failed |= res["errors"] > 0
         except Exception as e:  # noqa: BLE001 - một engine hỏng (thiếu thư viện, server không lên) không chặn engine sau
             res = {"engine": name, "error": f"{type(e).__name__}: {e}"}

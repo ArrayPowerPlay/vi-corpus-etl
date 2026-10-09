@@ -56,7 +56,7 @@
     "text_prefix": "<|img|><|imgpad|><|endofimg|>",
     "prompt": "Please output the layout information from the PDF image, including each layout element's bbox, its category, and the corresponding text content within the bbox.\n\n1. Bbox format: [x1, y1, x2, y2]\n\n2. Layout Categories: The possible categories are ['Caption', 'Footnote', 'Formula', 'List-item', 'Page-footer', 'Page-header', 'Picture', 'Section-header', 'Table', 'Text', 'Title'].\n\n3. Text Extraction & Formatting Rules:\n    - Picture: For the 'Picture' category, the text field should be omitted.\n    - Formula: Format its text as LaTeX.\n    - Table: Format its text as HTML.\n    - All Others (Text, Title, etc.): Format their text as Markdown.\n\n4. Constraints:\n    - The output text must be the original text from the image, with no translation.\n    - All layout elements must be sorted according to human reading order.\n\n5. Final Output: The entire output must be a single JSON object.\n",
     "max_tokens": 16384,
-    "license": "MIT + 'dots.ocr LICENSE AGREEMENT' riêng cho trọng số (phải đọc)",
+    "license": "MIT + 'dots.ocr LICENSE AGREEMENT' riêng cho trọng số; O-04: nếu thắng thì đọc kỹ và báo chủ dự án trước khi dùng",
     "note": "Lời nhắc prompt_layout_all_en (giữ tiêu đề / chân trang). vLLM >= 0.11. Repo đã có bản mới rednote-hilab/dots.mocr. text_prefix theo dots_ocr/model/inference.py."
   },
   "qwen3vl_8b": {

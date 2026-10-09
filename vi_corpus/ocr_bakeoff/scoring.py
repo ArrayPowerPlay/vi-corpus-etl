@@ -2,14 +2,17 @@
 Chấm điểm đợt so sánh engine OCR (F-11) và áp quy tắc chọn đã chốt trước khi chạy (docs/DECISION_LOG.md, F-11).
 
 Đầu vào: <bakeoff>/pages.jsonl, gt/, selection.json, runs/<engine>/outputs.jsonl (và ppl.jsonl nếu đã chạy perplexity).
-Đầu ra trong <bakeoff>/report/: summary.json (số đo gộp, cổng loại, kết luận), per_page.csv (mỗi trang x engine một
-dòng), report.html (bảng số đo, cổng, bộ B và vài trang hai cột bộ A đặt cạnh nhau để xem bằng mắt).
+Đầu ra trong <bakeoff>/report/: summary.json (số đo gộp, cổng loại, kết luận, số giờ chạy), per_page.csv (mỗi trang x
+engine một dòng), hours.csv (mỗi engine một dòng: số giờ đã chạy đợt so sánh, tốc độ, số giờ ước tính cho cả kho),
+report.html (bảng số đo, cổng, số giờ chạy, bộ B và vài trang hai cột bộ A đặt cạnh nhau để xem bằng mắt).
 
 Trang "hỏng" (bỏ sót / bịa) ở bộ A: không có đầu ra (lỗi hoặc chưa chạy), rỗng, độ dài ngoài ±LEN_TOL so với đáp án,
 hoặc vòng lặp (một 4-gram lặp >= LOOP_MIN lần và hơn hai lần số lặp trong đáp án). Trang "cắt cụt": finish_reason =
 "length". Tốc độ: phiên có nhiều trang nhất của engine, bỏ WARMUP_PAGES trang đầu, trang/giây = số trang còn lại /
-khoảng thời gian giữa t_end của chúng; cần >= STEADY_MIN trang mới coi là ổn định. Giờ GPU toàn kho = tổng số trang
-cần OCR (selection.json) / (trang/giây x số GPU) / 3600. Mọi ngưỡng là khởi điểm, chỉnh được bằng tham số.
+khoảng thời gian giữa t_end của chúng (quá ít trang thì dùng mọi trang); cần >= STEADY_MIN trang mới coi là ổn định.
+Số giờ cho cả kho: corpus_hours = tổng số trang cần OCR (selection.json) / (trang/giây x số GPU) / 3600 là số giờ
+server chạy khi mỗi GPU chạy một bản engine cùng lúc (đây là số so với ngân sách --hour-budget); corpus_gpu_hours =
+corpus_hours x số GPU. Mọi ngưỡng là khởi điểm, chỉnh được bằng tham số.
 """
 
 import csv
@@ -55,7 +58,7 @@ class Gates:
     two_col_gap_max: float = 0.02
     bad_rate_max: float = 0.01
     trunc_rate_max: float = 0.005
-    gpu_hour_budget: float | None = None  # None = chủ dự án chưa đặt ngân sách, cổng tốc độ "chưa kiểm"
+    hour_budget: float | None = None  # giờ chạy server cho cả kho; None = chưa đặt, cổng tốc độ "chưa kiểm"
 
 
 def page_bad_reason(rec: dict | None, sc: dict | None) -> str | None:
@@ -92,9 +95,60 @@ def throughput(run_dir: Path, warmup: int = WARMUP_PAGES) -> dict:
     if not by_session:
         return {"session": None, "pages": 0, "pages_per_s": None, "steady": False}
     session, ends = max(by_session.items(), key=lambda kv: len(kv[1]))
-    ends = sorted(ends)[warmup:]
+    ends = sorted(ends)
+    if len(ends) - warmup >= 2:
+        ends = ends[warmup:]
     pps = (len(ends) - 1) / (ends[-1] - ends[0]) if len(ends) >= 2 and ends[-1] > ends[0] else None
     return {"session": session, "pages": len(ends), "pages_per_s": pps, "steady": len(ends) >= STEADY_MIN}
+
+
+def run_hours(run_dir: Path, speed: dict, corpus: dict[str, int], num_gpus: int) -> dict:
+    """
+    Số giờ của một engine: đã chạy thật trong đợt so sánh, và ước tính cho cả kho.
+
+    Args:
+        speed:  Kết quả throughput() của engine.
+        corpus: Số trang cần OCR theo nguồn ({"stbook": ..., "giao_trinh_ocr": ...}).
+
+    Returns:
+        {"bakeoff_pages", "bakeoff_run_hours" (tổng các phiên, từ trang đầu bắt đầu tới trang cuối xong),
+         "bakeoff_startup_hours" (chờ server + nạp mô hình, theo run_info.json), "pages_per_s", "steady",
+         "corpus_pages", "corpus_hours", "corpus_gpu_hours", "corpus_hours_by_source"}.
+    """
+    spans: dict[str, list[float]] = {}
+    pages = 0
+    path = run_dir / "outputs.jsonl"
+    if path.exists():
+        with open(path, encoding="utf-8") as f:
+            for line in f:
+                try:
+                    rec = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if rec.get("t_start") is None or rec.get("t_end") is None:
+                    continue
+                pages += 1
+                lo_hi = spans.setdefault(rec.get("session") or "", [rec["t_start"], rec["t_end"]])
+                lo_hi[0], lo_hi[1] = min(lo_hi[0], rec["t_start"]), max(lo_hi[1], rec["t_end"])
+    startup = 0.0
+    info_path = run_dir / "run_info.json"
+    if info_path.exists():
+        for sess in json.loads(info_path.read_text(encoding="utf-8")).get("sessions", []):
+            startup += sess.get("server_wait_s") or 0.0
+            if sess["session"] in spans and sess.get("started"):
+                startup += max(0.0, spans[sess["session"]][0] - sess["started"])  # nạp mô hình trong tiến trình
+    pps = speed.get("pages_per_s")
+    total = sum(corpus.values())
+
+    def hours(n: int) -> float | None:
+        """Số giờ server cho n trang, mỗi GPU một bản engine."""
+        return n / (pps * num_gpus) / 3600 if pps else None
+
+    return {"bakeoff_pages": pages, "bakeoff_run_hours": sum(hi - lo for lo, hi in spans.values()) / 3600,
+            "bakeoff_startup_hours": startup / 3600, "pages_per_s": pps, "steady": speed.get("steady", False),
+            "corpus_pages": total, "num_gpus": num_gpus, "corpus_hours": hours(total),
+            "corpus_gpu_hours": hours(total) * num_gpus if pps else None,
+            "corpus_hours_by_source": {k: hours(v) for k, v in corpus.items()}}
 
 
 def _mean(xs: list[float]) -> float | None:
@@ -230,20 +284,19 @@ def score_set_b(pages: list[dict], outputs: dict[str, dict[str, dict]], vocab: f
     return agg, rows
 
 
-def apply_gates(a: dict, speed: dict, corpus_pages: int, num_gpus: int, gates: Gates,
-                baseline: str) -> tuple[dict, dict]:
+def apply_gates(a: dict, hours: dict, gates: Gates, baseline: str) -> tuple[dict, dict]:
     """
     Cổng loại cho từng ứng viên (mọi engine trừ baseline) và kết luận (xem F-11).
 
     Returns:
-        ({engine: {"checks": {cổng: {"value", "limit", "status"}}, "gpu_hours", "passed_quality", "passed_speed"}},
+        ({engine: {"checks": {cổng: {"value", "limit", "status"}}, "corpus_hours", "passed_quality", "passed_speed"}},
          kết luận {"status", "winner", "tied_with", "reason", "comparisons"}).
     """
     base = a.get(baseline)
     out = {}
     for name, m in a.items():
-        pps = speed.get(name, {}).get("pages_per_s")
-        gpu_hours = corpus_pages / (pps * num_gpus) / 3600 if pps else None
+        h = hours.get(name, {})
+        corpus_hours = h.get("corpus_hours")
 
         def check(value, limit, ok) -> dict:
             """Một cổng: None = chưa kiểm được."""
@@ -258,18 +311,18 @@ def apply_gates(a: dict, speed: dict, corpus_pages: int, num_gpus: int, gates: G
             "order_gap_two_column": check(two, gates.two_col_gap_max, None if two is None else two <= gates.two_col_gap_max),
             "bad_rate": check(m["bad_rate"], gates.bad_rate_max, m["bad_rate"] <= gates.bad_rate_max),
             "trunc_rate": check(m["trunc_rate"], gates.trunc_rate_max, m["trunc_rate"] <= gates.trunc_rate_max),
-            "gpu_hours": check(gpu_hours, gates.gpu_hour_budget,
-                               None if gates.gpu_hour_budget is None or gpu_hours is None
-                               else gpu_hours <= gates.gpu_hour_budget),
+            "corpus_hours": check(corpus_hours, gates.hour_budget,
+                                  None if gates.hour_budget is None or corpus_hours is None
+                                  else corpus_hours <= gates.hour_budget),
         }
-        quality = all(c["status"] != "fail" for k, c in checks.items() if k != "gpu_hours")
-        out[name] = {"checks": checks, "gpu_hours": gpu_hours, "pages_per_s": pps,
-                     "steady": speed.get(name, {}).get("steady", False),
-                     "passed_quality": quality, "passed_speed": checks["gpu_hours"]["status"] != "fail"}
-    return out, decide(a, out, speed, baseline, gates)
+        quality = all(c["status"] != "fail" for k, c in checks.items() if k != "corpus_hours")
+        out[name] = {"checks": checks, "corpus_hours": corpus_hours, "pages_per_s": h.get("pages_per_s"),
+                     "steady": h.get("steady", False),
+                     "passed_quality": quality, "passed_speed": checks["corpus_hours"]["status"] != "fail"}
+    return out, decide(a, out, hours, baseline, gates)
 
 
-def decide(a: dict, gated: dict, speed: dict, baseline: str, gates: Gates) -> dict:
+def decide(a: dict, gated: dict, hours: dict, baseline: str, gates: Gates) -> dict:
     """
     Chọn engine: trong các ứng viên qua mọi cổng, CER thấp nhất; ứng viên khác chỉ thua khi khoảng tin cậy bootstrap
     95% của hiệu CER (khác - tốt nhất) nằm hẳn trên 0; nhóm hoà chọn engine nhanh nhất. Không ai qua cổng tốc độ mà có
@@ -285,13 +338,13 @@ def decide(a: dict, gated: dict, speed: dict, baseline: str, gates: Gates) -> di
     quality = [n for n in cands if gated[n]["passed_quality"]]
     passed = [n for n in quality if gated[n]["passed_speed"]]
     notes = []
-    if gates.gpu_hour_budget is None:
-        notes.append("chưa đặt ngân sách giờ GPU (--gpu-hour-budget): cổng tốc độ chưa kiểm, kết luận là tạm")
-    if not all(speed.get(n, {}).get("steady") for n in passed):
+    if gates.hour_budget is None:
+        notes.append("chưa đặt giới hạn số giờ chạy cho cả kho (--hour-budget): cổng tốc độ chưa kiểm, kết luận là tạm")
+    if not all(hours.get(n, {}).get("steady") for n in passed):
         notes.append(f"có engine chưa đủ {STEADY_MIN} trang ổn định để đo tốc độ")
     if not passed:
         status = "option_c" if quality else "no_candidate"
-        reason = ("có ứng viên qua cổng chất lượng nhưng vượt ngân sách giờ GPU: chỉ chạy VLM cho trang bị nghi"
+        reason = ("có ứng viên qua cổng chất lượng nhưng vượt giới hạn số giờ chạy: chỉ chạy VLM cho trang bị nghi"
                   if quality else "không ứng viên nào qua cổng chất lượng: giữ baseline, xem lại ứng viên / ngưỡng")
         return {"status": status, "winner": None, "quality_passed": quality, "tied_with": [], "reason": reason,
                 "notes": notes, "comparisons": comparisons}
@@ -310,6 +363,11 @@ def decide(a: dict, gated: dict, speed: dict, baseline: str, gates: Gates) -> di
               else f"hoà CER (khoảng tin cậy chứa 0) giữa {', '.join(group)}; chọn engine nhanh nhất")
     return {"status": "winner", "winner": winner, "quality_passed": quality, "tied_with": tied, "reason": reason,
             "notes": notes, "comparisons": comparisons}
+
+
+def _round(v: float | None) -> float | str:
+    """Làm tròn 4 chữ số cho CSV; None thành ô trống."""
+    return "" if v is None else round(v, 4)
 
 
 def _fmt(v, pct: bool = False) -> str:
@@ -335,13 +393,29 @@ def render_html(summary: dict, pages: list[dict], outputs: dict[str, dict[str, d
     gates = summary["gates"]
     gate_names = list(next(iter(gates.values()))["checks"]) if gates else []
     parts.append("<h2>Cổng loại</h2><table><tr><th>engine</th>" + "".join(f"<th>{e(g)}</th>" for g in gate_names)
-                 + "<th>trang/s</th><th>giờ GPU kho</th></tr>")
+                 + "</tr>")
     for name in engines:
         g = gates[name]
-        cells = "".join(f"<td class='{c['status']}'>{_fmt(c['value'], k not in ('gpu_hours',))}"
-                        f" / {_fmt(c['limit'], k not in ('gpu_hours',))}</td>" for k, c in g["checks"].items())
-        parts.append(f"<tr><td>{e(name)}</td>{cells}<td>{_fmt(g['pages_per_s'])}"
-                     f"{'' if g['steady'] else ' (chưa ổn định)'}</td><td>{_fmt(g['gpu_hours'])}</td></tr>")
+        cells = "".join(f"<td class='{c['status']}'>{_fmt(c['value'], k != 'corpus_hours')}"
+                        f" / {_fmt(c['limit'], k != 'corpus_hours')}</td>" for k, c in g["checks"].items())
+        parts.append(f"<tr><td>{e(name)}</td>{cells}</tr>")
+    parts.append("</table>")
+    hrs = summary["hours"]
+    parts.append(f"<h2>Số giờ chạy</h2><p>Kho cần OCR {_fmt(summary['corpus_pages'])} trang; số giờ cho cả kho tính khi "
+                 f"{summary['num_gpus']} GPU cùng chạy, mỗi GPU một bản engine.</p><table><tr><th>engine</th>"
+                 "<th>số trang đã chạy</th><th>giờ đã chạy (so sánh)</th><th>giờ chờ server / nạp mô hình</th>"
+                 "<th>trang/s (1 GPU)</th><th>giờ cho cả kho</th><th>giờ GPU cho cả kho</th>"
+                 + "".join(f"<th>giờ {e(k)}</th>" for k in next(iter(hrs.values()), {}).get("corpus_hours_by_source", {}))
+                 + "</tr>")
+    for name in engines:
+        h = hrs.get(name)
+        if not h:
+            continue
+        parts.append(f"<tr><td>{e(name)}</td><td>{h['bakeoff_pages']}</td><td>{_fmt(h['bakeoff_run_hours'])}</td>"
+                     f"<td>{_fmt(h['bakeoff_startup_hours'])}</td><td>{_fmt(h['pages_per_s'])}"
+                     f"{'' if h['steady'] else ' (chưa ổn định)'}</td><td>{_fmt(h['corpus_hours'])}</td>"
+                     f"<td>{_fmt(h['corpus_gpu_hours'])}</td>"
+                     + "".join(f"<td>{_fmt(v)}</td>" for v in h["corpus_hours_by_source"].values()) + "</tr>")
     parts.append("</table>")
     cols = [("cer", True), ("cer_nodiac", True), ("diacritic_error", True), ("wer", True), ("bow_f1", True),
             ("order_gap_all", True), ("order_gap_two_column", True), ("special_recall", True), ("bad_rate", True),
@@ -420,15 +494,17 @@ def score_bakeoff(bakeoff_dir: Path, engines: list[str] | None = None, baseline:
     ppl = {n: latest_outputs_ppl(runs / n / "ppl.jsonl") for n in engines}
     sel_path = bakeoff_dir / "selection.json"
     selection = json.loads(sel_path.read_text(encoding="utf-8")) if sel_path.exists() else {}
-    if corpus_pages is None:
-        cp = selection.get("corpus_pages", {})
-        corpus_pages = cp.get("stbook", 0) + cp.get("giao_trinh_ocr", 0)
+    cp = selection.get("corpus_pages", {})
+    corpus = ({"stbook": cp.get("stbook", 0), "giao_trinh_ocr": cp.get("giao_trinh_ocr", 0)}
+              if corpus_pages is None else {"total": corpus_pages})
+    corpus_pages = sum(corpus.values())
     set_a = [p for p in pages if p["set"] == "A"]
     set_b = [p for p in pages if p["set"] == "B"]
     a, rows_a = score_set_a(set_a, bakeoff_dir, outputs) if set_a else ({}, [])
     b, rows_b = score_set_b(set_b, outputs, vocab, ppl) if set_b else ({}, [])
     speed = {n: throughput(runs / n) for n in engines}
-    gated, decision = apply_gates(a, speed, corpus_pages, num_gpus, gates, baseline) if a else ({}, {
+    hours = {n: run_hours(runs / n, speed[n], corpus, num_gpus) for n in engines}
+    gated, decision = apply_gates(a, hours, gates, baseline) if a else ({}, {
         "status": "no_set_a", "winner": None, "quality_passed": [], "tied_with": [], "notes": [],
         "reason": "không có trang bộ A", "comparisons": {}})
     info = {}
@@ -443,7 +519,7 @@ def score_bakeoff(bakeoff_dir: Path, engines: list[str] | None = None, baseline:
                               "steady_min": STEADY_MIN},
                "selection": {k: selection.get(k) for k in ("set_a", "set_b", "strata", "shortfall", "books_b")},
                "set_a": {n: {k: v for k, v in m.items() if not k.startswith("_")} for n, m in a.items()},
-               "set_b": b, "speed": speed, "gates": gated, "decision": decision, "run_info": info}
+               "set_b": b, "speed": speed, "hours": hours, "gates": gated, "decision": decision, "run_info": info}
     rep = bakeoff_dir / "report"
     rep.mkdir(exist_ok=True)
     (rep / "summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -452,5 +528,14 @@ def score_bakeoff(bakeoff_dir: Path, engines: list[str] | None = None, baseline:
         w = csv.DictWriter(f, fieldnames=fields)
         w.writeheader()
         w.writerows(rows_a + rows_b)
+    with open(rep / "hours.csv", "w", encoding="utf-8", newline="") as f:
+        w = csv.writer(f)
+        by_src = list(corpus)
+        w.writerow(["engine", "bakeoff_pages", "bakeoff_run_hours", "bakeoff_startup_hours", "pages_per_s", "steady",
+                    "corpus_pages", "num_gpus", "corpus_hours", "corpus_gpu_hours", *[f"corpus_hours_{k}" for k in by_src]])
+        for n, h in hours.items():
+            w.writerow([n, h["bakeoff_pages"], _round(h["bakeoff_run_hours"]), _round(h["bakeoff_startup_hours"]),
+                        _round(h["pages_per_s"]), h["steady"], h["corpus_pages"], num_gpus, _round(h["corpus_hours"]),
+                        _round(h["corpus_gpu_hours"]), *[_round(h["corpus_hours_by_source"][k]) for k in by_src]])
     (rep / "report.html").write_text(render_html(summary, pages, outputs, bakeoff_dir), encoding="utf-8")
     return summary

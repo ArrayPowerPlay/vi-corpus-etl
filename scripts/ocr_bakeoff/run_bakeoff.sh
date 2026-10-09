@@ -3,8 +3,8 @@
 # trên 4 GPU (mỗi engine một GPU; GPU 0 chạy baseline rồi qwen3vl_4b), chấm điểm. Chạy lại được: bước nào đã xong
 # (pages.jsonl, syllables.json, trang đã có kết quả) thì bỏ qua.
 # Dùng (từ gốc repo, trong tmux hoặc nohup):
-#   DATA_ROOT=/duong/dan/data VLLM_BIN=/opt/vllm-env/bin/vllm ./scripts/ocr_bakeoff/run_bakeoff.sh
-# Biến tuỳ chọn: BAKEOFF_DIR (mặc định $DATA_ROOT/processed/ocr_bakeoff), GPU_HOUR_BUDGET (ngân sách giờ GPU toàn kho),
+#   DATA_ROOT=/duong/dan/data VLLM_BIN=/opt/vllm-env/bin/vllm HOUR_BUDGET=30 ./scripts/ocr_bakeoff/run_bakeoff.sh
+# Biến tuỳ chọn: BAKEOFF_DIR (mặc định $DATA_ROOT/processed/ocr_bakeoff), HOUR_BUDGET (giới hạn số giờ server chạy OCR cả kho),
 # PADDLE_VL_RUN (lệnh python có paddleocr[doc-parser], mặc định "uv run --group ocr python").
 set -uo pipefail
 
@@ -37,5 +37,6 @@ wait
 echo "Các engine đã chạy xong (xem $BAKEOFF_DIR/logs/*.log)"
 
 SCORE=(uv run python scripts/ocr_bakeoff/score.py "${COMMON[@]}" --ppl)
-if [ -n "${GPU_HOUR_BUDGET:-}" ]; then SCORE+=(--gpu-hour-budget "$GPU_HOUR_BUDGET"); fi
+HOUR_BUDGET="${HOUR_BUDGET:-${GPU_HOUR_BUDGET:-}}"
+if [ -n "$HOUR_BUDGET" ]; then SCORE+=(--hour-budget "$HOUR_BUDGET"); fi
 CUDA_VISIBLE_DEVICES=0 "${SCORE[@]}"

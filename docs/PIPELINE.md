@@ -93,7 +93,7 @@ Theo `docs/DECISION_LOG.md` (mục "Phiên 2026-10-08 (code)"). Mọi số ngư�
 **Giới hạn đã biết**: MinHash cả văn bản làm đổi chữ ký của sách dài > 20.000 từ so với run cũ (`MINHASH_VERSION` 2, vân tay tự chạy lại từ prepare). File kho của run cũ (trước bia mộ) không có `written_at` nên luôn thua dòng mới. L1 bao hàm chỉ trong phạm vi một lần chạy (kho vòng 2 chưa có hash đoạn văn). Recall MinHash cấu hình A đo bằng bản cấy (`tests/test_dedup_recall.py`): sửa 1% → 1,0; 2% → 0,875; 5% → 0; cắt 10% hai đầu → 0,5. Tokenizer Qwen3 thật và fastText thật chưa chạy trong test tự động (không mạng); test fastText tự bật khi có `lid.176.bin`.
 
 ## 7. Đợt code 2026-10-09 (F-01, F-03, F-04, F-07)
-Theo `docs/DECISION_LOG.md` (mục "Phiên 2026-10-09 (rà run 10.000 mẫu…)" và G-01 của phiên code cùng ngày). Ngưỡng là khởi điểm, chưa chạy lại run 10.000 mẫu để so.
+Theo `docs/DECISION_LOG.md` (mục "Phiên 2026-10-09 (rà run 10.000 mẫu…)" và O-01 của phiên code cùng ngày). Ngưỡng là khởi điểm, chưa chạy lại run 10.000 mẫu để so.
 
 | Stage | Thay đổi | Quyết định |
 |---|---|---|
