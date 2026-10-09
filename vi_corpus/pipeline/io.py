@@ -29,6 +29,7 @@ PIPELINE_SCHEMA = pa.schema(
         ("doc_minhash", pa.binary()),  # chữ ký MinHash của cả văn bản gốc (dedup theo văn bản, R-19)
         ("lang_score", pa.float64()),
         ("lang_mix", pa.string()),  # JSON {ngôn ngữ: phần độ dài} (D-02)
+        ("lang_answer", pa.string()),  # ngôn ngữ phía trả lời của hội thoại SFT (F-07); null với bản ghi khác
         ("quality_score", pa.float64()),
         ("quality_metrics", pa.string()),  # JSON các số đo thô (để vẽ biểu đồ và gỡ lỗi ngưỡng)
         ("rights_gate", pa.string()),  # "pass" | "quarantine" (trục quyền, tách biệt với chất lượng)

@@ -2,8 +2,10 @@
 Stage prepare, bước 2 (xoá dòng lặp, D-04): chạy sau normalize, trước cắt đoạn. has_code cũng được normalize gọi
 (trên text còn thụt lề) để quyết định giữ khoảng trắng đầu dòng cho văn bản có code (C-09).
 
-A. Trong một văn bản (mọi nguồn): gộp các dòng giống hệt nằm liền nhau; dòng ngắn (< line_short_words từ) lặp
-   >= line_repeat_min lần thì chỉ giữ lần đầu; bỏ dòng chỉ là số trang ("12", "- 12 -", "Trang 12", "12/300").
+A. Trong một văn bản (nguồn có SourceProfile.in_doc_line_clean; hội thoại SFT tắt, F-01): gộp các dòng giống hệt nằm
+   liền nhau; dòng ngắn (< line_short_words từ) lặp >= line_repeat_min lần thì chỉ giữ lần đầu, trừ dòng dẫn kết thúc
+   bằng ":" ("Ưu điểm:", "**Lưu ý:**", "Sau khi điều chỉnh địa giới hành chính:", F-01); bỏ dòng chỉ là số trang ("12",
+   "- 12 -", "Trang 12", "12/300").
    Văn bản có code hoặc bảng (has_code_or_table) được MIỄN mục A (C-07): trong code dòng "}" / "end" lặp là cú pháp,
    trong bảng ô số đứng một dòng hay ô giống nhau liền nhau là dữ liệu, xoá thì hỏng nội dung. Văn bản được miễn chỉ
    còn bị bỏ dòng nhãn số trang chắc chắn ("Trang 12", "- 12 -"), không bỏ số trơn.
@@ -16,7 +18,7 @@ C. Liên văn bản (chỉ nguồn có SourceProfile.cross_line_clean, tức ngu
 
 Không sửa chữ trong dòng, không bỏ thụt lề đầu dòng (văn bản có code giữ thụt lề từ normalize, C-09); dòng trống
 (ranh giới đoạn văn) được giữ. Mỗi bản ghi được cộng dồn lines_removed / chars_removed; thống kê trả về có danh sách các
-dòng bị xoá nhiều nhất để báo cáo đọc lại. source_sha256 vẫn là hash của text gốc (để truy vết).
+dòng bị xoá nhiều nhất của từng nguồn để báo cáo đọc lại. source_sha256 vẫn là hash của text gốc (để truy vết).
 """
 
 import hashlib
@@ -26,9 +28,9 @@ from collections import Counter
 
 from vi_corpus.pipeline.config import RunConfig
 
-LINES_VERSION = "4"  # 2 = miễn mục A cho văn bản có code / bảng (C-07); 3 = nhận diện code / bảng chặt hơn;
-# 4 = mục C không bỏ thụt lề dòng đầu (C-09)
-TOP_REMOVED = 30  # số dòng bị xoá nhiều nhất ghi vào thống kê
+LINES_VERSION = "5"  # 2 = miễn mục A cho văn bản có code / bảng (C-07); 3 = nhận diện code / bảng chặt hơn;
+# 4 = mục C không bỏ thụt lề dòng đầu (C-09); 5 = in_doc_line_clean, miễn dòng dẫn ":", top_removed theo nguồn (F-01)
+TOP_REMOVED = 30  # số dòng bị xoá nhiều nhất của mỗi nguồn ghi vào thống kê
 _PAGE_NUMBER = re.compile(r"^(?:[-–—]\s*)?(?:(?:trang|page|tr\.)\s*)?\d{1,4}(?:\s*/\s*\d{1,4})?(?:\s*[-–—])?$",
                           re.IGNORECASE)
 CODE_MIN_LINES = 3  # số dòng code LIỀN NHAU tối thiểu (dòng trống không ngắt; ít nhất một dòng "chắc") để coi là có code
@@ -57,6 +59,11 @@ _CODE_WEAK = re.compile(
 _TABLE_SEPARATOR = re.compile(r"^\s*\|?\s*:?-{3,}:?\s*(?:\|\s*:?-{3,}:?\s*)+\|?\s*$")  # dòng kẻ bảng markdown |---|---|
 # Nhãn số trang chắc chắn ("Trang 12", "page 3", "- 12 -"): vẫn xoá trong văn bản được miễn (khác số trơn, có thể là ô bảng).
 _PAGE_LABEL = re.compile(r"^(?:[-–—]\s*\d{1,4}\s*[-–—]|(?:trang|page|tr\.)\s*\d{1,4}(?:\s*/\s*\d{1,4})?)$", re.IGNORECASE)
+
+
+def is_lead_in(line: str) -> bool:
+    """Dòng dẫn kết thúc bằng ":" (sau khi bỏ "*", "_" và khoảng trắng cuối dòng): được miễn luật dòng ngắn lặp (F-01)."""
+    return line.rstrip().rstrip("*_").rstrip().endswith(":")
 
 
 def _mark_removed(row: dict, removed: list[str], counter: Counter) -> None:
@@ -156,7 +163,8 @@ def clean_lines_in_doc(text: str, short_words: int = 10, repeat_min: int = 3) ->
             prev = None
             continue
         short = len(ln.split()) < short_words
-        if ln == prev or _PAGE_NUMBER.match(ln) or (short and counts[ln] >= repeat_min and ln in seen_short):
+        repeated = short and counts[ln] >= repeat_min and ln in seen_short and not is_lead_in(ln)
+        if ln == prev or _PAGE_NUMBER.match(ln) or repeated:
             removed.append(ln)
             continue
         if short:
@@ -214,35 +222,45 @@ def clean_lines_cross_doc(rows: list[dict], min_docs: int, min_frac: float,
 
 def clean_rows(rows: list[dict], cfg: RunConfig) -> tuple[list[dict], dict]:
     """
-    Chạy mục A cho mọi bản ghi (trừ văn bản có code / bảng, C-07) rồi mục C cho từng nguồn có cross_line_clean (sửa tại
-    chỗ).
+    Chạy mục A cho mọi bản ghi của nguồn có in_doc_line_clean (trừ văn bản có code / bảng, C-07) rồi mục C cho từng
+    nguồn có cross_line_clean (sửa tại chỗ).
 
     Returns:
-        (rows, thống kê: số dòng / ký tự bị xoá theo nguồn và theo mục, ngưỡng mục C, các dòng bị xoá nhiều nhất).
+        (rows, thống kê theo nguồn: số dòng / ký tự bị xoá theo mục, ngưỡng mục C, các dòng bị xoá nhiều nhất).
     """
     per_source: dict[str, dict] = {}
-    top: Counter = Counter()
+    top: dict[str, Counter] = {}
     by_source: dict[str, list[dict]] = {}
     protected: set[int] = set()
     for row in rows:
         row["lines_removed"] = row["chars_removed"] = 0
-        st = per_source.setdefault(row["source_key"], {"in_doc_lines": 0, "in_doc_exempt_docs": 0})
-        if has_code_or_table(row["text"] or ""):  # C-07: miễn mục A, chỉ bỏ nhãn số trang chắc chắn
+        key = row["source_key"]
+        prof = cfg.profile(key)
+        st = per_source.setdefault(key, {"in_doc_lines": 0, "in_doc_exempt_docs": 0})
+        counter = top.setdefault(key, Counter())
+        text = row["text"] or ""
+        if not prof.in_doc_line_clean:  # F-01: hội thoại SFT không qua mục A
+            st["in_doc_off"] = True
+            if prof.cross_line_clean and has_code_or_table(text):
+                protected.add(id(row))
+            by_source.setdefault(key, []).append(row)
+            continue
+        if has_code_or_table(text):  # C-07: miễn mục A, chỉ bỏ nhãn số trang chắc chắn
             st["in_doc_exempt_docs"] += 1
             protected.add(id(row))
-            new, removed = strip_page_labels(row["text"] or "")
+            new, removed = strip_page_labels(text)
         else:
-            new, removed = clean_lines_in_doc(row["text"] or "", cfg.line_short_words, cfg.line_repeat_min)
+            new, removed = clean_lines_in_doc(text, cfg.line_short_words, cfg.line_repeat_min)
         row["text"] = new
-        _mark_removed(row, removed, top)
+        _mark_removed(row, removed, counter)
         st["in_doc_lines"] += len(removed)
-        by_source.setdefault(row["source_key"], []).append(row)
+        by_source.setdefault(key, []).append(row)
     for key, group in by_source.items():
         if cfg.profile(key).cross_line_clean:
             cstats, removed = clean_lines_cross_doc(group, cfg.cross_line_min_docs, cfg.cross_line_min_frac, protected)
             per_source[key]["cross_doc"] = cstats
-            top.update(removed)
+            top[key].update(removed)
     for key, group in by_source.items():
         per_source[key]["chars_removed"] = sum(r["chars_removed"] for r in group)
-    return rows, {"version": LINES_VERSION, "per_source": per_source,
-                  "top_removed": [[ln[:200], n] for ln, n in top.most_common(TOP_REMOVED)]}
+        per_source[key]["top_removed"] = [[ln[:200], n] for ln, n in top[key].most_common(TOP_REMOVED)]
+    return rows, {"version": LINES_VERSION, "per_source": per_source}

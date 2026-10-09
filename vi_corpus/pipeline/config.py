@@ -22,6 +22,9 @@ class SourceProfile:
         max_words:        Số từ tối đa; nhiều hơn thì loại (too_long).
         min_alpha:        Tỷ lệ chữ cái tối thiểu trong ký tự không phải khoảng trắng.
         web_checks:       Bật các kiểm tra riêng của văn bản web (boilerplate, URL, dòng gạch đầu / dấu chấm lửng).
+        in_doc_line_clean: Chạy xoá dòng lặp trong văn bản (D-04 mục A). Tắt với hội thoại SFT (F-01): dòng "$$", "\\[",
+                          nhãn markdown lặp là nội dung; vòng lặp do mô hình sinh đã bị repeated_ngrams / duplicate_lines
+                          loại cả mẫu ở stage quality.
         cross_line_clean: Xoá dòng lặp ở nhiều văn bản của cùng nguồn (D-04 mục C, chỉ dành cho nguồn web).
         allowed_langs:    Ngôn ngữ chấp nhận; ngoài danh sách thì loại (lang_not_allowed).
         min_lang_score:   Ngưỡng lang_score (độ thuần x độ tin cậy, D-02); thấp hơn thì gắn mã low_lang_score (trừ điểm nhẹ).
@@ -34,6 +37,7 @@ class SourceProfile:
     max_words: int = 100_000
     min_alpha: float = 0.55
     web_checks: bool = False
+    in_doc_line_clean: bool = True
     cross_line_clean: bool = False
     allowed_langs: tuple[str, ...] = ("vi",)
     min_lang_score: float = 0.65
@@ -43,7 +47,8 @@ class SourceProfile:
 PROFILES: dict[str, SourceProfile] = {
     "sea_pile_v2": SourceProfile(web_checks=True, cross_line_clean=True),
     "sea_lion_pile_v1": SourceProfile(web_checks=True, cross_line_clean=True),
-    "sea_instruct_2602": SourceProfile(split_long=False, min_words=5, min_alpha=0.4, dedup_group="sft"),
+    "sea_instruct_2602": SourceProfile(split_long=False, min_words=5, min_alpha=0.4, in_doc_line_clean=False,
+                                       dedup_group="sft"),
     "stbook": SourceProfile(chunked=True, min_words=80),
     # giữ sách tiếng Anh (P-08); ngưỡng lang_score thấp hơn vì giáo trình hay trộn Việt - Anh
     "giao_trinh": SourceProfile(chunked=True, min_words=80, allowed_langs=("vi", "en"), min_lang_score=0.5),

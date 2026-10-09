@@ -117,7 +117,7 @@ def test_detect_mix_theo_doan_vi_du_d02():
     text = "\n\n".join([vi_seg] * 8 + [en_seg] * 2)
     lang, score, mix = detect_mix(text, FakeLid())
     assert lang == "vi" and mix == {"vi": 0.8, "en": 0.2} and score == pytest.approx(0.784, abs=1e-3)
-    assert detect_mix("123 456", FakeLid()) == ("other", 0.0, {})
+    assert detect_mix("123 456", FakeLid()) == ("und", 0.0, {})  # F-07: không còn chữ cái
     assert len(segments_of("\n\n".join(f"đoạn {i}" for i in range(200)), 50)) == 50
 
 

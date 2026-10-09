@@ -189,15 +189,48 @@ def _removed_lines(manifest: dict) -> str:
         return "<p class='sub'>Chưa có thống kê (run cũ).</p>"
     pages = lstats.get("page_lines_removed", {})
     rows = "".join(
-        f"<tr><td>{html.escape(src)}</td><td>{pages.get(src, 0):,}</td><td>{st.get('in_doc_lines', 0):,}</td>"
+        f"<tr><td>{html.escape(src)}</td><td>{pages.get(src, 0):,}</td>"
+        f"<td>{'tắt' if st.get('in_doc_off') else format(st.get('in_doc_lines', 0), ',')}</td>"
         f"<td>{st.get('in_doc_exempt_docs', 0):,}</td><td>{st.get('cross_doc', {}).get('lines_removed', '-')}</td><td>{st.get('cross_doc', {}).get('threshold', '-')}</td>"
         f"<td>{st.get('chars_removed', 0):,}</td></tr>" for src, st in lstats.get("per_source", {}).items())
-    top = "".join(f"<tr><td>{html.escape(ln)}</td><td>{n}</td></tr>" for ln, n in lstats.get("top_removed", []))
+    # F-01: danh sách dòng bị xoá tách theo nguồn; run cũ chỉ có một danh sách chung lstats["top_removed"]
+    tops = {src: st.get("top_removed", []) for src, st in lstats.get("per_source", {}).items()}
+    if "top_removed" in lstats:
+        tops = {"(mọi nguồn)": lstats["top_removed"]}
+    top = "".join(
+        f"<details><summary>{html.escape(src)}: các dòng bị xoá nhiều nhất (đọc lại để chắc không xoá nhầm)</summary>"
+        "<table><tr><th>Dòng</th><th>Số lần</th></tr>"
+        + "".join(f"<tr><td>{html.escape(ln)}</td><td>{n}</td></tr>" for ln, n in items) + "</table></details>"
+        for src, items in tops.items() if items)
     return (f"<table><tr><th>Nguồn</th><th>B: tiêu đề / số trang (ingest)</th><th>A: trong văn bản</th>"
             f"<th>Văn bản miễn A (có code / bảng)</th><th>C: liên văn bản</th>"
-            f"<th>Ngưỡng C (số văn bản)</th><th>Ký tự bị xoá (A + C)</th></tr>{rows}</table>"
-            f"<details><summary>Các dòng bị xoá nhiều nhất (đọc lại để chắc không xoá nhầm)</summary>"
-            f"<table><tr><th>Dòng</th><th>Số lần</th></tr>{top}</table></details>")
+            f"<th>Ngưỡng C (số văn bản)</th><th>Ký tự bị xoá (A + C)</th></tr>{rows}</table>{top}")
+
+
+MATH_CHECK_CODES = ("repetitive", "symbol_heavy", "odd_word_length", "duplicate_lines", "repeated_ngrams")
+
+
+def _math_sft_checks(rows: list[dict], manifest: dict) -> str:
+    """
+    Số đo kiểm của F-03 / F-07 theo nguồn: số bản ghi có công thức / code (math_share > 0,1), trong đó bao nhiêu còn dính
+    mã hình dạng (kỳ vọng gần 0); số hội thoại có câu trả lời không phải tiếng Việt (để rà bằng mắt / LLM judge).
+    """
+    stats: dict[str, dict[str, int]] = {}
+    for r in rows:
+        m = json.loads(r.get("quality_metrics") or "{}")
+        st = stats.setdefault(r["source_key"], {"math": 0, "math_flagged": 0, "und": 0})
+        st["und"] += r.get("language") == "und"
+        if m.get("math_share", 0) > 0.1:
+            st["math"] += 1
+            st["math_flagged"] += any(c in MATH_CHECK_CODES for c in r["reason_codes"])
+    answers = manifest.get("language", {}).get("sft_answers", {})
+    body = "".join(
+        f"<tr><td>{html.escape(src)}</td><td>{st['math']:,}</td><td>{st['math_flagged']:,}</td><td>{st['und']:,}</td>"
+        f"<td>{answers.get(src, {}).get('answer_not_vi', '-')}</td>"
+        f"<td>{answers.get(src, {}).get('answer_not_vi_mixed', '-')}</td></tr>" for src, st in sorted(stats.items()))
+    return ("<table><tr><th>Nguồn</th><th>Có công thức / code (math_share &gt; 0,1)</th>"
+            f"<th>... còn dính {', '.join(MATH_CHECK_CODES)}</th><th>Ngôn ngữ und</th>"
+            f"<th>Hội thoại trả lời không phải vi</th><th>... có mixed_language</th></tr>{body}</table>")
 
 
 def _contamination(audit: dict) -> str:
@@ -251,6 +284,7 @@ def write_report(run_dir: Path, rows: list[dict], audit: dict, manifest: dict, e
 <div class="card">{stacked_bars({s: count('quality_band', s) for s in sources}, BAND_SERIES, 'Band chất lượng theo nguồn')}</div>
 <h2>Ngôn ngữ</h2><p class="sub">Ngôn ngữ chiếm nhiều nhất theo đoạn văn (fastText). Văn bản trộn ngôn ngữ (ngôn ngữ thứ hai ≥ 20%) có mã <code>mixed_language</code>, chỉ gắn nhãn, không loại (R-33).</p>
 <div class="card">{stacked_bars({s: lang_count(s) for s in sources}, LANG_SERIES, 'Ngôn ngữ theo nguồn')}</div>
+<h2>Công thức / code và hội thoại SFT</h2><p class="sub">Số đo kiểm của F-03 / F-07: số đo hình dạng tính trên văn xuôi (đã bỏ công thức / code); cột "còn dính" kỳ vọng gần 0. Hội thoại nhận diện ngôn ngữ theo lượt người dùng; mẫu có câu trả lời không phải tiếng Việt được giữ (có nhãn) để rà.</p><div class="card">{_math_sft_checks(rows, manifest)}</div>
 <h2>Phân phối số token</h2><p class="sub">Mỗi nguồn một ô, cùng thang đo. Đoạn sách mục tiêu ~1.024, tối đa 2.048 token (D-10).</p><div class="grid">{hist_words}</div>
 <h2>Phân phối điểm chất lượng</h2><div class="grid">{hist_score}</div>
 <h2>Dòng bị xoá</h2><p class="sub">Xoá dòng lặp (D-04): B tiêu đề / số trang sách lúc ingest, A dòng lặp trong một văn bản (văn bản có code / bảng được miễn, C-07), C dòng lặp ở nhiều văn bản web.</p><div class="card">{_removed_lines(manifest)}</div>

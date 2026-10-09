@@ -8,10 +8,17 @@ Cách tính (docs/DECISION_LOG.md, D-02):
 3. lang_mix = phần độ dài (ký tự) thuộc mỗi ngôn ngữ; language = ngôn ngữ chiếm nhiều nhất;
    lang_score = tổng (độ dài x độ tin cậy) của các đoạn thuộc `language` / tổng độ dài. Cao khi văn bản vừa thuần một
    ngôn ngữ vừa được đoán chắc chắn. Ngưỡng min_lang_score nằm ở SourceProfile, được dùng ở stage quality.
-Văn bản không có chữ cái: language = "other", lang_score = 0, lang_mix = {}.
+Trước bước 1, công thức toán và khối code được bỏ (vi_corpus.pipeline.spans.strip_math_code, F-07): LaTeX / code làm
+fastText đoán "en". Không còn đoạn nào có chữ cái: language = "und", lang_score = 0, lang_mix = {} (stage quality gắn mã
+lang_unknown, không loại vì ngôn ngữ). "other" là nhãn của bộ heuristic cho ngôn ngữ ngoài vi / en.
 
-SEA-Instruct: chỉ đưa nội dung các lượt không phải "system" vào nhận diện (bỏ lượt system và tiền tố vai "human: "),
-vì lời nhắc hệ thống tiếng Anh ("You are an AI assistant...") làm cả hội thoại bị gọi là tiếng Anh (M-03).
+Hội thoại (SEA-Instruct, meta.turns), F-07:
+- Bỏ lượt "system" (lời nhắc hệ thống tiếng Anh làm cả hội thoại bị gọi là tiếng Anh, M-03) và tiền tố vai "human: ".
+- language / lang_score tính trên các lượt người dùng (vai không phải system và không thuộc ANSWER_ROLES): yêu cầu "viết
+  thơ bằng tiếng Anh", "dịch sang tiếng Nga" có câu trả lời không phải tiếng Việt nhưng là mẫu SFT tiếng Việt. Văn xuôi
+  của các lượt người dùng có < USER_MIN_LETTERS chữ cái thì lùi về mọi lượt không phải system.
+- lang_mix tính trên mọi lượt không phải system (mẫu kể trên có mã mixed_language, chỉ gắn nhãn).
+- lang_answer: ngôn ngữ phía trả lời, để báo cáo đếm mẫu SFT có câu trả lời không phải tiếng Việt (rà bằng mắt / LLM judge).
 
 Bộ nhận diện chọn bằng cfg.lang_model:
 - "fasttext:lid.176": tải lid.176.bin (Facebook, ~126 MB) một lần vào <cache>/lid.176.bin (có khoá, ghi .part rồi đổi
@@ -28,7 +35,10 @@ import re
 from functools import lru_cache
 from pathlib import Path
 
-LANG_VERSION = "2"  # 1 = heuristic cả văn bản; 2 = theo đoạn + lang_mix
+from vi_corpus.pipeline.spans import strip_math_code
+
+LANG_VERSION = "3"  # 1 = heuristic cả văn bản; 2 = theo đoạn + lang_mix; 3 = bỏ công thức / code, SFT theo lượt người
+# dùng, nhãn "und", lang_answer (F-07)
 LID_URL = "https://dl.fbaipublicfiles.com/fasttext/supervised-models/lid.176.bin"
 LID_MIN_BYTES = 100_000_000  # file lid.176.bin đủ: 131.266.198 byte; nhỏ hơn mức này coi như tải dở
 
@@ -39,6 +49,9 @@ _EN_STOP = frozenset("the of and to in is that for it with as was on are by be t
                      "has had were been their its but they his her you".split())
 _WORD = re.compile(r"[^\W\d_]+", re.UNICODE)
 _SYSTEM_ROLES = frozenset({"system"})
+ANSWER_ROLES = frozenset({"assistant", "gpt", "model", "bot"})  # vai phía trả lời; vai khác (trừ system) là người dùng
+USER_MIN_LETTERS = 20  # lượt người dùng ít chữ cái hơn mức này (vd chỉ có công thức) thì nhận diện trên mọi lượt
+UNDETERMINED = "und"  # không còn chữ cái để nhận diện
 
 MAX_CHARS = 20_000  # heuristic: chỉ xét phần đầu văn bản
 MAX_SEGMENT_CHARS = 2_000  # mỗi đoạn chỉ đưa tối đa chừng này ký tự vào bộ nhận diện
@@ -150,17 +163,66 @@ def get_lid(spec: str):
     raise ValueError(f"lang_model không hợp lệ: {spec!r} (dùng 'fasttext:lid.176', 'fasttext:<file.bin>' hoặc 'heuristic')")
 
 
+def _turns(row: dict) -> list[dict]:
+    """Các lượt thoại trong meta.turns ([] nếu bản ghi không phải hội thoại hoặc meta hỏng)."""
+    meta = row.get("meta")
+    if not meta:
+        return []
+    try:
+        return json.loads(meta).get("turns") or []
+    except (json.JSONDecodeError, AttributeError):
+        return []
+
+
+def _role(turn: dict) -> str:
+    """Vai của một lượt thoại, chữ thường."""
+    return str(turn.get("role", "")).lower()
+
+
+def lid_parts(row: dict) -> tuple[str, str | None, str | None]:
+    """
+    Phần văn bản đưa vào nhận diện (chưa bỏ công thức / code).
+
+    Returns:
+        (mọi lượt không phải system, các lượt người dùng, các lượt trả lời). Bản ghi không phải hội thoại:
+        (text, None, None).
+    """
+    turns = _turns(row)
+    if not turns:
+        return row["text"] or "", None, None
+    talk = [t for t in turns if _role(t) not in _SYSTEM_ROLES]
+    user = [t["content"] for t in talk if _role(t) not in ANSWER_ROLES]
+    answer = [t["content"] for t in talk if _role(t) in ANSWER_ROLES]
+    return "\n\n".join(t["content"] for t in talk), "\n\n".join(user), "\n\n".join(answer)
+
+
 def lid_text(row: dict) -> str:
     """Phần văn bản đưa vào nhận diện: với hội thoại (meta.turns) là nội dung các lượt không phải system."""
-    meta = row.get("meta")
-    if meta:
-        try:
-            turns = json.loads(meta).get("turns") or []
-        except (json.JSONDecodeError, AttributeError):
-            turns = []
-        if turns:
-            return "\n\n".join(t["content"] for t in turns if str(t.get("role", "")).lower() not in _SYSTEM_ROLES)
-    return row["text"] or ""
+    return lid_parts(row)[0]
+
+
+def _letters(text: str) -> int:
+    """Số chữ cái."""
+    return sum(c.isalpha() for c in text)
+
+
+def detect_row(row: dict, lid, max_segments: int = 50) -> tuple[str, float, dict[str, float], str | None]:
+    """
+    Nhận diện ngôn ngữ một bản ghi (xem docstring module).
+
+    Returns:
+        (language, lang_score, lang_mix, lang_answer); lang_answer là None nếu bản ghi không phải hội thoại hoặc không
+        có lượt trả lời.
+    """
+    talk, user, answer = (strip_math_code(p) if p is not None else None for p in lid_parts(row))
+    if user is None:
+        lang, score, mix = detect_mix(talk, lid, max_segments)
+        return lang, score, mix, None
+    lang, score, mix = detect_mix(talk, lid, max_segments)
+    if _letters(user) >= USER_MIN_LETTERS:
+        lang, score, _ = detect_mix(user, lid, max_segments)
+    lang_answer = detect_mix(answer, lid, max_segments)[0] if answer else None
+    return lang, score, mix, lang_answer
 
 
 def segments_of(text: str, max_segments: int) -> list[str]:
@@ -184,7 +246,7 @@ def detect_mix(text: str, lid, max_segments: int = 50) -> tuple[str, float, dict
     """
     segs = segments_of(text, max_segments)
     if not segs:
-        return "other", 0.0, {}
+        return UNDETERMINED, 0.0, {}
     weight: dict[str, float] = {}
     conf: dict[str, float] = {}
     total = 0
@@ -200,25 +262,37 @@ def detect_mix(text: str, lid, max_segments: int = 50) -> tuple[str, float, dict
 
 def annotate_language(rows: list[dict], lang_model: str = "heuristic", max_segments: int = 50) -> list[dict]:
     """
-    Điền language, lang_score, lang_mix (JSON) cho mọi bản ghi (sửa tại chỗ, trả lại chính list đó).
+    Điền language, lang_score, lang_mix (JSON), lang_answer cho mọi bản ghi (sửa tại chỗ, trả lại chính list đó).
 
     Hàm thuần theo từng bản ghi nên chạy song song được (vi_corpus.pipeline.curator).
     """
     lid = get_lid(lang_model)
     for row in rows:
-        lang, score, mix = detect_mix(lid_text(row), lid, max_segments)
-        row["language"], row["lang_score"], row["lang_mix"] = lang, score, json.dumps(mix)
+        lang, score, mix, answer = detect_row(row, lid, max_segments)
+        row["language"], row["lang_score"], row["lang_mix"], row["lang_answer"] = lang, score, json.dumps(mix), answer
     return rows
 
 
 def language_stats(rows: list[dict]) -> dict:
-    """Thống kê của stage language: số bản ghi theo từng nhãn ngôn ngữ, số bản ghi trộn ngôn ngữ (xem is_mixed)."""
+    """
+    Thống kê của stage language: số bản ghi theo từng nhãn ngôn ngữ, số bản ghi trộn ngôn ngữ (xem is_mixed), và theo
+    nguồn hội thoại: số mẫu có câu trả lời không phải tiếng Việt, trong đó số mẫu có mã mixed_language (F-07, để rà).
+    """
     counts: dict[str, int] = {}
     mixed = 0
+    answers: dict[str, dict[str, int]] = {}
     for row in rows:
         counts[row["language"]] = counts.get(row["language"], 0) + 1
-        mixed += is_mixed(row["lang_mix"])
-    return {"version": LANG_VERSION, "counts": counts, "mixed": mixed}
+        row_mixed = is_mixed(row["lang_mix"])
+        mixed += row_mixed
+        if row.get("lang_answer") is not None:
+            st = answers.setdefault(row["source_key"], {"conversations": 0, "answer_not_vi": 0,
+                                                        "answer_not_vi_mixed": 0})
+            st["conversations"] += 1
+            if row["lang_answer"] != "vi":
+                st["answer_not_vi"] += 1
+                st["answer_not_vi_mixed"] += row_mixed
+    return {"version": LANG_VERSION, "counts": counts, "mixed": mixed, "sft_answers": answers}
 
 
 def is_mixed(lang_mix: str | None) -> bool:

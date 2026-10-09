@@ -24,6 +24,10 @@ from vi_corpus.sea.reader import row_to_record, source_files
 
 logger = logging.getLogger("vi_corpus")
 
+# Phiên bản code của stage ingest, nằm trong vân tay stage (F-04): nâng khi đổi iter_records / row_to_record / cột meta
+# để 01_ingest.parquet cũ tự chạy lại. 2 = lần đầu đưa vào vân tay (meta stbook có page_lines_removed, commit 24bc92a).
+INGEST_VERSION = "2"
+
 
 def _sample_parquet(path: Path, col: str, k: int, rng: random.Random) -> list[tuple[int, dict]]:
     """

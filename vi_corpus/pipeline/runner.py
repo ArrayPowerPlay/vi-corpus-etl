@@ -45,9 +45,10 @@ from vi_corpus.pipeline import (
     normalize,
     quality,
     reduce,
+    spans,
 )
 from vi_corpus.pipeline.config import RunConfig
-from vi_corpus.pipeline.ingest import ingest, input_files
+from vi_corpus.pipeline.ingest import INGEST_VERSION, ingest, input_files
 from vi_corpus.pipeline.tokens import get_counter
 
 logger = logging.getLogger("vi_corpus")
@@ -71,7 +72,7 @@ def _digest(obj) -> str:
 
 # Trường SourceProfile mà mỗi stage đọc: vân tay của stage chỉ băm các trường này, để chỉnh ngưỡng chất lượng (R-11)
 # không làm chạy lại prepare / language (tokenizer, fastText trên mọi bản ghi).
-PROFILE_FIELDS = {"ingest": ("chunked",), "prepare": ("chunked", "split_long", "cross_line_clean"),
+PROFILE_FIELDS = {"ingest": ("chunked",), "prepare": ("chunked", "split_long", "in_doc_line_clean", "cross_line_clean"),
                   "quality": ("min_words", "max_words", "min_alpha", "web_checks", "allowed_langs", "min_lang_score"),
                   "dedup": ("dedup_group",)}
 
@@ -88,7 +89,7 @@ def stage_params(name: str, cfg: RunConfig) -> dict:
     phải chạy lại. Mỗi stage chỉ ghi các tham số nó thật sự đọc (xem PROFILE_FIELDS).
     """
     return {
-        "ingest": lambda: {"mix": cfg.mix, "seed": cfg.seed, "rows_per_file": cfg.rows_per_file,
+        "ingest": lambda: {"version": INGEST_VERSION, "mix": cfg.mix, "seed": cfg.seed, "rows_per_file": cfg.rows_per_file,
                            "profiles": _profiles(cfg, "ingest")},
         "prepare": lambda: {"normalizer": normalize.NORMALIZER_VERSION, "lines": lines.LINES_VERSION,
                             "chunk": chunk.CHUNK_VERSION, "minhash": dedup.MINHASH_VERSION, "tokenizer": cfg.tokenizer,
@@ -96,9 +97,10 @@ def stage_params(name: str, cfg: RunConfig) -> dict:
                             "line": [cfg.line_short_words, cfg.line_repeat_min, cfg.cross_line_min_docs,
                                      cfg.cross_line_min_frac], "mix": cfg.mix, "seed": cfg.seed,
                             "profiles": _profiles(cfg, "prepare")},
-        "language": lambda: {"version": language.LANG_VERSION, "model": cfg.lang_model,
+        "language": lambda: {"version": language.LANG_VERSION, "spans": spans.SPANS_VERSION, "model": cfg.lang_model,
                              "segments": cfg.lang_max_segments},
-        "quality": lambda: {"version": quality.QUALITY_VERSION, "profiles": _profiles(cfg, "quality")},
+        "quality": lambda: {"version": quality.QUALITY_VERSION, "spans": spans.SPANS_VERSION,
+                            "profiles": _profiles(cfg, "quality")},
         "dedup": lambda: {"version": dedup.DEDUP_VERSION, "minhash": dedup.MINHASH_VERSION, "keep_bands": cfg.keep_bands,
                           "rights_gate": cfg.rights_gate, "fuzzy": cfg.fuzzy_threshold, "priority": cfg.source_priority,
                           "profiles": _profiles(cfg, "dedup"),

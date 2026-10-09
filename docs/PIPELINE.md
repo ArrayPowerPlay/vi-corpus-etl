@@ -92,3 +92,13 @@ Theo `docs/DECISION_LOG.md` (mục "Phiên 2026-10-08 (code)"). Mọi số ngư�
 
 **Giới hạn đã biết**: MinHash cả văn bản làm đổi chữ ký của sách dài > 20.000 từ so với run cũ (`MINHASH_VERSION` 2, vân tay tự chạy lại từ prepare). File kho của run cũ (trước bia mộ) không có `written_at` nên luôn thua dòng mới. L1 bao hàm chỉ trong phạm vi một lần chạy (kho vòng 2 chưa có hash đoạn văn). Recall MinHash cấu hình A đo bằng bản cấy (`tests/test_dedup_recall.py`): sửa 1% → 1,0; 2% → 0,875; 5% → 0; cắt 10% hai đầu → 0,5. Tokenizer Qwen3 thật và fastText thật chưa chạy trong test tự động (không mạng); test fastText tự bật khi có `lid.176.bin`.
 
+## 7. Đợt code 2026-10-09 (F-01, F-03, F-04, F-07)
+Theo `docs/DECISION_LOG.md` (mục "Phiên 2026-10-09 (rà run 10.000 mẫu…)" và G-01 của phiên code cùng ngày). Ngưỡng là khởi điểm, chưa chạy lại run 10.000 mẫu để so.
+
+| Stage | Thay đổi | Quyết định |
+|---|---|---|
+| ingest | `INGEST_VERSION` (2) nằm trong vân tay stage: đổi `iter_records` / `row_to_record` thì nâng số này để chạy lại từ ingest. | F-04 |
+| prepare | `SourceProfile.in_doc_line_clean` (False cho `sea_instruct_2602`): SFT không qua xoá dòng mục A. Dòng dẫn kết thúc bằng `:` không bị luật "dòng ngắn lặp". `top_removed` thống kê theo nguồn. `LINES_VERSION` 5. | F-01 |
+| language, quality | `vi_corpus/pipeline/spans.py`: `strip_math_code` bỏ khối ``` ```, `$$…$$`, `\[…\]`, `\(…\)` và `$…$` có ký hiệu toán. Language đo trên phần còn lại; hội thoại SFT đo `language` / `lang_score` trên lượt người dùng (≥ 20 chữ cái, không thì mọi lượt), `lang_mix` trên mọi lượt, cột mới `lang_answer`; không còn chữ cái thì `language="und"` (mã mềm `lang_unknown`, không trừ điểm). Quality đo `rep_trigram`, `alpha`, `symbol`, `digit`, `upper`, `mean_word_len`, `vi_diacritic` trên văn xuôi; thêm `prose_words`, `math_share`, `rep_trigram_raw`; văn bản gần như toàn công thức được miễn các mã hình dạng, trừ vòng lặp (`rep_trigram_raw` ≥ 0,8). `dup_line` bỏ dòng không có chữ cái. `LANG_VERSION` 3, `QUALITY_VERSION` 3. Report thêm mục "Công thức / code và hội thoại SFT". | F-03, F-07, F-01 |
+
+**Chưa code**: F-02 (thứ tự đọc OCR nhiều cột) tạm dừng chờ kết quả so sánh engine OCR (F-11, công cụ ở `scripts/ocr_bakeoff/`, README Phần F).
