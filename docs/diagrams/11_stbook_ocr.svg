@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 929" width="1000" height="929" font-family="DejaVu Sans, Arial, sans-serif">
+<title>Luồng con 11: OCR sách stbook</title>
+<defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#455566"/></marker></defs>
+<rect width="1000" height="929" fill="#ffffff"/>
+<text x="500.0" y="34" text-anchor="middle" font-size="19" font-weight="700" fill="#1b2733">Luồng con 11: OCR sách stbook</text>
+<text x="500.0" y="58" text-anchor="middle" font-size="12" fill="#52514e">vi_corpus/stbook/ocr_books.py · ocr_parallel.py · vi_corpus/common/ocr.py</text>
+<rect x="30" y="84" width="530" height="51" rx="8" fill="#eef2f7" stroke="#7a8aa0" stroke-width="1.5"/>
+<text x="42" y="106" font-size="14" font-weight="700" fill="#1b2733">raw/stbook/&lt;slug&gt;/{books.json, content/&lt;product_id&gt;.pdf}</text>
+<text x="42" y="126" font-size="12" fill="#1b2733" xml:space="preserve">tải bằng scripts/stbook/crawl.py; &lt;id&gt;_pages/ = đang tải dở, bỏ qua</text>
+<line x1="295.0" y1="135" x2="295.0" y2="173" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
+<rect x="30" y="175" width="530" height="51" rx="8" fill="#fff4dc" stroke="#d19a1f" stroke-width="1.5"/>
+<text x="42" y="197" font-size="14" font-weight="700" fill="#1b2733">books_to_ocr: cần OCR?</text>
+<text x="42" y="217" font-size="12" fill="#1b2733" xml:space="preserve">chưa có interim/stbook_ocr/&lt;slug&gt;/&lt;id&gt;.json, hoặc pdf_size đã đổi</text>
+<rect x="680" y="175" width="290" height="28" rx="8" fill="#eef2f7" stroke="#7a8aa0" stroke-width="1.5"/>
+<text x="692" y="197" font-size="14" font-weight="700" fill="#1b2733">Bỏ qua</text>
+<line x1="560" y1="195" x2="678" y2="195" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
+<text x="620.0" y="189" text-anchor="middle" font-size="11.5" fill="#455566">đã xong</text>
+<line x1="295.0" y1="226" x2="295.0" y2="264" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
+<text x="303.0" y="250.0" font-size="11.5" fill="#455566">cần</text>
+<rect x="30" y="266" width="530" height="68" rx="8" fill="#e9f5ee" stroke="#3f9b6b" stroke-width="1.5"/>
+<text x="42" y="288" font-size="14" font-weight="700" fill="#1b2733">PageOcr (nạp một lần)</text>
+<text x="42" y="308" font-size="12" fill="#1b2733" xml:space="preserve">detect: PaddleOCR PP-OCRv5_mobile_det (GPU nếu có paddle-gpu, CPU tắt mkldnn)</text>
+<text x="42" y="325" font-size="12" fill="#1b2733" xml:space="preserve">nhận dạng: VietOCR vgg_transformer (trọng số tải có khoá, ensure_rec_weights)</text>
+<line x1="295.0" y1="334" x2="295.0" y2="372" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
+<rect x="30" y="374" width="530" height="51" rx="8" fill="#e9f5ee" stroke="#3f9b6b" stroke-width="1.5"/>
+<text x="42" y="396" font-size="14" font-weight="700" fill="#1b2733">pdf_page_images</text>
+<text x="42" y="416" font-size="12" fill="#1b2733" xml:space="preserve">trang đúng 1 ảnh → lấy ảnh gốc; còn lại render 200 dpi</text>
+<rect x="680" y="374" width="290" height="51" rx="8" fill="#fdecea" stroke="#c94a3f" stroke-width="1.5"/>
+<text x="692" y="396" font-size="14" font-weight="700" fill="#1b2733">ValueError, sang cuốn khác</text>
+<text x="692" y="416" font-size="12" fill="#1b2733" xml:space="preserve">doc.is_repaired (crawler bị kill)</text>
+<line x1="560" y1="394" x2="678" y2="394" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
+<text x="620.0" y="388" text-anchor="middle" font-size="11.5" fill="#455566">PDF hỏng</text>
+<line x1="295.0" y1="425" x2="295.0" y2="463" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
+<rect x="30" y="465" width="530" height="68" rx="8" fill="#e9f5ee" stroke="#3f9b6b" stroke-width="1.5"/>
+<text x="42" y="487" font-size="14" font-weight="700" fill="#1b2733">page_text từng trang</text>
+<text x="42" y="507" font-size="12" fill="#1b2733" xml:space="preserve">khung chữ + PADDING 6 px → group_lines (trên xuống, trái sang phải)</text>
+<text x="42" y="524" font-size="12" fill="#1b2733" xml:space="preserve">VietOCR predict_batch các crop → mỗi dòng một dòng text</text>
+<line x1="295.0" y1="533" x2="295.0" y2="571" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
+<rect x="30" y="573" width="530" height="68" rx="8" fill="#e9f5ee" stroke="#3f9b6b" stroke-width="1.5"/>
+<text x="42" y="595" font-size="14" font-weight="700" fill="#1b2733">Ghi JSON nguyên tử ngay khi xong cuốn</text>
+<text x="42" y="615" font-size="12" fill="#1b2733" xml:space="preserve">pages, book, pdf_path, pdf_size, mô hình OCR, created_at</text>
+<text x="42" y="632" font-size="12" fill="#1b2733" xml:space="preserve">crash mất tối đa cuốn đang làm</text>
+<rect x="680" y="573" width="290" height="68" rx="8" fill="#e9f5ee" stroke="#3f9b6b" stroke-width="1.5"/>
+<text x="692" y="595" font-size="14" font-weight="700" fill="#1b2733">Song song nhiều GPU</text>
+<text x="692" y="615" font-size="12" fill="#1b2733" xml:space="preserve">ocr_parallel: mỗi actor 1 GPU,</text>
+<text x="692" y="632" font-size="12" fill="#1b2733" xml:space="preserve">cùng checkpoint, cùng kết quả</text>
+<line x1="560" y1="593" x2="678" y2="593" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
+<text x="620.0" y="587" text-anchor="middle" font-size="11.5" fill="#455566">--ocr-books</text>
+<line x1="295.0" y1="641" x2="295.0" y2="679" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
+<rect x="30" y="681" width="530" height="102" rx="8" fill="#e9f5ee" stroke="#3f9b6b" stroke-width="1.5"/>
+<text x="42" y="703" font-size="14" font-weight="700" fill="#1b2733">iter_records(clean=True)</text>
+<text x="42" y="723" font-size="12" fill="#1b2733" xml:space="preserve">clean_pages: bỏ header/footer chạy (2 dòng đầu/cuối trang, số → #, lặp ≥ 3</text>
+<text x="42" y="740" font-size="12" fill="#1b2733" xml:space="preserve">  trang),</text>
+<text x="42" y="757" font-size="12" fill="#1b2733" xml:space="preserve">  bỏ dòng chỉ có số, ghép dòng thành đoạn</text>
+<text x="42" y="774" font-size="12" fill="#1b2733" xml:space="preserve">mỗi cuốn 1 bản ghi; rights unknown → quarantine</text>
+<line x1="295.0" y1="783" x2="295.0" y2="821" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
+<rect x="30" y="823" width="530" height="28" rx="8" fill="#e3eefb" stroke="#2a78d6" stroke-width="1.5"/>
+<text x="42" y="845" font-size="14" font-weight="700" fill="#1b2733">Bản ghi stbook cho ingest</text>
+<rect x="30" y="895" width="18" height="14" rx="3" fill="#eef2f7" stroke="#7a8aa0"/><text x="54" y="906" font-size="11.5" fill="#455566">đầu vào / dữ liệu</text><rect x="185" y="895" width="18" height="14" rx="3" fill="#e9f5ee" stroke="#3f9b6b"/><text x="209" y="906" font-size="11.5" fill="#455566">bước xử lý</text><rect x="291" y="895" width="18" height="14" rx="3" fill="#fff4dc" stroke="#d19a1f"/><text x="315" y="906" font-size="11.5" fill="#455566">rẽ nhánh / điều kiện</text><rect x="467" y="895" width="18" height="14" rx="3" fill="#fdecea" stroke="#c94a3f"/><text x="491" y="906" font-size="11.5" fill="#455566">loại / dừng</text><rect x="580" y="895" width="18" height="14" rx="3" fill="#e3eefb" stroke="#2a78d6"/><text x="604" y="906" font-size="11.5" fill="#455566">đầu ra</text><rect x="658" y="895" width="18" height="14" rx="3" fill="#f5f5f5" stroke="#9a9a9a" stroke-dasharray="4 3"/><text x="682" y="906" font-size="11.5" fill="#455566">dự kiến, chưa có code</text>
+</svg>

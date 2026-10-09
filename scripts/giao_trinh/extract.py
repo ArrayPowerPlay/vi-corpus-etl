@@ -1,5 +1,6 @@
 """
-Xử lý thô giáo trình: kiểm kê file, trích text từng trang (PDF, pptx; trang scan thì OCR), rồi xuất Parquet.
+Xử lý thô giáo trình: kiểm kê file, trích text từng trang (PDF, docx, pptx, doc / ppt, djvu, html, epub; trang scan
+thì OCR), rồi xuất Parquet.
 
 Đọc <data-root>/raw/giao_trinh (hoặc --root), ghi:
     interim/giao_trinh_text/<sha256>.json          text từng trang + method (checkpoint theo file)
@@ -10,6 +11,7 @@ Ví dụ:
     uv run python scripts/giao_trinh/extract.py --data-root /duong/dan/data --limit-files 5 --no-ocr
     uv run --group ocr python scripts/giao_trinh/extract.py --data-root /duong/dan/data --device cuda
     uv run python scripts/giao_trinh/extract.py --data-root /duong/dan/data --status
+    uv run python scripts/giao_trinh/extract.py --data-root /duong/dan/data --retry-skipped   # sau khi cài LibreOffice
 """
 
 import argparse
@@ -39,6 +41,8 @@ def main() -> int:
                         help="Thiết bị chạy VietOCR cho trang scan (mặc định cuda).")
     parser.add_argument("--no-ocr", action="store_true", help="Không OCR: trang scan để needs_ocr.")
     parser.add_argument("--limit-files", type=int, default=None, help="Chỉ xử lý N file đầu (chạy thử).")
+    parser.add_argument("--retry-skipped", action="store_true",
+                        help="Làm lại cả file từng bị bỏ qua (vd sau khi cài LibreOffice / djvulibre).")
     parser.add_argument("--status", action="store_true", help="Chỉ in tiến độ rồi thoát.")
     args = parser.parse_args()
     spec = SOURCES["giao_trinh"]
@@ -55,7 +59,7 @@ def main() -> int:
     _lock = acquire_run_lock(args.data_root / "state" / "giao_trinh_extract")  # noqa: F841 — giữ khoá
     setup_logging(args.data_root / "logs", "giao_trinh_extract")
     failed = run_extract(root, args.data_root, make_ocr_getter(args.device, not args.no_ocr),
-                         ocr_enabled=not args.no_ocr, limit_files=args.limit_files)
+                         ocr_enabled=not args.no_ocr, limit_files=args.limit_files, retry_skipped=args.retry_skipped)
     out = args.data_root / OUT_PATH
     n = export_parquet(iter_records(spec, args.data_root), out)
     logging.getLogger("vi_corpus").info("Đã xuất %d bản ghi ra %s", n, out)

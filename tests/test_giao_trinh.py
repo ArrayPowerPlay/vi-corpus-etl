@@ -66,8 +66,11 @@ def test_inventory_gom_trung_sha256_va_bo_file_an(tmp_path):
     assert [p.name for p in dup] == ["a.pdf", "b_copy.pdf"]
 
 
-def test_run_extract_checkpoint_resume_va_records(tmp_path):
+def test_run_extract_checkpoint_resume_va_records(tmp_path, monkeypatch):
     """Chạy đủ, lỗi/skip được ghi, chạy lại không làm lại; đường dẫn trùng nằm trong checkpoint; records sạch."""
+    from vi_corpus.common.parsers import office
+
+    monkeypatch.setattr(office, "office_binary", lambda: None)  # .ppt giả: coi như máy chưa cài LibreOffice -> skipped
     root = _make_root(tmp_path)
     calls = []
     failed = run_extract(root, tmp_path, lambda: calls.append(1))

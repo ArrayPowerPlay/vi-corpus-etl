@@ -145,13 +145,14 @@ def iter_records(spec: SourceSpec, data_root: Path, limit_files: int | None = No
         data_root:   Thư mục gốc dữ liệu.
         limit_files: Chỉ đọc N cuốn đầu (chạy thử).
         clean:       Làm sạch theo trang (xem trên).
-        with_meta:   Thêm khoá "meta" (JSON: tên sách, danh mục, số trang).
+        with_meta:   Thêm khoá "meta" (JSON: tên sách, danh mục, số trang, số dòng tiêu đề / số trang bị clean_pages bỏ).
     """
     for path in sorted((data_root / OCR_DIR).glob("*/*.json"))[:limit_files]:
         done = read_json(path)
         if done is None:
             continue
-        text = clean_pages(done["pages"]) if clean else "\n\n".join(done["pages"])
+        page_stats: dict = {}
+        text = clean_pages(done["pages"], stats=page_stats) if clean else "\n\n".join(done["pages"])
         rec = {
             "doc_id": make_doc_id(spec.key, done["pdf_path"], 0),
             "source_key": spec.key,
@@ -171,5 +172,6 @@ def iter_records(spec: SourceSpec, data_root: Path, limit_files: int | None = No
         if with_meta:
             book = done.get("book") or {}
             rec["meta"] = json.dumps({"title": book.get("title"), "category": done.get("category_slug"),
-                                      "pages": len(done["pages"])}, ensure_ascii=False)
+                                      "pages": len(done["pages"]),
+                                      "page_lines_removed": page_stats.get("lines_removed", 0)}, ensure_ascii=False)
         yield rec

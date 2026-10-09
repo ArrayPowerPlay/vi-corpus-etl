@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 838" width="1000" height="838" font-family="DejaVu Sans, Arial, sans-serif">
+<title>Luồng con 4: language id (heuristic hiện tại)</title>
+<defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#455566"/></marker></defs>
+<rect width="1000" height="838" fill="#ffffff"/>
+<text x="500.0" y="34" text-anchor="middle" font-size="19" font-weight="700" fill="#1b2733">Luồng con 4: language id (heuristic hiện tại)</text>
+<text x="500.0" y="58" text-anchor="middle" font-size="12" fill="#52514e">vi_corpus/pipeline/language.py</text>
+<rect x="30" y="84" width="530" height="28" rx="8" fill="#eef2f7" stroke="#7a8aa0" stroke-width="1.5"/>
+<text x="42" y="106" font-size="14" font-weight="700" fill="#1b2733">02_prepare.parquet</text>
+<line x1="295.0" y1="112" x2="295.0" y2="150" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
+<rect x="30" y="152" width="530" height="51" rx="8" fill="#e9f5ee" stroke="#3f9b6b" stroke-width="1.5"/>
+<text x="42" y="174" font-size="14" font-weight="700" fill="#1b2733">Lấy mẫu văn bản</text>
+<text x="42" y="194" font-size="12" fill="#1b2733" xml:space="preserve">20.000 ký tự đầu, chữ thường, tách từ chữ cái (bỏ số, dấu câu)</text>
+<rect x="680" y="152" width="290" height="28" rx="8" fill="#fdecea" stroke="#c94a3f" stroke-width="1.5"/>
+<text x="692" y="174" font-size="14" font-weight="700" fill="#1b2733">other, 0.0</text>
+<line x1="560" y1="172" x2="678" y2="172" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
+<text x="620.0" y="166" text-anchor="middle" font-size="11.5" fill="#455566">không có chữ</text>
+<line x1="295.0" y1="203" x2="295.0" y2="241" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
+<rect x="30" y="243" width="530" height="102" rx="8" fill="#e9f5ee" stroke="#3f9b6b" stroke-width="1.5"/>
+<text x="42" y="265" font-size="14" font-weight="700" fill="#1b2733">Tính 3 tỷ lệ</text>
+<text x="42" y="285" font-size="12" fill="#1b2733" xml:space="preserve">diacritic = số chữ có dấu tiếng Việt (ă â đ ê ô ơ ư + dấu thanh) / tổng chữ</text>
+<text x="42" y="302" font-size="12" fill="#1b2733" xml:space="preserve">  cái</text>
+<text x="42" y="319" font-size="12" fill="#1b2733" xml:space="preserve">vi_stop = tỷ lệ từ chức năng tiếng Việt (và, của, là, có, ...)</text>
+<text x="42" y="336" font-size="12" fill="#1b2733" xml:space="preserve">en_stop = tỷ lệ từ chức năng tiếng Anh (the, of, and, ...)</text>
+<line x1="295.0" y1="345" x2="295.0" y2="383" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
+<rect x="30" y="385" width="530" height="51" rx="8" fill="#fff4dc" stroke="#d19a1f" stroke-width="1.5"/>
+<text x="42" y="407" font-size="14" font-weight="700" fill="#1b2733">Đủ dấu hiệu tiếng Việt?</text>
+<text x="42" y="427" font-size="12" fill="#1b2733" xml:space="preserve">diacritic ≥ 0,08 hoặc (vi_stop ≥ 0,08 và vi_stop &gt; en_stop)</text>
+<rect x="680" y="385" width="290" height="68" rx="8" fill="#e3eefb" stroke="#2a78d6" stroke-width="1.5"/>
+<text x="692" y="407" font-size="14" font-weight="700" fill="#1b2733">vi</text>
+<text x="692" y="427" font-size="12" fill="#1b2733" xml:space="preserve">điểm = 0,5·min(1, diacritic/0,2)</text>
+<text x="692" y="444" font-size="12" fill="#1b2733" xml:space="preserve">     + 0,5·min(1, vi_stop/0,15)</text>
+<line x1="560" y1="405" x2="678" y2="405" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
+<text x="620.0" y="399" text-anchor="middle" font-size="11.5" fill="#455566">đúng</text>
+<line x1="295.0" y1="436" x2="295.0" y2="491" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
+<text x="303.0" y="468.5" font-size="11.5" fill="#455566">sai</text>
+<rect x="30" y="493" width="530" height="51" rx="8" fill="#fff4dc" stroke="#d19a1f" stroke-width="1.5"/>
+<text x="42" y="515" font-size="14" font-weight="700" fill="#1b2733">Đủ dấu hiệu tiếng Anh?</text>
+<text x="42" y="535" font-size="12" fill="#1b2733" xml:space="preserve">en_stop ≥ 0,12 và diacritic &lt; 0,03</text>
+<rect x="680" y="493" width="290" height="51" rx="8" fill="#e3eefb" stroke="#2a78d6" stroke-width="1.5"/>
+<text x="692" y="515" font-size="14" font-weight="700" fill="#1b2733">en</text>
+<text x="692" y="535" font-size="12" fill="#1b2733" xml:space="preserve">điểm = min(1, en_stop/0,25)</text>
+<line x1="560" y1="513" x2="678" y2="513" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
+<text x="620.0" y="507" text-anchor="middle" font-size="11.5" fill="#455566">đúng</text>
+<line x1="295.0" y1="544" x2="295.0" y2="582" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
+<text x="303.0" y="568.0" font-size="11.5" fill="#455566">sai</text>
+<rect x="30" y="584" width="530" height="68" rx="8" fill="#e3eefb" stroke="#2a78d6" stroke-width="1.5"/>
+<text x="42" y="606" font-size="14" font-weight="700" fill="#1b2733">other</text>
+<text x="42" y="626" font-size="12" fill="#1b2733" xml:space="preserve">điểm = max(vi_stop, en_stop); gồm mã, bảng số, ngôn ngữ khác, tiếng Việt không</text>
+<text x="42" y="643" font-size="12" fill="#1b2733" xml:space="preserve">  dấu</text>
+<rect x="680" y="584" width="290" height="68" rx="8" fill="#f5f5f5" stroke="#9a9a9a" stroke-width="1.5" stroke-dasharray="6 4"/>
+<text x="692" y="606" font-size="14" font-weight="700" fill="#6a6a6a">Dự kiến (D-02)</text>
+<text x="692" y="626" font-size="12" fill="#6a6a6a" xml:space="preserve">fastText lid.176.bin dự đoán theo đoạn</text>
+<text x="692" y="643" font-size="12" fill="#6a6a6a" xml:space="preserve">+ lang_mix, min_lang_score theo nguồn</text>
+<line x1="560" y1="604" x2="678" y2="604" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
+<text x="620.0" y="598" text-anchor="middle" font-size="11.5" fill="#455566">sẽ đổi</text>
+<line x1="295.0" y1="652" x2="295.0" y2="690" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
+<rect x="30" y="692" width="530" height="68" rx="8" fill="#e3eefb" stroke="#2a78d6" stroke-width="1.5"/>
+<text x="42" y="714" font-size="14" font-weight="700" fill="#1b2733">03_language.parquet</text>
+<text x="42" y="734" font-size="12" fill="#1b2733" xml:space="preserve">cột language, lang_score; song song qua CuratorBackend.language nếu có</text>
+<text x="42" y="751" font-size="12" fill="#1b2733" xml:space="preserve">  --executor</text>
+<rect x="30" y="804" width="18" height="14" rx="3" fill="#eef2f7" stroke="#7a8aa0"/><text x="54" y="815" font-size="11.5" fill="#455566">đầu vào / dữ liệu</text><rect x="185" y="804" width="18" height="14" rx="3" fill="#e9f5ee" stroke="#3f9b6b"/><text x="209" y="815" font-size="11.5" fill="#455566">bước xử lý</text><rect x="291" y="804" width="18" height="14" rx="3" fill="#fff4dc" stroke="#d19a1f"/><text x="315" y="815" font-size="11.5" fill="#455566">rẽ nhánh / điều kiện</text><rect x="467" y="804" width="18" height="14" rx="3" fill="#fdecea" stroke="#c94a3f"/><text x="491" y="815" font-size="11.5" fill="#455566">loại / dừng</text><rect x="580" y="804" width="18" height="14" rx="3" fill="#e3eefb" stroke="#2a78d6"/><text x="604" y="815" font-size="11.5" fill="#455566">đầu ra</text><rect x="658" y="804" width="18" height="14" rx="3" fill="#f5f5f5" stroke="#9a9a9a" stroke-dasharray="4 3"/><text x="682" y="815" font-size="11.5" fill="#455566">dự kiến, chưa có code</text>
+</svg>

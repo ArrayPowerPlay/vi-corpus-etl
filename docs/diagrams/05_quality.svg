@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 764" width="1000" height="764" font-family="DejaVu Sans, Arial, sans-serif">
+<title>Luồng con 5: quality (điểm 0-100, band, reason code)</title>
+<defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#455566"/></marker></defs>
+<rect width="1000" height="764" fill="#ffffff"/>
+<text x="500.0" y="34" text-anchor="middle" font-size="19" font-weight="700" fill="#1b2733">Luồng con 5: quality (điểm 0-100, band, reason code)</text>
+<text x="500.0" y="58" text-anchor="middle" font-size="12" fill="#52514e">vi_corpus/pipeline/quality.py · config.py (SourceProfile)</text>
+<rect x="30" y="84" width="530" height="28" rx="8" fill="#eef2f7" stroke="#7a8aa0" stroke-width="1.5"/>
+<text x="42" y="106" font-size="14" font-weight="700" fill="#1b2733">03_language.parquet</text>
+<line x1="295.0" y1="112" x2="295.0" y2="150" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
+<rect x="30" y="152" width="530" height="85" rx="8" fill="#e9f5ee" stroke="#3f9b6b" stroke-width="1.5"/>
+<text x="42" y="174" font-size="14" font-weight="700" fill="#1b2733">compute_metrics (không phụ thuộc nguồn)</text>
+<text x="42" y="194" font-size="12" fill="#1b2733" xml:space="preserve">theo ký tự: alpha, digit, symbol, upper, replacement (�), mean_word_len</text>
+<text x="42" y="211" font-size="12" fill="#1b2733" xml:space="preserve">theo dòng: dup_line, short_line, bullet, end_punct, boilerplate_line</text>
+<text x="42" y="228" font-size="12" fill="#1b2733" xml:space="preserve">khác: url / từ, rep_trigram (tỷ lệ trigram từ lặp), words, lines</text>
+<line x1="295.0" y1="237" x2="295.0" y2="275" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
+<rect x="30" y="277" width="530" height="85" rx="8" fill="#fff4dc" stroke="#d19a1f" stroke-width="1.5"/>
+<text x="42" y="299" font-size="14" font-weight="700" fill="#1b2733">Lỗi cứng (ngưỡng theo SourceProfile của nguồn)</text>
+<text x="42" y="319" font-size="12" fill="#1b2733" xml:space="preserve">empty, too_short (&lt; min_words), too_long (&gt; max_words), lang_not_allowed,</text>
+<text x="42" y="336" font-size="12" fill="#1b2733" xml:space="preserve">low_alpha (&lt; min_alpha), replacement_chars (&gt; 0,5%),</text>
+<text x="42" y="353" font-size="12" fill="#1b2733" xml:space="preserve">repeated_ngrams (rep_trigram &gt; 0,5), duplicate_lines (dup_line &gt; 0,5)</text>
+<rect x="680" y="277" width="290" height="51" rx="8" fill="#fdecea" stroke="#c94a3f" stroke-width="1.5"/>
+<text x="692" y="299" font-size="14" font-weight="700" fill="#1b2733">Điểm bị chặn ở 40 → band D</text>
+<text x="692" y="319" font-size="12" fill="#1b2733" xml:space="preserve">vẫn ghi đủ reason code</text>
+<line x1="560" y1="297" x2="678" y2="297" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
+<text x="620.0" y="291" text-anchor="middle" font-size="11.5" fill="#455566">có</text>
+<line x1="295.0" y1="362" x2="295.0" y2="400" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
+<rect x="30" y="402" width="530" height="68" rx="8" fill="#e9f5ee" stroke="#3f9b6b" stroke-width="1.5"/>
+<text x="42" y="424" font-size="14" font-weight="700" fill="#1b2733">Lỗi mềm: trừ điểm từ 100</text>
+<text x="42" y="444" font-size="12" fill="#1b2733" xml:space="preserve">repetitive −20, dup_lines_some −15, digit_heavy −15, symbol_heavy −15,</text>
+<text x="42" y="461" font-size="12" fill="#1b2733" xml:space="preserve">mostly_upper −15, odd_word_length −15, some_replacement_chars −10</text>
+<rect x="680" y="402" width="290" height="85" rx="8" fill="#e9f5ee" stroke="#3f9b6b" stroke-width="1.5"/>
+<text x="692" y="424" font-size="14" font-weight="700" fill="#1b2733">web_checks (SEA-PILE v1/v2)</text>
+<text x="692" y="444" font-size="12" fill="#1b2733" xml:space="preserve">url_heavy −20, boilerplate −20,</text>
+<text x="692" y="461" font-size="12" fill="#1b2733" xml:space="preserve">list_like −15, bullet_heavy −10,</text>
+<text x="692" y="478" font-size="12" fill="#1b2733" xml:space="preserve">few_sentences −10</text>
+<line x1="560" y1="422" x2="678" y2="422" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
+<text x="620.0" y="416" text-anchor="middle" font-size="11.5" fill="#455566">nguồn web</text>
+<line x1="295.0" y1="470" x2="295.0" y2="525" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
+<rect x="30" y="527" width="530" height="51" rx="8" fill="#e9f5ee" stroke="#3f9b6b" stroke-width="1.5"/>
+<text x="42" y="549" font-size="14" font-weight="700" fill="#1b2733">band_of(điểm)</text>
+<text x="42" y="569" font-size="12" fill="#1b2733" xml:space="preserve">A ≥ 85, B ≥ 70, C ≥ 55, còn lại D</text>
+<line x1="295.0" y1="578" x2="295.0" y2="616" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
+<rect x="30" y="618" width="530" height="68" rx="8" fill="#e3eefb" stroke="#2a78d6" stroke-width="1.5"/>
+<text x="42" y="640" font-size="14" font-weight="700" fill="#1b2733">04_quality.parquet</text>
+<text x="42" y="660" font-size="12" fill="#1b2733" xml:space="preserve">quality_metrics (JSON số đo thô), quality_score, quality_band, reason_codes</text>
+<text x="42" y="677" font-size="12" fill="#1b2733" xml:space="preserve">song song qua CuratorBackend.quality nếu có --executor</text>
+<rect x="30" y="730" width="18" height="14" rx="3" fill="#eef2f7" stroke="#7a8aa0"/><text x="54" y="741" font-size="11.5" fill="#455566">đầu vào / dữ liệu</text><rect x="185" y="730" width="18" height="14" rx="3" fill="#e9f5ee" stroke="#3f9b6b"/><text x="209" y="741" font-size="11.5" fill="#455566">bước xử lý</text><rect x="291" y="730" width="18" height="14" rx="3" fill="#fff4dc" stroke="#d19a1f"/><text x="315" y="741" font-size="11.5" fill="#455566">rẽ nhánh / điều kiện</text><rect x="467" y="730" width="18" height="14" rx="3" fill="#fdecea" stroke="#c94a3f"/><text x="491" y="741" font-size="11.5" fill="#455566">loại / dừng</text><rect x="580" y="730" width="18" height="14" rx="3" fill="#e3eefb" stroke="#2a78d6"/><text x="604" y="741" font-size="11.5" fill="#455566">đầu ra</text><rect x="658" y="730" width="18" height="14" rx="3" fill="#f5f5f5" stroke="#9a9a9a" stroke-dasharray="4 3"/><text x="682" y="741" font-size="11.5" fill="#455566">dự kiến, chưa có code</text>
+</svg>

@@ -10,8 +10,9 @@ ETL xây **corpus tiếng Việt cho LLM** từ nhiều nguồn, có truy vết 
 | VJOL, VISTA | Bài báo khoa học (PDF), **chỉ xử lý** dữ liệu có sẵn, không crawl | Kế hoạch: `raw/VJOL/`, cấu trúc sẽ bổ sung khi có dữ liệu |
 
 Chiến lược xử lý (nguồn → parse → ngôn ngữ → làm sạch → chất lượng → loại trùng → knowledge unit → audit):
-xem [`docs/PIPELINE.md`](docs/PIPELINE.md), [`docs/SOURCES.md`](docs/SOURCES.md) và lộ trình [`docs/ROADMAP.md`](docs/ROADMAP.md).
-Cấu trúc repo và thư mục dữ liệu: [`PROJECT_ARCHITECTURE.md`](PROJECT_ARCHITECTURE.md).
+xem [`docs/PIPELINE.md`](PIPELINE.md), [`docs/SOURCES.md`](SOURCES.md) và lộ trình [`docs/ROADMAP.md`](ROADMAP.md).
+Các quyết định đã chốt qua từng phiên làm việc: [`docs/DECISION_LOG.md`](DECISION_LOG.md); sơ đồ luồng chính và luồng con: [`docs/diagrams/`](diagrams/).
+Cấu trúc repo và thư mục dữ liệu: [`docs/PROJECT_ARCHITECTURE.md`](PROJECT_ARCHITECTURE.md).
 Phần còn lại của README mô tả phần đã có code: **Phần A** tải dữ liệu SEA, **Phần B** OCR sách stbook, **Phần C** chạy tất cả bằng `scripts/run_all.py`, **Phần D** pipeline xử lý end-to-end trên N mẫu (có visualize, chạy nhiều GPU).
 
 ---
@@ -340,20 +341,20 @@ uv run python scripts/run_all.py --data-root /duong/dan/data --status           
 # Phần D — Pipeline xử lý end-to-end (thử trên N mẫu, có visualize, chạy nhiều GPU)
 
 Lấy mẫu **N bản ghi** từ `raw/` (SEA + stbook) rồi cho chạy qua toàn bộ pipeline, cuối cùng ra bộ sạch, knowledge unit, audit và **report.html** có bản đồ embedding.
-Mục đích: kiểm tra pipeline và chất lượng dữ liệu trước khi chạy toàn bộ. Thiết kế từng stage: [`docs/PIPELINE.md`](docs/PIPELINE.md).
+Mục đích: kiểm tra pipeline và chất lượng dữ liệu trước khi chạy toàn bộ. Thiết kế từng stage: [`docs/PIPELINE.md`](PIPELINE.md).
 
 | # | Stage (`--until`) | Làm gì | File kết quả trong thư mục run |
 |---|---|---|---|
 | 1 | `ingest` | Lấy mẫu từ `raw/` theo `--total` và `--mix` (stbook: nguyên cuốn đã OCR) | `01_ingest.parquet` |
-| 2 | `prepare` | Chuẩn hóa Unicode, cắt sách thành đoạn, đếm từ/token | `02_prepare.parquet` |
-| 3 | `language` | Nhận diện ngôn ngữ (vi/en/other) — **song song CPU** | `03_language.parquet` |
+| 2 | `prepare` | Chuẩn hóa Unicode, xoá dòng lặp, cắt đoạn theo token (~1.024, tối đa 2.048), đếm token bằng tokenizer Qwen3 | `02_prepare.parquet` |
+| 3 | `language` | Nhận diện ngôn ngữ bằng fastText `lid.176` theo từng đoạn văn, ghi `lang_mix` — **song song CPU** | `03_language.parquet` |
 | 4 | `quality` | Số đo, điểm 0–100, band A/B/C/D, reason code — **song song CPU** | `04_quality.parquet` |
-| 5 | `dedup` | Trùng chính xác + gần trùng (MinHash), cổng quyền (`unknown` → quarantine) | `05_dedup.parquet` |
+| 5 | `dedup` | Trùng theo văn bản: chính xác + gần trùng (MinHash) + văn bản nằm trong văn bản lớn hơn, rồi trùng chính xác theo đoạn; cổng quyền chỉ gắn nhãn. Ghi kho dấu vân tay cho dedup vòng 2 | `05_dedup.parquet`, `<data-root>/state/dedup_index/<nguồn>/<run>.parquet` |
 | 6 | `embed` | Vector hóa văn bản — **song song nhiều GPU** | `06_embeddings.parquet` |
-| 7 | `reduce` | PCA + UMAP xuống 2D, gom cụm HDBSCAN (cuML nếu có, không thì scikit-learn/umap-learn) | `07_reduced.parquet` |
-| 8 | `finalize` | Bộ sạch, knowledge unit, audit, bản đồ plotly, báo cáo | `clean.parquet`, `knowledge_units.parquet`, `audit.json`, `report.html` (đã nhúng bản đồ) |
+| 7 | `reduce` | Gom cụm HDBSCAN trên embedding gốc; PCA + UMAP xuống 2D chỉ để vẽ (cuML nếu có, không thì scikit-learn/umap-learn) | `07_reduced.parquet` |
+| 8 | `finalize` | Bộ sạch, knowledge unit, khối CPT, quét nhiễm benchmark, audit, bản đồ plotly, báo cáo | `clean.parquet`, `knowledge_units.parquet`, `cpt_blocks.parquet`, `audit.json`, `report.html` (đã nhúng bản đồ) |
 
-Mọi kết quả nằm ở `<data-root>/processed/pipeline_runs/<run-name>/` (mặc định `run_<total>_seed<seed>`). Mỗi stage có checkpoint: chạy lại **đúng lệnh cũ** thì stage nào đã có file sẽ được bỏ qua.
+Mọi kết quả nằm ở `<data-root>/processed/pipeline_runs/<run-name>/` (mặc định `run_<total>_seed<seed>`). Mỗi stage có checkpoint kèm **vân tay** (tham số của stage + phiên bản code + dữ liệu đầu vào): chạy lại thì stage nào đã có file và vân tay khớp sẽ được bỏ qua; đổi tham số (tokenizer, ngưỡng, bộ nhúng...) hoặc dữ liệu `raw/` thì stage đó và các stage sau tự chạy lại (log ghi rõ). Muốn cố ý dùng lại kết quả cũ: thêm `--keep-stale`.
 
 ## D1. Chuẩn bị (làm một lần)
 
@@ -366,7 +367,8 @@ uv pip install "nemo-curator[text_cuda12]>=0.7"
 # Muốn OCR sách còn chưa OCR:  uv sync --group ocr --group curator --group viz
 ```
 Cần có sẵn `data/raw/sea_vi/...` (SEA đã tải, Phần A) và sách stbook đã OCR ở `data/interim/stbook_ocr/` (Phần B, hoặc `--ocr-books`). `--data-root` mặc định lấy từ biến môi trường `SEA_DATA_ROOT`, nếu không có thì `./data`.
-Không có GPU/mạng (thử trên máy nhỏ): dùng `--embedder tfidf` (CPU, không tải mô hình).
+Lần chạy đầu tải tokenizer Qwen3 (từ Hugging Face) và mô hình ngôn ngữ fastText `lid.176.bin` (~126 MB, vào `VI_CORPUS_MODEL_DIR`, mặc định `~/.cache/vi_corpus`); các lần sau dùng lại.
+Không có GPU/mạng (thử trên máy nhỏ): dùng `--embedder tfidf --tokenizer words --lang-model heuristic` (CPU, không tải gì).
 
 ## D2. Chạy thử nhanh (khuyên làm trước)
 
@@ -390,7 +392,7 @@ uv run python scripts/run_pipeline.py --data-root /duong/dan/data --total 2000 -
 # 10.000 mẫu, song song trên 4 GPU A100 (Ray cục bộ, executor Xenna như ViLA)
 uv run python scripts/run_pipeline.py --data-root /duong/dan/data --total 10000 --executor xenna --num-gpus 4
 ```
-Với stbook, `--total` tính theo số **đoạn** (sách được cắt đoạn ~600 từ), không phải số cuốn.
+Với stbook, `--total` tính theo số **đoạn** (sách được cắt đoạn ~1.024 token), không phải số cuốn. Bài web dài hơn 2.048 token cũng bị cắt, nhưng `--total` của nguồn web vẫn tính theo số bài.
 Chạy lâu thì chạy nền: `tmux new -s pipe` rồi chạy lệnh trong đó (Ctrl+B rồi D để thoát ra, `tmux attach -t pipe` để quay lại).
 
 ## D4. Chạy từng bước
@@ -408,7 +410,40 @@ uv run python scripts/run_pipeline.py $R --until embed        # 6. embedding (GP
 uv run python scripts/run_pipeline.py $R --until reduce       # 7. giảm chiều + gom cụm
 uv run python scripts/run_pipeline.py $R                      # 8. finalize: bộ sạch + bản đồ + report
 ```
-Sửa ngưỡng hay code của một stage rồi muốn làm lại từ stage đó: thêm `--force-from quality` (xoá kết quả từ `quality` trở đi, giữ các stage trước).
+Đổi tham số thì không cần làm gì thêm (vân tay tự phát hiện). Sửa **code** của một stage mà chưa tăng hằng số phiên bản của nó, hoặc run cũ chưa có vân tay: thêm `--force-from quality` (xoá kết quả từ `quality` trở đi, giữ các stage trước).
+
+Các tham số mới (đợt code 2026-10-08, chi tiết `docs/PIPELINE.md` mục 6):
+
+| Tham số | Ý nghĩa |
+|---|---|
+| `--tokenizer hf:<repo>\|tiktoken:<enc>\|words` | Bộ đếm token (mặc định `hf:Qwen/Qwen3-0.6B`); `--compare-tokenizers a,b` ghi thêm tổng token theo tokenizer khác vào audit |
+| `--lang-model fasttext:lid.176\|heuristic` | Bộ nhận diện ngôn ngữ (mặc định fastText) |
+| `--embed-scope all\|kept` | Nhúng mọi bản ghi (để vẽ cả bản bị loại) hay chỉ bản giữ lại |
+| `--cluster-space raw\|pca50\|umap10`, `--min-cluster-size N`, `--min-samples N` | Không gian và tham số HDBSCAN (mặc định embedding gốc, `max(2, min(20, n/10))`) |
+| `--cpt-context N` | Độ dài tối đa (token) của khối CPT trong `cpt_blocks.parquet` (mặc định 4.096) |
+| `--no-dedup-index` | Không ghi kho dấu vân tay dedup vòng 1 |
+| `--global-verdict <verdict.parquet>` | Áp kết quả dedup vòng 2 trước khi dựng knowledge unit |
+| `--keep-stale` | Dùng lại kết quả cũ dù vân tay lệch |
+
+### Dedup vòng 2 (giữa các nguồn / các lần chạy)
+
+Chạy từng nguồn xong (mỗi lần chạy ghi kho `state/dedup_index/`), gộp trùng toàn cục rồi áp lại:
+
+```bash
+uv run python scripts/dedup_global.py --data-root /duong/dan/data            # -> processed/dedup_global/verdict.parquet + verdict_stats.json
+uv run python scripts/run_pipeline.py $R --global-verdict /duong/dan/data/processed/dedup_global/verdict.parquet
+```
+Thêm nguồn mới: chạy pipeline cho nguồn đó, rồi chạy lại `dedup_global.py` (chỉ đọc kho dấu vân tay, không đọc lại text).
+
+Cờ của `dedup_global.py`: `--threshold` (mặc định = ngưỡng fuzzy của `RunConfig`, 0,8), `--priority stbook=0,sea_pile_v2=1` (đổi thứ tự giữ bản, mặc định R-15), `--rights-gate enforce` (văn bản quyền chưa rõ bị đánh `rights` → `rejected:rights` khi áp; mặc định `tag` chỉ gắn nhãn). Đổi ưu tiên hay rights gate chỉ cần chạy lại vòng 2 rồi áp lại `--global-verdict`. Mỗi văn bản lấy dòng kho ghi mới nhất; văn bản mà lần chạy gần nhất đã loại (bia mộ) không vào vòng 2 và có status `dropped` trong verdict. Chỉ nên áp `--global-verdict` cho lần chạy mới nhất của mỗi nguồn (lần chạy cũ hơn còn giữ văn bản `dropped` thì manifest đếm `superseded`).
+
+### Lấy mẫu cho LLM chấm điểm
+
+```bash
+uv run python scripts/make_judge_sample.py --run-dir /duong/dan/data/processed/pipeline_runs/run_100000_seed42 \
+    --n 50000 --out /duong/dan/data/processed/judge/sample_50k.parquet
+```
+Đọc `04_quality.parquet` (chạy tới `--until quality` là đủ), lấy ~10% hỏi-đáp SEA-Instruct, ~70% mẫu qua rule / ~30% bị rule loại, chia đều nguồn × khoảng độ dài. Script chấm bằng LLM chưa có (thang điểm chưa duyệt).
 
 ## D5. Chạy song song nhiều GPU
 
@@ -432,7 +467,7 @@ Kiểm tra GPU đang chạy bằng `nvidia-smi` ở terminal khác. Kết quả 
 
 - `report.html`: số liệu từng stage, phân bố band/ngôn ngữ/điểm, lý do loại, mẫu văn bản, và mục **Bản đồ embedding** (chọn cách tô màu bằng các nút).
 - Bản đồ embedding nằm **ngay trong `report.html`** (plotly.js và dữ liệu nhúng sẵn, ~vài MB, không cần mạng, không iframe): chỉ cần tải mỗi file `report.html` về rồi mở bằng trình duyệt. Bấm nút `<umap|pca>-<nguồn|trạng thái|band|ngôn ngữ|cụm>` để đổi cách vẽ / tô màu; rê chuột vào điểm để đọc đoạn đầu văn bản và reason code. Cách đọc: tô theo **nguồn** để xem các nguồn tách nhau thế nào; tô theo **trạng thái** để xem mẫu bị loại (chất lượng / trùng / quyền) nằm ở vùng nào, mẫu rác thường dồn thành cụm riêng.
-- `audit.json`: tỉ lệ lineage, số trùng, số bị quarantine. `manifest.json`: cấu hình và thời gian từng stage.
+- `audit.json`: tỉ lệ lineage, số trùng, số bị quarantine, tokenizer, token/từ, kết quả quét nhiễm benchmark (đặt file `*.txt` / `*.jsonl` vào `configs/benchmarks/`; hiện rỗng). `manifest.json`: cấu hình, vân tay, thời gian từng stage, tham số gom cụm, số candidate / instruction.
 
 ## D7. Xử lý sự cố
 
@@ -444,13 +479,50 @@ Kiểm tra GPU đang chạy bằng `nvidia-smi` ở terminal khác. Kết quả 
 
 ---
 
+# Phần E — Cài công cụ hệ thống để đọc .doc / .ppt / .djvu (giáo trình)
+
+Giáo trình có một số file định dạng cũ mà thư viện Python không đọc được, cần hai phần mềm cài vào máy (không cài qua `uv`):
+
+| Phần mềm | Dùng cho | Lệnh kiểm tra đã cài chưa |
+|---|---|---|
+| LibreOffice (chạy không giao diện) | đổi `.doc` / `.ppt` sang `.docx` / `.pptx` rồi đọc như file mới | `soffice --version` |
+| djvulibre | lấy chữ từ `.djvu` (`djvutxt`), xuất ảnh trang để OCR (`ddjvu`) | `djvutxt --help` |
+
+> Trạng thái: đã chốt cài (`docs/DECISION_LOG.md`, mục Q5); code đọc các định dạng này (D-05) **chưa viết**. Khi có code, thiếu
+> công cụ thì file tương ứng được ghi `skipped="tool_missing"`, lần chạy không bị hỏng; cài xong chạy lại để xử lý các file đó.
+
+Đếm trước xem có bao nhiêu file mỗi định dạng (chạy ở thư mục gốc repo trên server):
+```bash
+find data/raw/giao_trinh -type f | sed 's/.*\.//' | tr 'A-Z' 'a-z' | sort | uniq -c | sort -rn
+```
+
+**Máy có quyền root (Ubuntu / Debian)**:
+```bash
+sudo apt-get update
+sudo apt-get install -y --no-install-recommends libreoffice-writer libreoffice-impress djvulibre-bin
+soffice --version && djvutxt --help | head -1     # kiểm tra
+```
+
+**Container không có root (vd Jupyter trên Run:ai)**: cài vào môi trường conda riêng rồi thêm vào `PATH`:
+```bash
+conda create -y -n tools -c conda-forge libreoffice djvulibre
+export PATH="$(conda env list | awk '$1=="tools"{print $NF}')/bin:$PATH"   # thêm dòng này vào ~/.bashrc
+soffice --version && djvutxt --help | head -1     # kiểm tra
+```
+
+Lưu ý:
+- LibreOffice chạy không giao diện (`soffice --headless`) và cần thư mục HOME ghi được; nếu báo lỗi profile thì đặt `export HOME=/tmp/lohome` trước khi chạy.
+- Hai tiến trình `soffice` dùng chung một profile sẽ khoá nhau; code sẽ dùng profile riêng cho mỗi tiến trình (`-env:UserInstallation=file:///tmp/lo_<pid>`).
+
+---
+
 # Cấu trúc code
 
-Xem chi tiết (cây thư mục, cấu trúc `data/`, luồng từng nguồn) trong [`PROJECT_ARCHITECTURE.md`](PROJECT_ARCHITECTURE.md). Tóm tắt:
+Xem chi tiết (cây thư mục, cấu trúc `data/`, luồng từng nguồn) trong [`docs/PROJECT_ARCHITECTURE.md`](PROJECT_ARCHITECTURE.md). Tóm tắt:
 
 ```
 vi_corpus/
-├── common/            # dùng chung: registry (sổ đăng ký nguồn), schema, state (checkpoint/khoá/log), ocr, pdf_text
+├── common/            # dùng chung: registry (sổ đăng ký nguồn), schema, state (checkpoint/khoá/log), ocr, pdf_text, parsers/ (docx, doc/ppt, djvu, html, epub)
 ├── sea/               # tải SEA (datasets, hub, checkpoint, downloader, cli) + reader về schema chung
 ├── stbook/            # crawler stbook.vn + ocr_books (OCR có checkpoint, đọc kết quả về schema chung)
 ├── giao_trinh/        # xử lý giáo trình (đang triển khai)
@@ -459,6 +531,8 @@ vi_corpus/
 scripts/
 ├── run_all.py         # chạy script của các phần theo thứ tự
 ├── run_pipeline.py    # pipeline end-to-end trên N mẫu (Phần D)
+├── dedup_global.py    # dedup vòng 2 trên kho dấu vân tay
+├── make_judge_sample.py  # mẫu phân tầng cho LLM chấm điểm
 ├── sea/               # 4 script tải, count_rows.py
 ├── stbook/            # crawl.py, ocr.py
 └── giao_trinh/        # extract.py (đang viết), profile.py

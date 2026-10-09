@@ -3,7 +3,7 @@
 > File này đối chiếu từng mục của bảng mục tiêu (ảnh Milestone Tracker, phần việc xử lý dữ liệu) với code và tài liệu hiện có trong repo.
 > Cập nhật tay mỗi khi hoàn thành một mục. Đánh giá dựa trên code, test và tài liệu; **các con số mục tiêu (token, số ứng viên, F1...) chưa được đo trên dữ liệu thật** vì pipeline mới chạy thử trên mẫu N bản ghi.
 > Cột "Actual Result" ở ngoài cùng bên phải của bảng gốc bị cắt khỏi ảnh nên chưa được đưa vào đây.
-> Cập nhật lần cuối: 2026-10-05.
+> Cập nhật lần cuối: 2026-10-08 (thêm bảng Milestone đầy đủ; phần chi tiết từng tuần bên dưới chưa đổi trạng thái vì chưa có code mới, chỉ có quyết định trong `docs/DECISION_LOG.md`).
 
 Quy ước: ✅ xong | 🟡 mới làm một phần (bản tạm, chưa đạt yêu cầu mở rộng) | ⬜ chưa làm
 
@@ -25,6 +25,27 @@ Quy ước: ✅ xong | 🟡 mới làm một phần (bản tạm, chưa đạt y
 | W6 | Mini-model injection | ⬜ (có mầm: split theo họ trùng) |
 | W7 | Scale experiment | ⬜ (có mầm: chạy song song Ray) |
 | W8 | Release + decision | ⬜ |
+
+## 1b. Bảng Milestone Tracker đầy đủ (sheet `01_Knowledge_Injection`)
+
+Nguồn: ảnh chụp bảng chủ dự án gửi 2026-10-08 (luồng: Raw sources → clean corpus → knowledge units → SFT injection; đo knowledge gain và capability retention). Chép lại nguyên văn tiếng Anh.
+
+| Week | Focus / Milestone | Source & Collection Target | Raw Data Target | Clean Data Target | Technical / Pipeline Target | Train-ready Data Target | Experiment / Eval Target | Acceptance / KPI |
+|---|---|---|---|---|---|---|---|---|
+| W1 | Source inventory + ingestion design | ≥20 candidate sources; books/textbooks, VJOL/VISTA, social, coding, standards | Inventory baseline + source volume estimates | Define clean corpus schema | NeMo Curator design; PDF/DOCX/HTML/EPUB parsing; provenance/license | Define knowledge unit + instruction schema; CPT/SFT/Hybrid matrix | List sources data | Every source has owner, provenance/license, domain |
+| W2 | Ingestion PoC | ≥10 high-value sources; ≥3 academic domains | ≥1B raw tokens or equivalent | ≥300M clean tokens | Parse → language → boilerplate → exact/fuzzy dedup PoC | ≥100k knowledge candidates | Clean quality audit + contamination scan | ≥95% traceable source lineage |
+| W3 | Filtering pipeline v1 | Expand books + scientific + technical | ≥30B cumulative raw (*) | ≥15B cumulative clean (*) | Add semantic dedup + contamination + quality heuristics | ≥500k train candidates | Retention/quality curve after filtering | Clear quality vs retention trade-off |
+| W4 | Quality model | ≥20 more sources; labeled pool | ≥5B cumulative raw | ≥1.5B cumulative clean | Label ≥50k; train quality filter v1; score corpus; embedding map v1 | ≥1.2M candidates | F1/precision; cluster/domain coverage | Filter correlates with judge; sparse domains identified |
+| W5 | Knowledge atomization | Fill missing academic domains | ≥7B raw | ≥2B clean | Section → facts/concepts/relations; knowledge density analysis | ≥2M instructions across ≥3 depths | Atomicity/novelty/factual grounding audit | Low redundancy; strong provenance |
+| W6 | Mini-model injection | High-depth academic sources | (trống) | ≥3B clean | Finalize filters + mixture builder | CPT vs SFT vs Hybrid datasets | Mini model: VMLU/History/Geography/General | Positive knowledge gain with ≤1 pt general drop target |
+| W7 | Scale experiment | Freeze production-grade source set | (trống) | ≥10B clean | Throughput/cost optimization + dataset versioning | Large-scale train package + replay mixture | Data size/mix/stage ablations | Reproducible quality-cost frontier |
+| W8 | Release + decision | Final source catalog + gap analysis | (trống) | Final approved clean release | Freeze configs + provenance + versioned dataset | Final Knowledge SFT package + recipe | Full knowledge gain + forgetting analysis | Go/no-go for production-scale injection |
+
+(*) **Cần kiểm lại với bảng gốc**: số W3 (≥30B raw, ≥15B clean) đọc từ ảnh chụp nhỏ, không khớp dãy tăng dần của các tuần khác (raw: 1B → ? → 5B → 7B; clean: 0,3B → ? → 1,5B → 2B → 3B → 10B). Có thể là ≥3B / ≥1,5B hoặc số nhỏ hơn. Chưa dùng số W3 làm mục tiêu cho tới khi chủ dự án xác nhận (DECISION_LOG R-10).
+
+**Cách hiểu các chỉ tiêu "candidate" / "instruction"** (DECISION_LOG R-09): candidate = một đoạn ~1.024 token (D-10) còn sống sau lọc và dedup; instruction = một cặp hỏi-đáp. Kiểm tính hợp lý: 1,2M candidate ≈ 1,2B token, khớp "≥1,5B clean" của W4.
+
+**Lưu ý rút ra từ bảng**: mốc cuối ở W7 là **≥10B clean token**, nên tỉ lệ giữ lại sau lọc quan trọng (không chỉ chất lượng); W6 đánh giá bằng VMLU nên cần quét rò rỉ VMLU trước khi huấn luyện nếu muốn kết quả tin cậy (danh sách benchmark hiện để trống theo R-16).
 
 ## 2. Chi tiết từng tuần
 
@@ -124,9 +145,11 @@ Quy ước: ✅ xong | 🟡 mới làm một phần (bản tạm, chưa đạt y
 
 ## 3. Việc nên làm tiếp để đóng W2
 
-1. **Chạy pipeline trên dữ liệu thật ở server** (có `data/raw`), ghi lại các số đo: raw token, clean token, số knowledge unit, lineage. Đây là cách duy nhất biết W2 đạt hay chưa.
-2. **Sửa pipeline để xử lý theo luồng** (không nạp cả danh sách vào RAM), vì mục tiêu ≥300M clean token không chạy được bằng bản hiện tại.
-3. **Đo token bằng tokenizer thật** (`--tokenizer`) thay vì đếm từ.
-4. **Bổ sung nguồn**: VJOL/VISTA khi có dữ liệu (cần phân loại PDF và `cmap_healer` như ViLA), và các nguồn còn thiếu để đủ ≥10 nguồn / ≥20 ứng viên.
-5. **Làm contamination scan**: cần có tập benchmark tiếng Việt (VMLU và các bộ khác).
+Các quyết định đã chốt nằm ở `docs/DECISION_LOG.md`; việc phải chạy trên server ở `docs/SERVER_TASK.md`.
+
+1. **Chạy các việc đo trên server** (SERVER_TASK S-1..S-5): số trang PDF, tỉ lệ scan, tốc độ OCR, tổng token SEA, tốc độ và RAM pipeline. Đây là cách duy nhất biết W2 đạt hay chưa và OCR tốn bao nhiêu giờ GPU.
+2. **Phiên code kế tiếp** theo thứ tự D-06: nền shard → D-01 (token), D-02 (fastText), D-04 A, D-05, sửa `embed.py` (R-04) → D-04 C, D-03, executor Ray. Xử lý **từng subset của từng nguồn** trước (R-11).
+3. **Chấm 50.000 mẫu bằng LLM lớn** (R-11, R-12) trước khi chốt ngưỡng rule; cần dựng vLLM trên server (S-7).
+4. **Bổ sung nguồn**: VJOL khi chủ dự án gửi cấu trúc dữ liệu (chưa viết script), VISTA, `wiki_vi`, `phap_luat` (chưa chọn cách lấy), `fineweb2_vi` (đo trùng trước).
+5. **Contamination scan**: danh sách benchmark để trống (R-16), chưa lọc.
 6. Điền license / owner còn "chưa rõ" trong `docs/SOURCES.md`.

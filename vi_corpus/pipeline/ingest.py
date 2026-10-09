@@ -1,5 +1,5 @@
 """
-Stage 1 (ingest): lấy mẫu từ data/raw và đưa về schema chung, không sửa file gốc.
+Stage ingest: lấy mẫu từ data/raw và đưa về schema chung, không sửa file gốc.
 
 - Nguồn text (SEA, parquet / jsonl.gz): chọn ngẫu nhiên (theo seed) một số file, mỗi file lấy `rows_per_file` dòng
   ngẫu nhiên, cho đến khi đủ số mẫu. Parquet chỉ đọc cột text và chỉ chuyển thành dict các dòng được chọn; jsonl.gz
@@ -101,9 +101,25 @@ def iter_book_source(spec: SourceSpec, data_root: Path) -> Iterator[dict]:
         yield from iter_records(spec, data_root, clean=True, with_meta=True)
     elif spec.key == "giao_trinh":
         from vi_corpus.giao_trinh.records import iter_records
-        yield from iter_records(spec, data_root)
+        yield from iter_records(spec, data_root, with_meta=True)
     else:
         raise ValueError(f"Chưa có adapter nguồn sách cho {spec.key}")
+
+
+def input_files(spec: SourceSpec, data_root: Path, chunked: bool) -> list[Path]:
+    """
+    Các file đầu vào stage ingest đọc cho một nguồn (dùng tính vân tay đầu vào, G-02): file parquet / jsonl.gz của nguồn
+    text; file kết quả OCR (stbook) hoặc checkpoint trích text (giao_trinh) của nguồn sách.
+    """
+    if not chunked:
+        return source_files(spec, data_root)
+    if spec.key == "stbook":
+        from vi_corpus.stbook.ocr_books import OCR_DIR
+        return sorted((data_root / OCR_DIR).glob("*/*.json"))
+    if spec.key == "giao_trinh":
+        from vi_corpus.giao_trinh.extract import TEXT_DIR
+        return sorted((data_root / TEXT_DIR).glob("*.json"))
+    return []
 
 
 def ingest(specs: dict[str, SourceSpec], data_root: Path, cfg: RunConfig) -> list[dict]:

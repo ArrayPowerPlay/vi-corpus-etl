@@ -1,10 +1,13 @@
 """
-Stage 5 (quality): đo các chỉ số chất lượng văn bản, chấm điểm 0-100, xếp band A/B/C/D kèm reason code.
+Stage quality: đo các chỉ số chất lượng văn bản, chấm điểm 0-100, xếp band A/B/C/D kèm reason code.
 
 Chất lượng kỹ thuật và quyền sử dụng là hai trục tách biệt (docs/PIPELINE.md): stage này chỉ quyết định chất lượng.
 - Lỗi cứng (hard): bản ghi tự động band D (too_short, too_long, empty, lang_not_allowed, low_alpha, replacement_chars,
   repeated_ngrams, duplicate_lines).
 - Lỗi mềm (soft): trừ điểm, band theo điểm: A >= 85, B >= 70, C >= 55, còn lại D.
+- Ngôn ngữ (từ stage language, D-02): low_lang_score (lang_score dưới SourceProfile.min_lang_score, trừ nhẹ),
+  mixed_language (ngôn ngữ thứ hai >= 20%, chỉ gắn nhãn, không trừ điểm: đoạn song ngữ được giữ theo R-33),
+  low_diacritic (văn bản nhận là tiếng Việt nhưng gần như không có dấu, số đo vi_diacritic).
 Mọi số đo thô được lưu ở cột quality_metrics (JSON) để vẽ phân phối và chỉnh ngưỡng trong config.py.
 Ngưỡng là điểm khởi đầu, cần chỉnh sau khi xem báo cáo (report.html) trên dữ liệu thật.
 """
@@ -13,6 +16,10 @@ import json
 import re
 
 from vi_corpus.pipeline.config import RunConfig, SourceProfile
+from vi_corpus.pipeline.language import is_mixed, vi_diacritic_ratio
+
+QUALITY_VERSION = "2"  # 2 = thêm low_lang_score, mixed_language, low_diacritic
+MIN_VI_DIACRITIC = 0.05  # tiếng Việt có dấu bình thường ~0,2-0,3 chữ có dấu / chữ cái
 
 _URL = re.compile(r"https?://\S+|www\.\S+")
 _BULLET = re.compile(r"^\s*([-•*–·►▪]|\d+[.)])\s")
@@ -53,13 +60,17 @@ def compute_metrics(text: str) -> dict:
         "end_punct": sum(ln.endswith(_ENDINGS) for ln in lines) / n_lines,
         "boilerplate_line": sum(len(ln.split()) < 15 and any(b in ln for b in _BOILERPLATE) for ln in lowered) / n_lines,
         "rep_trigram": 1 - len(set(trigrams)) / len(trigrams) if len(trigrams) >= 30 else 0.0,
+        "vi_diacritic": vi_diacritic_ratio(text),
         "lines": len(lines),
     }
 
 
-def score_metrics(m: dict, lang: str | None, profile: SourceProfile) -> tuple[float, list[str]]:
+def score_metrics(m: dict, lang: str | None, profile: SourceProfile, lang_score: float | None = None,
+                  lang_mix: str | None = None) -> tuple[float, list[str]]:
     """
     Chấm điểm 0-100 và trả về reason code từ số đo thô, theo hồ sơ của nguồn.
+
+    lang_score / lang_mix (từ stage language) là tuỳ chọn: thiếu thì bỏ qua các mã ngôn ngữ low_lang_score, mixed_language.
 
     Returns:
         (điểm, danh sách reason code). Có ít nhất một mã trong HARD_REASONS thì bản ghi bị band D bất kể điểm.
@@ -91,6 +102,9 @@ def score_metrics(m: dict, lang: str | None, profile: SourceProfile) -> tuple[fl
         (m["upper"] > 0.5, "mostly_upper", 15),
         (not 2.5 <= m["mean_word_len"] <= 10, "odd_word_length", 15),
         (m["replacement"] > 0.0005, "some_replacement_chars", 10),
+        (lang_score is not None and lang_score < profile.min_lang_score, "low_lang_score", 10),
+        (lang_mix is not None and is_mixed(lang_mix), "mixed_language", 0),
+        (lang == "vi" and m["words"] >= 20 and m.get("vi_diacritic", 1.0) < MIN_VI_DIACRITIC, "low_diacritic", 15),
     ]
     if profile.web_checks:
         soft += [
@@ -129,7 +143,8 @@ def annotate_quality(rows: list[dict], cfg: RunConfig) -> list[dict]:
     """
     for row in rows:
         m = compute_metrics(row["text"] or "")
-        score, codes = score_metrics(m, row["language"], cfg.profile(row["source_key"]))
+        score, codes = score_metrics(m, row["language"], cfg.profile(row["source_key"]), row.get("lang_score"),
+                                     row.get("lang_mix"))
         row["quality_metrics"] = json.dumps({k: round(v, 4) for k, v in m.items()})
         row["quality_score"] = round(score, 1)
         row["quality_band"] = band_of(score)
@@ -146,8 +161,3 @@ def quality_stats(rows: list[dict]) -> dict:
         for c in row["reason_codes"]:
             reasons[c] = reasons.get(c, 0) + 1
     return {"bands": bands, "reasons": reasons}
-
-
-def quality_rows(rows: list[dict], cfg: RunConfig) -> tuple[list[dict], dict]:
-    """Chạy annotate_quality rồi trả về (rows, quality_stats(rows))."""
-    return annotate_quality(rows, cfg), quality_stats(rows)

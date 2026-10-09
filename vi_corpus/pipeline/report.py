@@ -1,19 +1,17 @@
 """
 Báo cáo trực quan (report.html) của một lần chạy pipeline: một file HTML tự đủ, không cần thư viện vẽ hay mạng.
 
-Gồm: thẻ KPI, phễu lọc theo nguồn, band chất lượng, ngôn ngữ, phân phối số từ và điểm chất lượng (mỗi nguồn một ô,
-cùng trục), top reason code, bảng số liệu (audit) và các mẫu văn bản thật (ngẫu nhiên giữ lại / bị loại / bản trùng) để
+Gồm: thẻ KPI, phễu lọc theo nguồn, band chất lượng, ngôn ngữ, phân phối số token và điểm chất lượng (mỗi nguồn một ô,
+cùng trục), top reason code, dòng bị xoá nhiều nhất (D-04), bảng số liệu (audit, tỷ lệ token / từ theo nguồn), kết quả
+quét rò rỉ benchmark và các mẫu văn bản thật (ngẫu nhiên giữ lại / bị loại / bản trùng) để
 đọc bằng mắt, vì biểu đồ không thay được việc đọc thử. Biểu đồ là SVG nội tuyến; rê chuột lên cột để xem số liệu
 (thẻ <title>). Màu theo CSS variable, có chế độ tối; mỗi chuỗi >= 2 đều có chú giải, không dựa riêng vào màu.
 """
 
 import html
 import json
-import math
 import random
 from pathlib import Path
-
-from vi_corpus.pipeline.io import loads
 
 STATUS_SERIES = [("kept", "Giữ lại", "s1"), ("rejected:quality", "Loại: chất lượng", "s2"),
                  ("rejected:duplicate", "Loại: trùng lặp", "s3"), ("rejected:rights", "Loại: quyền", "s4")]
@@ -135,7 +133,8 @@ def _excerpt(row: dict, n: int = 700) -> str:
     tags = "".join(f'<span class="tag">{html.escape(c)}</span>' for c in row["reason_codes"])
     dup = f' · trùng với <code>{html.escape(row["dup_of"])}</code> ({row["dup_kind"]})' if row.get("dup_of") else ""
     return (f'<details><summary><code>{html.escape(row["doc_id"])}</code> · band {row["quality_band"]} '
-            f'({row["quality_score"]}) · {row["word_count"]} từ · {row["language"]}{dup} <small>{tags}</small></summary>'
+            f'({row["quality_score"]}) · {row["token_count"]} token · {row["word_count"]} từ · {row["language"]} '
+            f'{html.escape(row.get("lang_mix") or "")}{dup} <small>{tags}</small></summary>'
             f'<pre>{html.escape(text[:n])}{"…" if len(text) > n else ""}</pre></details>')
 
 
@@ -159,13 +158,54 @@ def _samples(rows: list[dict], per_group: int = 4, seed: int = 7) -> str:
 
 def _table(audit: dict) -> str:
     """Bảng funnel + token theo nguồn (cùng số liệu với biểu đồ, để đọc chính xác)."""
-    head = "<tr><th>Nguồn</th><th>Vào</th><th>Giữ lại</th><th>Loại: chất lượng</th><th>Loại: trùng</th><th>Từ vào</th><th>Từ giữ lại</th><th>Token giữ lại</th></tr>"
+    head = ("<tr><th>Nguồn</th><th>Vào</th><th>Giữ lại</th><th>Loại: chất lượng</th><th>Loại: trùng</th><th>Từ vào</th>"
+            "<th>Từ giữ lại</th><th>Token giữ lại</th><th>Token / từ</th></tr>")
     body = ""
     for src, f in audit["funnel"].items():
         t = audit["tokens"][src]
+        ratio = t.get("tokens_per_word_kept")
         body += (f"<tr><td>{html.escape(src)}</td><td>{f['input']}</td><td>{f.get('kept', 0)}</td><td>{f.get('rejected:quality', 0)}</td>"
-                 f"<td>{f.get('rejected:duplicate', 0)}</td><td>{t['words_in']:,}</td><td>{t['words_kept']:,}</td><td>{t['tokens_kept']:,}</td></tr>")
+                 f"<td>{f.get('rejected:duplicate', 0)}</td><td>{t['words_in']:,}</td><td>{t['words_kept']:,}</td><td>{t['tokens_kept']:,}</td>"
+                 f"<td>{ratio if ratio is not None else '-'}</td></tr>")
     return f"<table>{head}{body}</table>"
+
+
+def _dedup_summary(manifest: dict) -> str:
+    """Bảng dedup vòng 1 theo nhóm (cpt / sft): số văn bản, số trùng theo loại, số họ > 1 văn bản, cỡ họ lớn nhất (R-19)."""
+    groups = manifest.get("dedup", {}).get("groups")
+    if not groups:
+        return "<p class='sub'>Chưa có thống kê dedup theo nhóm.</p>"
+    cols = ("docs", "exact", "fuzzy", "contained", "chunk_exact", "families_multi", "largest_family")
+    head = "".join(f"<th>{c}</th>" for c in ("nhóm",) + cols)
+    body = "".join("<tr><td>" + html.escape(g) + "</td>" + "".join(f"<td>{st.get(c, 0)}</td>" for c in cols) + "</tr>"
+                   for g, st in sorted(groups.items()))
+    return f"<table><tr>{head}</tr>{body}</table>"
+
+
+def _removed_lines(manifest: dict) -> str:
+    """Bảng số dòng bị xoá theo nguồn (D-04 mục A, B, C) và danh sách các dòng bị xoá nhiều nhất."""
+    lstats = manifest.get("prepare", {}).get("lines")
+    if not lstats:
+        return "<p class='sub'>Chưa có thống kê (run cũ).</p>"
+    pages = lstats.get("page_lines_removed", {})
+    rows = "".join(
+        f"<tr><td>{html.escape(src)}</td><td>{pages.get(src, 0):,}</td><td>{st.get('in_doc_lines', 0):,}</td>"
+        f"<td>{st.get('in_doc_exempt_docs', 0):,}</td><td>{st.get('cross_doc', {}).get('lines_removed', '-')}</td><td>{st.get('cross_doc', {}).get('threshold', '-')}</td>"
+        f"<td>{st.get('chars_removed', 0):,}</td></tr>" for src, st in lstats.get("per_source", {}).items())
+    top = "".join(f"<tr><td>{html.escape(ln)}</td><td>{n}</td></tr>" for ln, n in lstats.get("top_removed", []))
+    return (f"<table><tr><th>Nguồn</th><th>B: tiêu đề / số trang (ingest)</th><th>A: trong văn bản</th>"
+            f"<th>Văn bản miễn A (có code / bảng)</th><th>C: liên văn bản</th>"
+            f"<th>Ngưỡng C (số văn bản)</th><th>Ký tự bị xoá (A + C)</th></tr>{rows}</table>"
+            f"<details><summary>Các dòng bị xoá nhiều nhất (đọc lại để chắc không xoá nhầm)</summary>"
+            f"<table><tr><th>Dòng</th><th>Số lần</th></tr>{top}</table></details>")
+
+
+def _contamination(audit: dict) -> str:
+    """Một dòng tóm tắt kết quả quét rò rỉ benchmark."""
+    c = audit.get("contamination") or {}
+    if not c.get("benchmarks"):
+        return html.escape(c.get("note", "chưa chạy"))
+    return "; ".join(f"{html.escape(k)}: {v} bản ghi chạm 13-gram" for k, v in c["flagged"].items())
 
 
 def write_report(run_dir: Path, rows: list[dict], audit: dict, manifest: dict, embedding_html: str | None = None) -> Path:
@@ -181,33 +221,44 @@ def write_report(run_dir: Path, rows: list[dict], audit: dict, manifest: dict, e
     sources = sorted({r["source_key"] for r in rows})
     by = {s: [r for r in rows if r["source_key"] == s] for s in sources}
     count = lambda key, s: {k: sum(1 for r in by[s] if r[key] == k) for k in {r[key] for r in by[s]}}  # noqa: E731
+    lang_count = lambda s: {k: sum(1 for r in by[s] if (r["language"] if r["language"] in ("vi", "en") else "other") == k)  # noqa: E731
+                            for k in ("vi", "en", "other")}
     total, kept = len(rows), sum(r["status"] == "kept" for r in rows)
     tok_kept = sum(t["tokens_kept"] for t in audit["tokens"].values())
+    tokenizer = audit.get("tokenizer", "?")
+    fin = manifest.get("finalize", {})
     kpis = [("Mẫu đầu vào", f"{total:,}"), ("Giữ lại", f"{kept:,} ({100 * kept / max(total, 1):.0f}%)"),
-            ("Token giữ lại", f"{tok_kept:,}"), ("Truy vết nguồn (giữ lại)", f"{100 * audit['lineage_rate_kept']:.1f}%"),
+            (f"Token giữ lại ({tokenizer})", f"{tok_kept:,}"),
+            ("Truy vết nguồn (giữ lại)", f"{100 * audit['lineage_rate_kept']:.1f}%"),
             ("Bị đánh dấu quarantine", f"{sum(r['rights_gate'] == 'quarantine' for r in rows):,}"),
-            ("Knowledge units", f"{manifest.get('finalize', {}).get('knowledge_units', 0):,}")]
+            ("Candidates (đoạn CPT)", f"{fin.get('candidates', 0):,}"), ("Instructions (SFT)", f"{fin.get('instructions', 0):,}")]
+    other_tok = audit.get("tokens_kept_other_tokenizers") or {}
+    tok_note = (" · token giữ lại theo tokenizer khác: " + ", ".join(
+        f"{html.escape(k)} {v:,} ({100 * (v - tok_kept) / max(tok_kept, 1):+.1f}%)" for k, v in other_tok.items())) if other_tok else ""
     reasons: dict[str, int] = {}
     for r in rows:
         for c in r["reason_codes"]:
             reasons[c] = reasons.get(c, 0) + 1
-    word_edges = [1, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000, 100000]
-    hist_words = "".join(f'<div class="card"><b>{html.escape(s)}</b>{histogram([r["word_count"] or 1 for r in by[s]], word_edges, "số từ (thang log)", True)}</div>' for s in sources)
+    tok_edges = [1, 16, 64, 128, 256, 512, 768, 1024, 1536, 2048, 4096, 100000]
+    hist_words = "".join(f'<div class="card"><b>{html.escape(s)}</b>{histogram([r["token_count"] or 1 for r in by[s]], tok_edges, "số token (thang log)", True)}</div>' for s in sources)
     hist_score = "".join(f'<div class="card"><b>{html.escape(s)}</b>{histogram([r["quality_score"] for r in by[s]], list(range(0, 105, 5)), "điểm chất lượng")}</div>' for s in sources)
     body = f"""<h1>Báo cáo chất lượng pipeline</h1>
-<p class="sub">{html.escape(str(run_dir))} · seed {manifest.get('config', {}).get('seed')} · token = {'tokenizer ' + str(manifest.get('config', {}).get('tokenizer')) if manifest.get('config', {}).get('tokenizer') else 'số từ (ước lượng thấp)'}</p>
+<p class="sub">{html.escape(str(run_dir))} · seed {manifest.get('config', {}).get('seed')} · token đếm bằng <code>{html.escape(tokenizer)}</code>{' (số từ: ước lượng THẤP, không dùng đo KPI)' if tokenizer == 'words' else ''} · ngôn ngữ: <code>{html.escape(str(manifest.get('language', {}).get('model', '?')))}</code>{tok_note}</p>
 <div class="kpis">{''.join(f'<div class="kpi"><b>{v}</b><span>{html.escape(k)}</span></div>' for k, v in kpis)}</div>
 <h2>Phễu lọc theo nguồn</h2><p class="sub">Mỗi mẫu đầu vào kết thúc ở đúng một trạng thái.</p>
 <div class="card">{stacked_bars({s: count('status', s) for s in sources}, STATUS_SERIES, 'Phễu lọc theo nguồn')}</div>
 <h2>Band chất lượng</h2><p class="sub">A ≥ 85, B ≥ 70, C ≥ 55, D còn lại hoặc dính lỗi cứng. Giữ A, B, C.</p>
 <div class="card">{stacked_bars({s: count('quality_band', s) for s in sources}, BAND_SERIES, 'Band chất lượng theo nguồn')}</div>
-<h2>Ngôn ngữ</h2><div class="card">{stacked_bars({s: count('language', s) for s in sources}, LANG_SERIES, 'Ngôn ngữ theo nguồn')}</div>
-<h2>Phân phối số từ</h2><p class="sub">Mỗi nguồn một ô, cùng thang đo.</p><div class="grid">{hist_words}</div>
+<h2>Ngôn ngữ</h2><p class="sub">Ngôn ngữ chiếm nhiều nhất theo đoạn văn (fastText). Văn bản trộn ngôn ngữ (ngôn ngữ thứ hai ≥ 20%) có mã <code>mixed_language</code>, chỉ gắn nhãn, không loại (R-33).</p>
+<div class="card">{stacked_bars({s: lang_count(s) for s in sources}, LANG_SERIES, 'Ngôn ngữ theo nguồn')}</div>
+<h2>Phân phối số token</h2><p class="sub">Mỗi nguồn một ô, cùng thang đo. Đoạn sách mục tiêu ~1.024, tối đa 2.048 token (D-10).</p><div class="grid">{hist_words}</div>
 <h2>Phân phối điểm chất lượng</h2><div class="grid">{hist_score}</div>
+<h2>Dòng bị xoá</h2><p class="sub">Xoá dòng lặp (D-04): B tiêu đề / số trang sách lúc ingest, A dòng lặp trong một văn bản (văn bản có code / bảng được miễn, C-07), C dòng lặp ở nhiều văn bản web.</p><div class="card">{_removed_lines(manifest)}</div>
+<h2>Họ trùng (dedup vòng 1)</h2><p class="sub">Theo văn bản: exact / fuzzy (MinHash cả văn bản) / contained (nằm trong văn bản lớn hơn) / chunk_exact (đoạn giống hệt ở văn bản khác). <code>largest_family</code> = số văn bản của họ trùng lớn nhất; họ quá lớn là dấu hiệu nối nhầm.</p><div class="card">{_dedup_summary(manifest)}</div>
 <h2>Reason code phổ biến</h2><div class="card">{hbars(sorted(reasons.items(), key=lambda kv: -kv[1])[:14], 'Reason code phổ biến')}</div>
 <h2>Bản đồ embedding</h2>{embedding_html or "<p class='sub'>Chưa có (cần stage embed + reduce và <code>uv sync --group viz</code>).</p>"}
 <h2>Số liệu</h2><div class="card">{_table(audit)}</div>
-<p class="sub">PII trong bản ghi giữ lại: {html.escape(json.dumps(audit['pii'], ensure_ascii=False))}. Quét rò rỉ benchmark: {html.escape(audit['contamination'])}.</p>
+<p class="sub">PII trong bản ghi giữ lại: {html.escape(json.dumps(audit['pii'], ensure_ascii=False))}. Quét rò rỉ benchmark (13-gram): {_contamination(audit)}.</p>
 <h2>Đọc mẫu thật</h2><p class="sub">Phần quan trọng nhất: mở vài mẫu mỗi nhóm và tự đánh giá band / lý do loại có hợp lý không.</p>
 {_samples(rows)}"""
     out = run_dir / "report.html"

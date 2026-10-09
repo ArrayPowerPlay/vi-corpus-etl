@@ -145,7 +145,7 @@ def extract_pdf(path, get_ocr: Callable[[], object | None]) -> list[dict]:
         return pages
 
 
-def clean_pages(pages: list[str], slides: bool = False) -> str:
+def clean_pages(pages: list[str], slides: bool = False, stats: dict | None = None) -> str:
     """
     Làm sạch text theo trang rồi ghép mọi trang thành một văn bản (đoạn cách nhau bằng dòng trống).
 
@@ -160,6 +160,7 @@ def clean_pages(pages: list[str], slides: bool = False) -> str:
         pages:      Text từng trang, mỗi dòng một dòng.
         slides:     True cho slide (pptx): bỏ bước 1 (slide lặp cấu trúc như "Bài 1", "Bài 2" nên dễ bị bỏ nhầm)
                     và ở bước 3 mỗi dòng là một đoạn (tiêu đề, gạch đầu dòng không có dấu câu).
+        stats:      Nếu có, cộng số dòng bị bỏ ở bước 1 + 2 vào stats["lines_removed"] (D-04 mục B).
     """
     page_lines = [[ln.strip() for ln in text.splitlines() if ln.strip()] for text in pages]
 
@@ -182,6 +183,8 @@ def clean_pages(pages: list[str], slides: bool = False) -> str:
         edges = edge_idx(lines)
         for i, line in enumerate(lines):
             if line.isdigit() or (not slides and i in edges and seen[key(line)] >= HEADER_MIN_PAGES):
+                if stats is not None:
+                    stats["lines_removed"] = stats.get("lines_removed", 0) + 1
                 continue
             if not paragraphs or slides:
                 paragraphs.append(line)

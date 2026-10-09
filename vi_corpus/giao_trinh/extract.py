@@ -6,11 +6,12 @@ interim/giao_trinh_text/<sha256>.json cho mỗi file duy nhất (định dạng 
 nằm ở vi_corpus.common.batch_extract, dùng chung với VJOL):
 
     {"sha256", "size", "paths": [đường dẫn, cùng nội dung], "nganh", "mon", "format",
-     "pages": [{"text", "method"}], "error", "skipped", "created_at"}
+     "pages": [{"text", "method"}], "error", "skipped", "parser_version", "created_at"}
 
 Phần riêng của giáo trình ở file này (chiến lược ở docs/GIAO_TRINH.md, mục 2-3):
-- extract_file: PDF qua vi_corpus.common.pdf_text.extract_pdf (trang scan thì OCR, mô hình nạp lười),
-  pptx qua python-pptx (mỗi slide một trang), định dạng khác ghi skipped="unsupported_format".
+- extract_file: nhận định dạng theo nội dung đầu file và trích text bằng vi_corpus.common.parsers (D-05): PDF (trang
+  scan thì OCR, mô hình nạp lười), docx, pptx, doc / ppt (LibreOffice), djvu (djvulibre), html, epub; định dạng khác
+  ghi skipped="unsupported_format", thiếu công cụ ngoài ghi skipped="needs_..." (chạy lại với --retry-skipped).
 - ngành = thư mục cấp 1, môn = thư mục cấp 2 dưới thư mục giáo trình.
 """
 
@@ -25,10 +26,9 @@ from vi_corpus.common.batch_extract import (  # noqa: F401 — inventory, file_s
 )
 from vi_corpus.common.batch_extract import checkpoint_path as _checkpoint_path
 from vi_corpus.common.batch_extract import status as _status
-from vi_corpus.common.pdf_text import extract_pdf
+from vi_corpus.common.parsers import parse_file
 
 TEXT_DIR = "interim/giao_trinh_text"
-FORMATS = {".pdf": "pdf", ".pptx": "pptx"}
 
 
 def checkpoint_path(data_root: Path, sha256: str) -> Path:
@@ -36,60 +36,23 @@ def checkpoint_path(data_root: Path, sha256: str) -> Path:
     return _checkpoint_path(data_root, TEXT_DIR, sha256)
 
 
-def extract_pptx(path: Path) -> list[dict]:
-    """
-    Trích text pptx: mỗi slide một trang gồm khung chữ (kể cả trong nhóm), bảng và ghi chú.
-
-    Returns:
-        [{"text", "method": "pptx"}] theo thứ tự slide.
-    """
-    from pptx import Presentation
-
-    def shape_lines(shapes) -> list[str]:
-        """Các dòng text của một danh sách shape (đệ quy vào nhóm shape)."""
-        out = []
-        for shape in shapes:
-            if shape.shape_type == 6:  # MSO_SHAPE_TYPE.GROUP
-                out += shape_lines(shape.shapes)
-            elif shape.has_text_frame:
-                out += [p.text for p in shape.text_frame.paragraphs]
-            elif shape.has_table:
-                out += [" | ".join(c.text for c in row.cells) for row in shape.table.rows]
-        return out
-
-    pages = []
-    for slide in Presentation(path).slides:
-        lines = shape_lines(slide.shapes)
-        if slide.has_notes_slide:
-            lines += [p.text for p in slide.notes_slide.notes_text_frame.paragraphs]
-        pages.append({"text": "\n".join(ln for ln in lines if ln.strip()), "method": "pptx"})
-    return pages
-
-
 def extract_file(path: Path, get_ocr: Callable[[], object | None]) -> dict:
     """
-    Trích text một file theo định dạng (đuôi file); không ném lỗi ra ngoài.
+    Trích text một file theo định dạng nhận từ nội dung đầu file (vi_corpus.common.parsers.parse_file); không ném lỗi.
 
     Returns:
-        {"format", "pages", "error", "skipped"}: định dạng không hỗ trợ thì skipped="unsupported_format";
-        file hỏng / có mật khẩu thì error là thông báo lỗi.
+        {"format", "pages", "error", "skipped", "parser_version"}: định dạng không hỗ trợ thì skipped="unsupported_format",
+        thiếu LibreOffice / djvulibre thì skipped="needs_libreoffice" / "needs_djvulibre"; file hỏng / có mật khẩu
+        thì error là thông báo lỗi.
     """
-    fmt = FORMATS.get(path.suffix.lower())
-    out = {"format": fmt or path.suffix.lower().lstrip(".") or "unknown", "pages": [], "error": None, "skipped": None}
-    if fmt is None:
-        out["skipped"] = "unsupported_format"
-        return out
-    try:
-        out["pages"] = extract_pdf(path, get_ocr) if fmt == "pdf" else extract_pptx(path)
-    except Exception as exc:  # noqa: BLE001 — một file lỗi không được dừng cả lô
-        out["error"] = f"{type(exc).__name__}: {exc}"[:300]
-    return out
+    return parse_file(path, get_ocr)
 
 
 def run_extract(root: Path, data_root: Path, get_ocr: Callable[[], object | None],
-                ocr_enabled: bool = True, limit_files: int | None = None) -> int:
+                ocr_enabled: bool = True, limit_files: int | None = None, retry_skipped: bool = False) -> int:
     """
     Kiểm kê rồi trích text mọi file giáo trình chưa làm (xem vi_corpus.common.batch_extract.run_batch).
+    retry_skipped=True thì làm lại cả file từng bị bỏ qua (vd sau khi cài LibreOffice / djvulibre).
 
     Ngành = thư mục cấp 1, môn = thư mục cấp 2 dưới `root`.
 
@@ -102,7 +65,8 @@ def run_extract(root: Path, data_root: Path, get_ocr: Callable[[], object | None
         return {"nganh": parts[0] if len(parts) > 1 else "", "mon": parts[1] if len(parts) > 2 else ""}
 
     return run_batch(root, data_root, TEXT_DIR, extract_file, path_meta, get_ocr,
-                     ocr_enabled=ocr_enabled, limit_files=limit_files, desc="Trích text giáo trình")
+                     ocr_enabled=ocr_enabled, limit_files=limit_files, desc="Trích text giáo trình",
+                     retry_skipped=retry_skipped)
 
 
 def status(root: Path, data_root: Path) -> dict:

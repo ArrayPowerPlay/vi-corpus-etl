@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 997" width="1000" height="997" font-family="DejaVu Sans, Arial, sans-serif">
+<title>Luồng con 10: tải SEA từ Hugging Face</title>
+<defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#455566"/></marker></defs>
+<rect width="1000" height="997" fill="#ffffff"/>
+<text x="500.0" y="34" text-anchor="middle" font-size="19" font-weight="700" fill="#1b2733">Luồng con 10: tải SEA từ Hugging Face</text>
+<text x="500.0" y="58" text-anchor="middle" font-size="12" fill="#52514e">vi_corpus/sea/ (cli.py, downloader.py, hub.py, checkpoint.py, datasets.py)</text>
+<rect x="30" y="84" width="530" height="68" rx="8" fill="#eef2f7" stroke="#7a8aa0" stroke-width="1.5"/>
+<text x="42" y="106" font-size="14" font-weight="700" fill="#1b2733">scripts/sea/*.py → cli.main(keys)</text>
+<text x="42" y="126" font-size="12" fill="#1b2733" xml:space="preserve">run_dataset(key) lần lượt theo thứ tự DATASETS (bộ nhỏ trước)</text>
+<text x="42" y="143" font-size="12" fill="#1b2733" xml:space="preserve">HF_TOKEN đọc từ .env ở gốc repo (biến môi trường có sẵn được ưu tiên)</text>
+<line x1="295.0" y1="152" x2="295.0" y2="190" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
+<rect x="30" y="192" width="530" height="51" rx="8" fill="#e9f5ee" stroke="#3f9b6b" stroke-width="1.5"/>
+<text x="42" y="214" font-size="14" font-weight="700" fill="#1b2733">acquire_run_lock</text>
+<text x="42" y="234" font-size="12" fill="#1b2733" xml:space="preserve">fcntl.flock trên state/&lt;key&gt;/.run.lock</text>
+<rect x="680" y="192" width="290" height="51" rx="8" fill="#fdecea" stroke="#c94a3f" stroke-width="1.5"/>
+<text x="692" y="214" font-size="14" font-weight="700" fill="#1b2733">Dừng</text>
+<text x="692" y="234" font-size="12" fill="#1b2733" xml:space="preserve">chặn chạy trùng cùng dataset</text>
+<line x1="560" y1="212" x2="678" y2="212" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
+<text x="620.0" y="206" text-anchor="middle" font-size="11.5" fill="#455566">đang chạy</text>
+<line x1="295.0" y1="243" x2="295.0" y2="281" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
+<rect x="30" y="283" width="530" height="68" rx="8" fill="#e9f5ee" stroke="#3f9b6b" stroke-width="1.5"/>
+<text x="42" y="305" font-size="14" font-weight="700" fill="#1b2733">cleanup_incomplete</text>
+<text x="42" y="325" font-size="12" fill="#1b2733" xml:space="preserve">xoá raw/sea_vi/&lt;key&gt;/.cache/huggingface/download/**/*.incomplete</text>
+<text x="42" y="342" font-size="12" fill="#1b2733" xml:space="preserve">chỉ an toàn vì đã giữ khoá</text>
+<line x1="295.0" y1="351" x2="295.0" y2="389" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
+<rect x="30" y="391" width="530" height="68" rx="8" fill="#e9f5ee" stroke="#3f9b6b" stroke-width="1.5"/>
+<text x="42" y="413" font-size="14" font-weight="700" fill="#1b2733">Ghim revision + liệt kê file</text>
+<text x="42" y="433" font-size="12" fill="#1b2733" xml:space="preserve">một sha revision cho cả lần chạy; list_repo_tree → size + LFS sha256</text>
+<text x="42" y="450" font-size="12" fill="#1b2733" xml:space="preserve">ghi _manifest.json (để --status chạy offline)</text>
+<line x1="295.0" y1="459" x2="295.0" y2="497" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
+<rect x="30" y="499" width="530" height="51" rx="8" fill="#fff4dc" stroke="#d19a1f" stroke-width="1.5"/>
+<text x="42" y="521" font-size="14" font-weight="700" fill="#1b2733">_is_complete(file)?</text>
+<text x="42" y="541" font-size="12" fill="#1b2733" xml:space="preserve">state = done, size và sha khớp HF, VÀ file trên đĩa đúng size</text>
+<rect x="680" y="499" width="290" height="28" rx="8" fill="#eef2f7" stroke="#7a8aa0" stroke-width="1.5"/>
+<text x="692" y="521" font-size="14" font-weight="700" fill="#1b2733">Bỏ qua</text>
+<line x1="560" y1="519" x2="678" y2="519" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
+<text x="620.0" y="513" text-anchor="middle" font-size="11.5" fill="#455566">có</text>
+<line x1="295.0" y1="550" x2="295.0" y2="588" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
+<text x="303.0" y="574.0" font-size="11.5" fill="#455566">không</text>
+<rect x="30" y="590" width="530" height="119" rx="8" fill="#e9f5ee" stroke="#3f9b6b" stroke-width="1.5"/>
+<text x="42" y="612" font-size="14" font-weight="700" fill="#1b2733">ThreadPoolExecutor (--workers 8)</text>
+<text x="42" y="632" font-size="12" fill="#1b2733" xml:space="preserve">hf_hub_download(local_dir=raw/sea_vi/&lt;key&gt;), kiểm size (+ sha256 nếu --verify-</text>
+<text x="42" y="649" font-size="12" fill="#1b2733" xml:space="preserve">  sha256)</text>
+<text x="42" y="666" font-size="12" fill="#1b2733" xml:space="preserve">sai → xoá file, thử lại; with_retry backoff mũ, không thử lại lỗi cấu hình</text>
+<text x="42" y="683" font-size="12" fill="#1b2733" xml:space="preserve">  401/403/404</text>
+<text x="42" y="700" font-size="12" fill="#1b2733" xml:space="preserve">không resume giữa file: mỗi lần thử là một *.incomplete mới</text>
+<line x1="295.0" y1="709" x2="295.0" y2="747" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
+<rect x="30" y="749" width="530" height="102" rx="8" fill="#e9f5ee" stroke="#3f9b6b" stroke-width="1.5"/>
+<text x="42" y="771" font-size="14" font-weight="700" fill="#1b2733">Ghi state từng file ngay khi xong</text>
+<text x="42" y="791" font-size="12" fill="#1b2733" xml:space="preserve">state/&lt;key&gt;/&lt;đường dẫn, / → __&gt;.json: done | failed (file lỗi không dừng file</text>
+<text x="42" y="808" font-size="12" fill="#1b2733" xml:space="preserve">  khác)</text>
+<text x="42" y="825" font-size="12" fill="#1b2733" xml:space="preserve">chỉ lưu đường dẫn tương đối, size, sha256 → chuyển raw/ sang đĩa khác vẫn chạy</text>
+<text x="42" y="842" font-size="12" fill="#1b2733" xml:space="preserve">  tiếp</text>
+<rect x="680" y="749" width="290" height="51" rx="8" fill="#fdecea" stroke="#c94a3f" stroke-width="1.5"/>
+<text x="692" y="771" font-size="14" font-weight="700" fill="#1b2733">Ctrl+C</text>
+<text x="692" y="791" font-size="12" fill="#1b2733" xml:space="preserve">os._exit(130), không chờ file đang tải</text>
+<line x1="560" y1="769" x2="678" y2="769" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
+<line x1="295.0" y1="851" x2="295.0" y2="889" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
+<rect x="30" y="891" width="530" height="28" rx="8" fill="#e3eefb" stroke="#2a78d6" stroke-width="1.5"/>
+<text x="42" y="913" font-size="14" font-weight="700" fill="#1b2733">raw/sea_vi/&lt;key&gt;/ (giống cấu trúc đường dẫn trên HF)</text>
+<rect x="30" y="963" width="18" height="14" rx="3" fill="#eef2f7" stroke="#7a8aa0"/><text x="54" y="974" font-size="11.5" fill="#455566">đầu vào / dữ liệu</text><rect x="185" y="963" width="18" height="14" rx="3" fill="#e9f5ee" stroke="#3f9b6b"/><text x="209" y="974" font-size="11.5" fill="#455566">bước xử lý</text><rect x="291" y="963" width="18" height="14" rx="3" fill="#fff4dc" stroke="#d19a1f"/><text x="315" y="974" font-size="11.5" fill="#455566">rẽ nhánh / điều kiện</text><rect x="467" y="963" width="18" height="14" rx="3" fill="#fdecea" stroke="#c94a3f"/><text x="491" y="974" font-size="11.5" fill="#455566">loại / dừng</text><rect x="580" y="963" width="18" height="14" rx="3" fill="#e3eefb" stroke="#2a78d6"/><text x="604" y="974" font-size="11.5" fill="#455566">đầu ra</text><rect x="658" y="963" width="18" height="14" rx="3" fill="#f5f5f5" stroke="#9a9a9a" stroke-dasharray="4 3"/><text x="682" y="974" font-size="11.5" fill="#455566">dự kiến, chưa có code</text>
+</svg>

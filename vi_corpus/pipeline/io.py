@@ -23,12 +23,17 @@ PIPELINE_SCHEMA = pa.schema(
         ("chunk_index", pa.int64()),
         ("char_count", pa.int64()),
         ("word_count", pa.int64()),
+        ("lines_removed", pa.int64()),  # số dòng bị xoá ở bước xoá dòng lặp (D-04)
+        ("chars_removed", pa.int64()),
+        ("doc_sha256", pa.string()),  # sha256 của cả văn bản gốc (sau làm sạch dòng, trước khi cắt đoạn)
+        ("doc_minhash", pa.binary()),  # chữ ký MinHash của cả văn bản gốc (dedup theo văn bản, R-19)
         ("lang_score", pa.float64()),
+        ("lang_mix", pa.string()),  # JSON {ngôn ngữ: phần độ dài} (D-02)
         ("quality_score", pa.float64()),
         ("quality_metrics", pa.string()),  # JSON các số đo thô (để vẽ biểu đồ và gỡ lỗi ngưỡng)
         ("rights_gate", pa.string()),  # "pass" | "quarantine" (trục quyền, tách biệt với chất lượng)
         ("status", pa.string()),  # "kept" | "rejected:quality" | "rejected:rights" | "rejected:duplicate"
-        ("dup_kind", pa.string()),  # "exact" | "fuzzy" | null
+        ("dup_kind", pa.string()),  # "exact" | "fuzzy" | "contained" | "global_exact" | "global_fuzzy" (vòng 2, D-09) | null
         ("dup_of", pa.string()),  # doc_id bản được giữ lại trong họ trùng
     ]
 )

@@ -5,7 +5,8 @@ Khác bản cũ (mỗi tổ hợp một file viz/*.html, nhúng iframe): plotly.
 dạng JSON, trình duyệt vẽ lại khi bấm nút chọn (thuật toán giảm chiều x cách tô màu). Nên file nhỏ (~vài MB thay vì
 hàng chục MB), không cần mạng, không cần thư mục đi kèm, không dùng iframe nên không vướng lỗi 403 của Jupyter.
 Vẽ WebGL (scattergl) để mượt với hàng chục nghìn điểm. Tô theo: nguồn, trạng thái, band chất lượng, ngôn ngữ, cụm.
-Rê chuột vào điểm để đọc đoạn đầu văn bản và reason code.
+Rê chuột vào điểm để đọc đoạn đầu văn bản và reason code. Nhãn cụm được tính trên embedding gốc (hoặc không gian
+trung gian cluster_space), KHÔNG tính trên toạ độ 2D (R-28); nút "pca-cluster" là toạ độ PCA 2D tô theo cùng nhãn đó (R-30).
 """
 
 import html
@@ -48,13 +49,24 @@ var first=document.querySelector('#emb-btns button');if(first)first.click();
 """
 
 
-def build_embedding_section(rows: list[dict], reduced: list[dict]) -> str:
+def cluster_title(info: dict | None) -> str:
+    """Nhãn tô theo cụm, ghi rõ không gian và tham số HDBSCAN (R-30)."""
+    if not info:
+        return COLOR_BY["cluster"]
+    space = {"raw": "embedding gốc", "pca50": "PCA 50 chiều", "umap10": "UMAP 10 chiều"}.get(info.get("space"), info.get("space"))
+    ms = info.get("min_samples")
+    return (f"Cụm (HDBSCAN trên {space}, {info.get('dim')} chiều, min_cluster_size={info.get('min_cluster_size')}"
+            f"{f', min_samples={ms}' if ms is not None else ''})")
+
+
+def build_embedding_section(rows: list[dict], reduced: list[dict], cluster_info: dict | None = None) -> str:
     """
     Dựng khối HTML tự đủ (nút chọn + biểu đồ + plotly.js + dữ liệu) để chèn vào report.html.
 
     Args:
-        rows:    Mọi bản ghi của lần chạy (đã có status, quality_band, ...).
-        reduced: Kết quả reduce_embeddings (doc_id, pca_x, ..., cluster_id).
+        rows:         Mọi bản ghi của lần chạy (đã có status, quality_band, ...).
+        reduced:      Kết quả reduce_embeddings (doc_id, pca_x, ..., cluster_id).
+        cluster_info: Thông tin gom cụm (manifest["reduce"]["cluster"]) để ghi nhãn; None thì nhãn chung.
 
     Returns:
         Chuỗi HTML; hoặc đoạn ghi chú nếu thiếu plotly hoặc không có điểm nào.
@@ -73,7 +85,7 @@ def build_embedding_section(rows: list[dict], reduced: list[dict]) -> str:
         """Toạ độ làm tròn 4 chữ số (đủ cho bản đồ, nhẹ file); None nếu thiếu (không có UMAP)."""
         return None if d[key] is None else round(d[key], 4)
 
-    data = {"titles": COLOR_BY, "fixed": FIXED, "palette": PALETTE,
+    data = {"titles": {**COLOR_BY, "cluster": cluster_title(cluster_info)}, "fixed": FIXED, "palette": PALETTE,
             "cats": {"source_key": [r["source_key"] for _, r in pts], "status": [r["status"] for _, r in pts],
                      "quality_band": [r["quality_band"] for _, r in pts], "language": [r["language"] for _, r in pts],
                      "cluster": [f"cụm {d['cluster_id']}" if d["cluster_id"] >= 0 else "nhiễu" for d, _ in pts]},
@@ -86,7 +98,13 @@ def build_embedding_section(rows: list[dict], reduced: list[dict]) -> str:
     algos = [a for a in ALGOS if any(v is not None for v in data[f"{a}x"])]
     buttons = "".join(f'<button data-k="{a}-{c}">{a}-{c}</button>' for a in algos for c in COLOR_BY)
     payload = json.dumps(data, ensure_ascii=False, separators=(",", ":")).replace("<", "\\u003c")
+    note = ""
+    if cluster_info:
+        note = (f" Nhãn cụm tính trên không gian gốc, không trên toạ độ 2D: {html.escape(cluster_title(cluster_info))}; "
+                f"{cluster_info.get('clusters')} cụm, nhiễu {100 * cluster_info.get('noise_rate', 0):.1f}%. "
+                f"Nút <code>pca-cluster</code> là toạ độ PCA 2D tô theo cùng nhãn đó (PCA trộn lẫn là do phép chiếu "
+                f"tuyến tính, không phải do nhãn).")
     return (f'<p class="sub">Mỗi điểm là một mẫu; rê chuột để đọc đoạn đầu và reason code. Gồm cả mẫu bị loại '
-            f'(tô theo trạng thái).</p><div class="legend" id="emb-btns">{buttons}</div><div id="emb-plot"></div>'
+            f'(tô theo trạng thái) nếu embed_scope = all.{note}</p><div class="legend" id="emb-btns">{buttons}</div><div id="emb-plot"></div>'
             f'<script>{get_plotlyjs()}</script><script type="application/json" id="emb-data">{payload}</script>'
             f'<script>{_JS}</script>')

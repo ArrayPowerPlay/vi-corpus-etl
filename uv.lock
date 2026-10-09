@@ -1460,6 +1460,19 @@ wheels = [
 ]
 
 [[package]]
+name = "ebooklib"
+version = "0.20"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "lxml" },
+    { name = "six" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/77/85/322e8882a582d4b707220d1929cfb74c125f2ba513991edbce40dbc462de/ebooklib-0.20.tar.gz", hash = "sha256:35e2f9d7d39907be8d39ae2deb261b19848945903ae3dbb6577b187ead69e985", size = 127066, upload-time = "2025-10-26T20:56:20.968Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/bf/ee/aa015c5de8b0dc42a8e507eae8c2de5d1c0e068c896858fec6d502402ed6/ebooklib-0.20-py3-none-any.whl", hash = "sha256:fff5322517a37e31c972d27be7d982cc3928c16b3dcc5fd7e8f7c0f5d7bcf42b", size = 40995, upload-time = "2025-10-26T20:56:19.104Z" },
+]
+
+[[package]]
 name = "einops"
 version = "0.2.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1491,6 +1504,44 @@ dependencies = [
     { name = "setuptools" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/9f/3b/9a10b95eaf565358339162848863197c3f0a29b540ca22b2951df2d66a48/fasttext-0.9.3.tar.gz", hash = "sha256:eb03f2ef6340c6ac9e4398a30026f05471da99381b307aafe2f56e4cd26baaef", size = 73439, upload-time = "2024-06-12T09:44:42.544Z" }
+
+[[package]]
+name = "fasttext-numpy2-wheel"
+version = "0.9.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "numpy", version = "2.3.5", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+    { name = "pybind11" },
+    { name = "setuptools" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/c0/8a/8c72c92cd91146ce9948421f3967bc2775deac5215eb8fa3b0487020881f/fasttext_numpy2_wheel-0.9.2.tar.gz", hash = "sha256:484bb7efb0d07c5b6235c8ab44d5e7ddcde5727a25dbc04d18175f777c1e799c", size = 73494, upload-time = "2024-11-05T13:54:19.159Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/b9/30/458f447dfb9bef5cac1496dd7856de2af6d676bbbb8e44bdd8d3b74fdb23/fasttext_numpy2_wheel-0.9.2-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:b24c697c2df5c8d90e735a5e8fb8cfd3c1729ee1939675dc7eeb34793173caf9", size = 610506, upload-time = "2024-11-05T17:17:59.598Z" },
+    { url = "https://files.pythonhosted.org/packages/ef/b9/a7ab0ef9ae147336250645a467354035f51e2de048035b2e4e3bf6096f58/fasttext_numpy2_wheel-0.9.2-cp310-cp310-manylinux2014_aarch64.whl", hash = "sha256:758b845caf73475d29cf636fa6227efa04b36ed164d2169a1ee69ce28df8fc97", size = 2971687, upload-time = "2024-11-05T17:44:11.174Z" },
+    { url = "https://files.pythonhosted.org/packages/00/a5/34ca15ea70e7f66452450909e2e813054ffedfe67ca67749f5076b733c7f/fasttext_numpy2_wheel-0.9.2-cp310-cp310-manylinux2014_armv7l.whl", hash = "sha256:7b64852fa8f6afe4e68b11519341d3d38343d42d059bca202a8c9107d32aca42", size = 2738628, upload-time = "2024-11-05T17:44:27.331Z" },
+    { url = "https://files.pythonhosted.org/packages/25/26/ba072dbf3125bf9e687ab5a3ec6b476770db5ec3c5d2b52dc983de8dde90/fasttext_numpy2_wheel-0.9.2-cp310-cp310-manylinux2014_ppc64.whl", hash = "sha256:8dd3fc0e4f4448c67eded39ea243c2393d3ae1ff862826c17b1ceb0714e55e76", size = 3025818, upload-time = "2024-11-05T17:44:31.661Z" },
+    { url = "https://files.pythonhosted.org/packages/9a/60/06493fd498d0812287e2368719e4c0a2ee49b753d15e7d01bd435006c974/fasttext_numpy2_wheel-0.9.2-cp310-cp310-manylinux2014_ppc64le.whl", hash = "sha256:39ae79a37cb9e1572067e20a8ef176a944bd8279ec1bc0fd4ffad7849bcf58ea", size = 2905003, upload-time = "2024-11-05T17:44:17.735Z" },
+    { url = "https://files.pythonhosted.org/packages/ad/31/2aa3079b6a1f9340fea711dc72f6ebe9e20a57bbbb225cbdc6cc536d025e/fasttext_numpy2_wheel-0.9.2-cp310-cp310-manylinux2014_s390x.whl", hash = "sha256:3bdd73e87291e59f37cf3dfdb7412ded337a09889346e9a8280e0123689cd776", size = 2934538, upload-time = "2024-11-05T17:44:05.99Z" },
+    { url = "https://files.pythonhosted.org/packages/38/e4/e9b6407538100ced67ddde5941a071ef01482badd023ab8ebcc0d5e6797b/fasttext_numpy2_wheel-0.9.2-cp310-cp310-manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:5432ebdbac8cb90d91305f9d985bfd64fbd0d30a8f27de9a508c926e47d33051", size = 4557717, upload-time = "2024-11-05T13:54:10.179Z" },
+    { url = "https://files.pythonhosted.org/packages/5c/45/bd33da5fbcbff711dcbd1d20f28329ece7a95b707ac32709df22a8a02349/fasttext_numpy2_wheel-0.9.2-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:d47fc7b0f7a4410eb45437397803f9be217240baba660c1cdc8b493365dd1421", size = 4646860, upload-time = "2024-11-05T13:54:07.444Z" },
+    { url = "https://files.pythonhosted.org/packages/50/d7/f3c7fd7c3e4d7e264fcdfcdc61457a084159380d0da21f1e69a949b53a97/fasttext_numpy2_wheel-0.9.2-cp311-cp311-macosx_10_9_x86_64.whl", hash = "sha256:a0f791752978043692c6bb5094bae0afeee505f4d50f441d4fa1f9da5233f1dc", size = 610891, upload-time = "2024-11-05T17:17:34.308Z" },
+    { url = "https://files.pythonhosted.org/packages/ac/f8/ac28bbc44d6519d8687902acf99a0b42e5feef908480cddb96186af1f8d1/fasttext_numpy2_wheel-0.9.2-cp311-cp311-manylinux2014_aarch64.whl", hash = "sha256:c98ad821cfc02a3e194892130bda970c1d8f6801a49c7117eae337d6b5be38db", size = 2979933, upload-time = "2024-11-05T17:44:14.41Z" },
+    { url = "https://files.pythonhosted.org/packages/8d/0a/c9197382fa9a83242a8e959ba8acff24398b439e7a4731f73bd3abb85a39/fasttext_numpy2_wheel-0.9.2-cp311-cp311-manylinux2014_armv7l.whl", hash = "sha256:67f57771f98b1275eb4e3987c54760e44ca7dd95ec10eb2dca0509c5f249f841", size = 2743663, upload-time = "2024-11-05T17:44:29.782Z" },
+    { url = "https://files.pythonhosted.org/packages/34/c7/7e3e6ff49e5e30fac520d00ea853bb81c98a427f7a2e50d4d2df5809526b/fasttext_numpy2_wheel-0.9.2-cp311-cp311-manylinux2014_ppc64.whl", hash = "sha256:561a6895416cdf3af5fdd792a51da92c40981951311971efae7b5cca280637ae", size = 3031295, upload-time = "2024-11-05T17:44:33.759Z" },
+    { url = "https://files.pythonhosted.org/packages/1d/1e/0ac4eec19d4d1d068f72b8b79f67e6d3fff15ff28bdf45188f5322ff9c6f/fasttext_numpy2_wheel-0.9.2-cp311-cp311-manylinux2014_ppc64le.whl", hash = "sha256:690e172053ebbb39a70ad1b45ed225993cd0dccaebed2343233909d518b98b26", size = 2914885, upload-time = "2024-11-05T17:44:21.217Z" },
+    { url = "https://files.pythonhosted.org/packages/8d/5a/d104602e301676d673dc11007be3db9d3774247369c3cf1dc2f6ec379a96/fasttext_numpy2_wheel-0.9.2-cp311-cp311-manylinux2014_s390x.whl", hash = "sha256:c7e2418f9d907fc68102587c559b707397c552e60cb854fbdb34464cc4c13e3d", size = 2941345, upload-time = "2024-11-05T17:44:07.913Z" },
+    { url = "https://files.pythonhosted.org/packages/92/a4/4dce97deb92057c2a71fc5f0d26a28507ecf8c6c64cd93f9edbd410a4caa/fasttext_numpy2_wheel-0.9.2-cp311-cp311-manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:ef2f5caf30f7186eb08d3fc3ef598895aa534fc3a1cc31150904aaacee8a3c80", size = 4578625, upload-time = "2024-11-05T13:54:15.645Z" },
+    { url = "https://files.pythonhosted.org/packages/34/e7/c664619e42a38f0064f8d9100b76b3bb57bf2679360dece5cf245a5b980e/fasttext_numpy2_wheel-0.9.2-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:21ca228aad6c75349e1ccb231fa454b4ec5bdc2f8a510718d2b74b5742c65f20", size = 4669758, upload-time = "2024-11-05T13:54:09.381Z" },
+    { url = "https://files.pythonhosted.org/packages/f1/6d/752fee6620ad141346573692ee3d27a8dbfaf75211f02ebe73a86634b6c0/fasttext_numpy2_wheel-0.9.2-cp312-cp312-macosx_10_9_x86_64.whl", hash = "sha256:805ad5ec4299a0a896192ffeec7a1f296480fa6741078ef2c8e2f8068fa879a4", size = 607503, upload-time = "2024-11-05T17:16:28.402Z" },
+    { url = "https://files.pythonhosted.org/packages/43/af/4993e0bf993b26f31a1a2739db98dcad758afa21cca729caefbfb4d23c76/fasttext_numpy2_wheel-0.9.2-cp312-cp312-manylinux2014_aarch64.whl", hash = "sha256:37d085f4b0906732770087f8722b2413199343e01a7f4c31ebec07dfcb971b0b", size = 2992718, upload-time = "2024-11-05T17:44:16.309Z" },
+    { url = "https://files.pythonhosted.org/packages/d9/39/9b0f2038fe45ac92183971d8e52c1317c355d846fb30ff2d7a820ec971e8/fasttext_numpy2_wheel-0.9.2-cp312-cp312-manylinux2014_armv7l.whl", hash = "sha256:3c3de015610b9039acfd1c4cc4a66e88a84b8961384a5d37ef551c3465eb85fb", size = 2744844, upload-time = "2024-11-05T17:44:31.45Z" },
+    { url = "https://files.pythonhosted.org/packages/f2/ae/14b8fd0cd802a75ea33c92157f2893b185549aefcfbd7eff7582fc9657f4/fasttext_numpy2_wheel-0.9.2-cp312-cp312-manylinux2014_ppc64.whl", hash = "sha256:c53acbe99f588d4944c7e0784a4757dace564d1f268d5f154885d34451c66307", size = 3040695, upload-time = "2024-11-05T17:44:36.558Z" },
+    { url = "https://files.pythonhosted.org/packages/dd/93/c485ae800da47f6676c097f223493d895b24d3de35c5f5a80be6fcc173e5/fasttext_numpy2_wheel-0.9.2-cp312-cp312-manylinux2014_ppc64le.whl", hash = "sha256:2528a3466f898bb16cec2e3d9844c5f4b98ea0e7716bb6c023e74c30d13929d3", size = 2919414, upload-time = "2024-11-05T17:44:23.402Z" },
+    { url = "https://files.pythonhosted.org/packages/e9/70/ef326f7eff7e24b274a320c80479fa76860201ef460972c71cefc72f844b/fasttext_numpy2_wheel-0.9.2-cp312-cp312-manylinux2014_s390x.whl", hash = "sha256:a913f7ca57d3f3595d6e1221a2b724b131df2f304433e5ff3ba1fee5731f153a", size = 2955392, upload-time = "2024-11-05T17:44:09.67Z" },
+    { url = "https://files.pythonhosted.org/packages/df/13/f8a21e5aa6c0a3e382c2346322b6d70fe1435c85cd57c8913b56fc72441d/fasttext_numpy2_wheel-0.9.2-cp312-cp312-manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:e1d50a174457a11d9317c5eaef007d0971a1baed4b15b8f5c404d69ba7ed2346", size = 4583847, upload-time = "2024-11-05T13:54:19.266Z" },
+    { url = "https://files.pythonhosted.org/packages/d4/9d/a78dfd3e996f5d3c91bcd14a4e249a90da038b99287fda43211281724fdb/fasttext_numpy2_wheel-0.9.2-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:3e70c79c9ca670f36fcf639eea87bf44adff4082a966c62053747a7dee0f2898", size = 4686609, upload-time = "2024-11-05T13:54:11.194Z" },
+]
 
 [[package]]
 name = "fastwarc"
@@ -5687,6 +5738,19 @@ wheels = [
 ]
 
 [[package]]
+name = "python-docx"
+version = "1.2.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "lxml" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/a9/f7/eddfe33871520adab45aaa1a71f0402a2252050c14c7e3009446c8f4701c/python_docx-1.2.0.tar.gz", hash = "sha256:7bc9d7b7d8a69c9c02ca09216118c86552704edc23bac179283f2e38f86220ce", size = 5723256, upload-time = "2025-06-16T20:46:27.921Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d0/00/1e03a4989fa5795da308cd774f05b704ace555a70f9bf9d3be057b680bcf/python_docx-1.2.0-py3-none-any.whl", hash = "sha256:3fd478f3250fbbbfd3b94fe1e985955737c145627498896a8a6bf81f4baf66c7", size = 252987, upload-time = "2025-06-16T20:46:22.506Z" },
+]
+
+[[package]]
 name = "python-dotenv"
 version = "1.2.3"
 source = { registry = "https://pypi.org/simple" }
@@ -7700,16 +7764,21 @@ version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "beautifulsoup4" },
+    { name = "ebooklib" },
+    { name = "fasttext-numpy2-wheel" },
     { name = "huggingface-hub" },
     { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "numpy", version = "2.3.5", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "pillow" },
     { name = "pyarrow" },
     { name = "pymupdf" },
+    { name = "python-docx" },
     { name = "python-dotenv" },
     { name = "python-pptx" },
     { name = "requests" },
+    { name = "tokenizers" },
     { name = "tqdm" },
+    { name = "trafilatura" },
 ]
 
 [package.dev-dependencies]
@@ -7743,15 +7812,20 @@ viz = [
 [package.metadata]
 requires-dist = [
     { name = "beautifulsoup4", specifier = ">=4.12" },
+    { name = "ebooklib", specifier = ">=0.20" },
+    { name = "fasttext-numpy2-wheel", specifier = ">=0.9.2" },
     { name = "huggingface-hub", specifier = ">=1.0" },
     { name = "numpy", specifier = ">=1.26" },
     { name = "pillow", specifier = ">=10.0" },
     { name = "pyarrow", specifier = ">=25.0.1" },
     { name = "pymupdf", specifier = ">=1.28" },
+    { name = "python-docx", specifier = ">=1.2.0" },
     { name = "python-dotenv", specifier = ">=1.0" },
     { name = "python-pptx", specifier = ">=1.0" },
     { name = "requests", specifier = ">=2.31" },
+    { name = "tokenizers", specifier = ">=0.23.2" },
     { name = "tqdm", specifier = ">=4.66" },
+    { name = "trafilatura", specifier = ">=2.0.0" },
 ]
 
 [package.metadata.requires-dev]

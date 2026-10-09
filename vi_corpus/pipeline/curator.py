@@ -13,6 +13,7 @@ Không cần viết lại logic: các hàm thuần của pipeline (annotate_lang
 Module này import nemo_curator ngay đầu file, nên chỉ import khi người dùng bật --executor (cài bằng `uv sync --group curator`).
 """
 
+import base64
 import functools
 import json
 import logging
@@ -39,15 +40,27 @@ EXECUTOR_CHOICES = ("xenna", "ray_actor_pool", "ray_data")
 RowsFn = Callable[[list[dict]], list[dict]]
 
 
+def _json_default(value):
+    """Mã hóa giá trị JSON không hỗ trợ: bytes (vd doc_minhash) thành {"__b64__": ...}."""
+    if isinstance(value, bytes):
+        return {"__b64__": base64.b64encode(value).decode("ascii")}
+    raise TypeError(f"Không mã hóa được kiểu {type(value).__name__} sang JSON")
+
+
+def _json_hook(obj: dict):
+    """Ngược lại của _json_default."""
+    return base64.b64decode(obj["__b64__"]) if set(obj) == {"__b64__"} else obj
+
+
 def encode_rows(rows: list[dict]) -> pd.DataFrame:
     """Gói các bản ghi thành DataFrame hai cột (doc_id, payload JSON) để đi qua executor mà không đổi kiểu dữ liệu."""
     return pd.DataFrame({"doc_id": [r["doc_id"] for r in rows],
-                         "payload": [json.dumps(r, ensure_ascii=False) for r in rows]})
+                         "payload": [json.dumps(r, ensure_ascii=False, default=_json_default) for r in rows]})
 
 
 def decode_rows(df: pd.DataFrame) -> list[dict]:
     """Ngược lại của encode_rows."""
-    return [json.loads(p) for p in df["payload"]]
+    return [json.loads(p, object_hook=_json_hook) for p in df["payload"]]
 
 
 @dataclass
@@ -87,9 +100,9 @@ class RowsStage(ProcessingStage[DocumentBatch, DocumentBatch]):
 
 # ----- factory cấp module (pickle được) cho từng stage -----
 
-def _language_fn() -> RowsFn:
-    """Factory stage language."""
-    return annotate_language
+def _language_fn(cfg: RunConfig) -> RowsFn:
+    """Factory stage language: nạp bộ nhận diện (fastText) trên actor một lần."""
+    return functools.partial(annotate_language, lang_model=cfg.lang_model, max_segments=cfg.lang_max_segments)
 
 
 def _quality_fn(cfg: RunConfig) -> RowsFn:
@@ -232,9 +245,9 @@ class CuratorBackend:
             raise RuntimeError(f"Stage {name}: vào {len(rows)} bản ghi nhưng ra {len(out)} (executor làm rơi phân vùng?)")
         return out
 
-    def language(self, rows: list[dict]) -> list[dict]:
+    def language(self, rows: list[dict], cfg: RunConfig) -> list[dict]:
         """Stage language song song nhiều CPU."""
-        return self.run("language", rows, _language_fn, Resources(cpus=self.cpu_workers_cpus))
+        return self.run("language", rows, functools.partial(_language_fn, cfg), Resources(cpus=self.cpu_workers_cpus))
 
     def quality(self, rows: list[dict], cfg: RunConfig) -> list[dict]:
         """Stage quality song song nhiều CPU."""

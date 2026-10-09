@@ -1,11 +1,13 @@
 # Chiến lược xử lý giáo trình (Google Drive "Tổng hợp giáo trình Đại học")
 
 > Trạng thái: **xử lý thô đã viết** (mục 2-4: kiểm kê, trích text, làm sạch trang, `iter_records`, xuất Parquet), dựa trên khảo sát
-> ngày 30/09/2026. Chạy: `uv run python scripts/giao_trinh/extract.py --data-root <root> [--no-ocr] [--device cuda|cpu] [--limit-files N] [--status]`
+> ngày 30/09/2026. Chạy: `uv run python scripts/giao_trinh/extract.py --data-root <root> [--no-ocr] [--device cuda|cpu] [--limit-files N] [--retry-skipped] [--status]`
 > (xuất `processed/giao_trinh/giao_trinh.parquet` tự động ở cuối mỗi lần chạy). Code: `vi_corpus/giao_trinh/` (`extract.py`, `records.py`),
 > `vi_corpus/common/pdf_text.py` (`extract_pdf`, `clean_pages`). Đã thử E2E với dữ liệu tổng hợp (kill -9 rồi chạy lại đúng lệnh cũ);
 > **OCR thật chưa chạy** (cần GPU trên server, `uv run --group ocr`). Chưa làm (theo yêu cầu "chỉ xử lý thô"): phân loại `doc_type`/`language`
-> (mục 5), quality, dedup ngoài sha256 file (mục 6), ppt/docx/djvu.
+> (mục 5), quality, dedup ngoài sha256 file (mục 6). **2026-10-08 (D-05, R-14)**: đã thêm parser docx, doc / ppt (LibreOffice), djvu
+> (djvulibre), html, epub ở `vi_corpus/common/parsers/`, nhận định dạng theo nội dung đầu file; máy thiếu LibreOffice / djvulibre thì file bị
+> `skipped` (`needs_libreoffice` / `needs_djvulibre`), cài xong chạy lại với `--retry-skipped`. Parser mới chưa thử trên file thật của Drive.
 >
 > Khác thiết kế: file lỗi (PDF hỏng/mật khẩu) được ghi lỗi vào checkpoint nhưng **thử lại ở lần chạy sau**; checkpoint còn trang
 > `needs_ocr` cũng được làm lại khi chạy có OCR. `clean_pages` ghép cả các trang thành một văn bản (đoạn nối được qua ranh giới trang);
@@ -61,7 +63,7 @@ Khoá của interim là **sha256 file** (không phải đường dẫn): tự de
 | PDF có lớp chữ | đa số | `extract_pdf` (PyMuPDF `rawdict`): chèn lại dấu cách mất, đổi span font TCVN3 theo tên font, cả tài liệu TCVN3 theo tỉ lệ ký tự. |
 | PDF scan / trang scan | chưa rõ (chạy `profile.py`) | Trang < 30 ký tự mà có ảnh → OCR. Dùng lại `vi_corpus.common.ocr` (GPU). Sách y học (share từ testyhoc) khả năng cao là scan. |
 | pptx | 59 | `python-pptx` (đã có trong deps): text frame + bảng + ghi chú, mỗi slide 1 "trang". |
-| ppt, docx, djvu | 27 (~2%) | **Bỏ qua ở v1**, ghi `skipped: unsupported_format`. Thêm sau bằng `soffice --headless --convert-to pdf` nếu server có LibreOffice. |
+| ppt, docx, djvu | 27 (~2%) | ~~Bỏ qua ở v1~~ Đã có parser (2026-10-08): docx bằng python-docx, doc / ppt đổi sang docx / pptx bằng LibreOffice headless, djvu bằng djvulibre (trang không chữ thì OCR). Thiếu công cụ thì `skipped`, chạy lại bằng `--retry-skipped`. |
 
 PDF có mật khẩu / hỏng: ghi lỗi vào checkpoint, không dừng cả lô (giống stbook).
 

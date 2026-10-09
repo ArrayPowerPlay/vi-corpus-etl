@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 935" width="1000" height="935" font-family="DejaVu Sans, Arial, sans-serif">
+<title>Luồng con 12: trích text giáo trình</title>
+<defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#455566"/></marker></defs>
+<rect width="1000" height="935" fill="#ffffff"/>
+<text x="500.0" y="34" text-anchor="middle" font-size="19" font-weight="700" fill="#1b2733">Luồng con 12: trích text giáo trình</text>
+<text x="500.0" y="58" text-anchor="middle" font-size="12" fill="#52514e">vi_corpus/giao_trinh/extract.py · records.py · vi_corpus/common/batch_extract.py · pdf_text.py</text>
+<rect x="30" y="84" width="530" height="51" rx="8" fill="#eef2f7" stroke="#7a8aa0" stroke-width="1.5"/>
+<text x="42" y="106" font-size="14" font-weight="700" fill="#1b2733">raw/giao_trinh/&lt;ngành&gt;/&lt;môn&gt;/&lt;file&gt; (bản rclone)</text>
+<text x="42" y="126" font-size="12" fill="#1b2733" xml:space="preserve">bỏ file / thư mục ẩn (.cache của rclone)</text>
+<line x1="295.0" y1="135" x2="295.0" y2="173" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
+<rect x="30" y="175" width="530" height="51" rx="8" fill="#e9f5ee" stroke="#3f9b6b" stroke-width="1.5"/>
+<text x="42" y="197" font-size="14" font-weight="700" fill="#1b2733">inventory</text>
+<text x="42" y="217" font-size="12" fill="#1b2733" xml:space="preserve">băm sha256 mọi file, gom các file trùng nội dung (một lần trích cho cả nhóm)</text>
+<line x1="295.0" y1="226" x2="295.0" y2="264" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
+<rect x="30" y="266" width="530" height="51" rx="8" fill="#fff4dc" stroke="#d19a1f" stroke-width="1.5"/>
+<text x="42" y="288" font-size="14" font-weight="700" fill="#1b2733">_needs_redo?</text>
+<text x="42" y="308" font-size="12" fill="#1b2733" xml:space="preserve">chưa có checkpoint, lần trước lỗi, hoặc còn trang needs_ocr mà lần này bật OCR</text>
+<rect x="680" y="266" width="290" height="51" rx="8" fill="#eef2f7" stroke="#7a8aa0" stroke-width="1.5"/>
+<text x="692" y="288" font-size="14" font-weight="700" fill="#1b2733">Bỏ qua</text>
+<text x="692" y="308" font-size="12" fill="#1b2733" xml:space="preserve">chỉ cập nhật danh sách đường dẫn trùng</text>
+<line x1="560" y1="286" x2="678" y2="286" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
+<text x="620.0" y="280" text-anchor="middle" font-size="11.5" fill="#455566">không</text>
+<line x1="295.0" y1="317" x2="295.0" y2="355" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
+<text x="303.0" y="341.0" font-size="11.5" fill="#455566">có</text>
+<rect x="30" y="357" width="530" height="68" rx="8" fill="#fff4dc" stroke="#d19a1f" stroke-width="1.5"/>
+<text x="42" y="379" font-size="14" font-weight="700" fill="#1b2733">extract_file theo đuôi file</text>
+<text x="42" y="399" font-size="12" fill="#1b2733" xml:space="preserve">pdf → extract_pdf;  pptx → extract_pptx (khung chữ, nhóm, bảng, ghi chú; 1</text>
+<text x="42" y="416" font-size="12" fill="#1b2733" xml:space="preserve">  slide = 1 trang)</text>
+<rect x="680" y="357" width="290" height="68" rx="8" fill="#fdecea" stroke="#c94a3f" stroke-width="1.5"/>
+<text x="692" y="379" font-size="14" font-weight="700" fill="#1b2733">skipped = unsupported_format</text>
+<text x="692" y="399" font-size="12" fill="#1b2733" xml:space="preserve">doc, ppt, docx, djvu, ...</text>
+<text x="692" y="416" font-size="12" fill="#1b2733" xml:space="preserve">(dự kiến D-05: thêm parser)</text>
+<line x1="560" y1="377" x2="678" y2="377" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
+<text x="620.0" y="371" text-anchor="middle" font-size="11.5" fill="#455566">đuôi khác</text>
+<line x1="295.0" y1="425" x2="295.0" y2="463" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
+<rect x="30" y="465" width="530" height="102" rx="8" fill="#e9f5ee" stroke="#3f9b6b" stroke-width="1.5"/>
+<text x="42" y="487" font-size="14" font-weight="700" fill="#1b2733">extract_pdf: mỗi trang chọn đường rẻ nhất</text>
+<text x="42" y="507" font-size="12" fill="#1b2733" xml:space="preserve">text: có lớp chữ Unicode (chèn lại dấu cách bị mất theo khoảng trống)</text>
+<text x="42" y="524" font-size="12" fill="#1b2733" xml:space="preserve">tcvn3: font cũ → đổi sang Unicode (theo span hoặc cả tài liệu)</text>
+<text x="42" y="541" font-size="12" fill="#1b2733" xml:space="preserve">ocr: &lt; 30 ký tự mà có ảnh → OCR (mô hình nạp lười)</text>
+<text x="42" y="558" font-size="12" fill="#1b2733" xml:space="preserve">needs_ocr: trang scan nhưng tắt OCR;  empty: trang trắng</text>
+<rect x="680" y="465" width="290" height="68" rx="8" fill="#fdecea" stroke="#c94a3f" stroke-width="1.5"/>
+<text x="692" y="487" font-size="14" font-weight="700" fill="#1b2733">error</text>
+<text x="692" y="507" font-size="12" fill="#1b2733" xml:space="preserve">is_repaired / có mật khẩu</text>
+<text x="692" y="524" font-size="12" fill="#1b2733" xml:space="preserve">→ exit code 1 cuối lần chạy</text>
+<line x1="560" y1="485" x2="678" y2="485" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
+<text x="620.0" y="479" text-anchor="middle" font-size="11.5" fill="#455566">PDF hỏng</text>
+<line x1="295.0" y1="567" x2="295.0" y2="605" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
+<rect x="30" y="607" width="530" height="51" rx="8" fill="#e9f5ee" stroke="#3f9b6b" stroke-width="1.5"/>
+<text x="42" y="629" font-size="14" font-weight="700" fill="#1b2733">Ghi checkpoint interim/giao_trinh_text/&lt;sha256&gt;.json</text>
+<text x="42" y="649" font-size="12" fill="#1b2733" xml:space="preserve">sha256, size, paths, ngành, môn, format, pages[{text, method}], error, skipped</text>
+<line x1="295.0" y1="658" x2="295.0" y2="696" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
+<rect x="30" y="698" width="530" height="68" rx="8" fill="#e9f5ee" stroke="#3f9b6b" stroke-width="1.5"/>
+<text x="42" y="720" font-size="14" font-weight="700" fill="#1b2733">records.iter_records + export_parquet (cuối mỗi lần chạy)</text>
+<text x="42" y="740" font-size="12" fill="#1b2733" xml:space="preserve">bỏ checkpoint lỗi / skip / không chữ, bỏ trang needs_ocr</text>
+<text x="42" y="757" font-size="12" fill="#1b2733" xml:space="preserve">clean_pages (slides=True cho pptx: không bỏ header, mỗi dòng một đoạn)</text>
+<line x1="295.0" y1="766" x2="295.0" y2="804" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
+<rect x="30" y="806" width="530" height="51" rx="8" fill="#e3eefb" stroke="#2a78d6" stroke-width="1.5"/>
+<text x="42" y="828" font-size="14" font-weight="700" fill="#1b2733">processed/giao_trinh/giao_trinh.parquet</text>
+<text x="42" y="848" font-size="12" fill="#1b2733" xml:space="preserve">và bản ghi giao_trinh cho ingest (giữ sách tiếng Anh)</text>
+<rect x="30" y="901" width="18" height="14" rx="3" fill="#eef2f7" stroke="#7a8aa0"/><text x="54" y="912" font-size="11.5" fill="#455566">đầu vào / dữ liệu</text><rect x="185" y="901" width="18" height="14" rx="3" fill="#e9f5ee" stroke="#3f9b6b"/><text x="209" y="912" font-size="11.5" fill="#455566">bước xử lý</text><rect x="291" y="901" width="18" height="14" rx="3" fill="#fff4dc" stroke="#d19a1f"/><text x="315" y="912" font-size="11.5" fill="#455566">rẽ nhánh / điều kiện</text><rect x="467" y="901" width="18" height="14" rx="3" fill="#fdecea" stroke="#c94a3f"/><text x="491" y="912" font-size="11.5" fill="#455566">loại / dừng</text><rect x="580" y="901" width="18" height="14" rx="3" fill="#e3eefb" stroke="#2a78d6"/><text x="604" y="912" font-size="11.5" fill="#455566">đầu ra</text><rect x="658" y="901" width="18" height="14" rx="3" fill="#f5f5f5" stroke="#9a9a9a" stroke-dasharray="4 3"/><text x="682" y="912" font-size="11.5" fill="#455566">dự kiến, chưa có code</text>
+</svg>

@@ -11,7 +11,7 @@ làm ở đây:
 
 Checkpoint có dạng:
     {"sha256", "size", "paths": [...], **metadata từ đường dẫn, "format", "pages": [{"text", "method"}],
-     "error", "skipped", "created_at"}
+     "error", "skipped", "parser_version", "created_at"}
 """
 
 import hashlib
@@ -97,9 +97,12 @@ def make_ocr_getter(device: str, enabled: bool = True) -> Callable[[], object | 
     return get_ocr
 
 
-def _needs_redo(done: dict | None, ocr_enabled: bool) -> bool:
-    """Checkpoint cần làm lại: chưa có, lần trước lỗi, hoặc còn trang needs_ocr mà lần này có OCR."""
-    if done is None or done.get("error"):
+def _needs_redo(done: dict | None, ocr_enabled: bool, retry_skipped: bool = False) -> bool:
+    """
+    Checkpoint cần làm lại: chưa có, lần trước lỗi, lần trước bị bỏ qua mà retry_skipped, hoặc còn trang needs_ocr mà
+    lần này có OCR.
+    """
+    if done is None or done.get("error") or (retry_skipped and done.get("skipped")):
         return True
     return ocr_enabled and any(p["method"] == "needs_ocr" for p in done["pages"])
 
@@ -108,7 +111,7 @@ def run_batch(root: Path, data_root: Path, text_dir: str,
               extract_file: Callable[[Path, Callable[[], object | None]], dict],
               path_meta: Callable[[Path], dict],
               get_ocr: Callable[[], object | None], ocr_enabled: bool = True,
-              limit_files: int | None = None, desc: str = "Trích text") -> int:
+              limit_files: int | None = None, desc: str = "Trích text", retry_skipped: bool = False) -> int:
     """
     Kiểm kê rồi trích text mọi file chưa làm, ghi checkpoint từng file ngay khi xong.
 
@@ -125,6 +128,7 @@ def run_batch(root: Path, data_root: Path, text_dir: str,
         ocr_enabled:  Có OCR hay không (dùng để quyết định làm lại file còn trang needs_ocr).
         limit_files:  Chỉ xét N file đầu (chạy thử).
         desc:         Nhãn thanh tiến độ.
+        retry_skipped: Làm lại cả file từng bị bỏ qua (định dạng mới được hỗ trợ, vừa cài công cụ ngoài).
 
     Returns:
         Số file bị lỗi trong lần chạy này.
@@ -136,7 +140,7 @@ def run_batch(root: Path, data_root: Path, text_dir: str,
         rels = [str(p.relative_to(data_root)) if p.is_relative_to(data_root) else str(p) for p in paths]
         ckpt = checkpoint_path(data_root, text_dir, sha)
         done = read_json(ckpt)
-        if not _needs_redo(done, ocr_enabled):
+        if not _needs_redo(done, ocr_enabled, retry_skipped):
             done_count += 1
             if done["paths"] != rels:
                 write_json_atomic(ckpt, {**done, "paths": rels})

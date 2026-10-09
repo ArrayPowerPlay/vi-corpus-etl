@@ -3,19 +3,24 @@
 name = "vi-corpus-etl"
 version = "0.1.0"
 description = "ETL corpus tiếng Việt cho LLM từ nhiều nguồn: SEA (Hugging Face), sách stbook.vn, giáo trình (Google Drive), VISTA/VJOL"
-readme = "README.md"
+readme = "docs/README.md"
 requires-python = ">=3.10"
 dependencies = [
     "beautifulsoup4>=4.12",
+    "ebooklib>=0.20",
+    "fasttext-numpy2-wheel>=0.9.2",
     "huggingface_hub>=1.0",
     "numpy>=1.26",
     "pillow>=10.0",
     "pyarrow>=25.0.1",
     "pymupdf>=1.28",
+    "python-docx>=1.2.0",
     "python-dotenv>=1.0",
     "python-pptx>=1.0",
     "requests>=2.31",
+    "tokenizers>=0.23.2",
     "tqdm>=4.66",
+    "trafilatura>=2.0.0",
 ]
 
 [dependency-groups]

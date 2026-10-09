@@ -1,5 +1,7 @@
 """
 Test cho pipeline xử lý chung (vi_corpus.pipeline): từng stage trên dữ liệu nhỏ và chạy end-to-end trên cây data giả.
+
+Không cần mạng: cấu hình test dùng tokenizer "words" và bộ nhận diện ngôn ngữ "heuristic" (xem make_cfg).
 """
 
 import gzip
@@ -16,6 +18,7 @@ from vi_corpus.pipeline import io
 from vi_corpus.pipeline import reduce as reduce_mod
 from vi_corpus.pipeline.chunk import chunk_text
 from vi_corpus.pipeline.config import RunConfig, scale_mix
+from vi_corpus.pipeline.tokens import get_counter
 from vi_corpus.pipeline.dedup import dedup_rows
 from vi_corpus.pipeline.knowledge import build_units, sft_pairs, split_bucket
 from vi_corpus.pipeline.language import detect_language
@@ -28,6 +31,15 @@ SENT = ["Hà Nội là thủ đô của nước Cộng hòa xã hội chủ ngh�
         "Giáo dục đại học đã được cải cách trong nhiều năm qua để đáp ứng yêu cầu của thị trường lao động.",
         "Các nhà khoa học cho rằng biến đổi khí hậu sẽ ảnh hưởng đến sản xuất nông nghiệp trong những thập kỷ tới.",
         "Văn hóa truyền thống của dân tộc được gìn giữ qua các lễ hội, phong tục và những làn điệu dân ca."]
+
+
+def make_cfg(**kw) -> RunConfig:
+    """RunConfig không cần mạng (đếm từ, ngôn ngữ heuristic, không quét benchmark); kw ghi đè."""
+    base = {"mix": {}, "tokenizer": "words", "lang_model": "heuristic", "benchmarks_dir": None}
+    return RunConfig(**{**base, **kw})
+
+
+WORDS = get_counter("words")
 
 
 def vi_text(n_sent: int, seed: int) -> str:
@@ -51,15 +63,15 @@ def test_language_vi_en_other():
 def test_chunk_text_giu_ranh_gioi_doan_va_gop_doan_cuoi():
     """Đoạn cắt ở ranh giới đoạn văn, không vượt max, đoạn cuối quá ngắn gộp vào đoạn trước."""
     paras = [" ".join(["từ"] * 100) for _ in range(5)] + ["đoạn cuối ngắn"]
-    chunks = chunk_text("\n\n".join(paras), target_words=200, max_words=300, min_words=80)
+    chunks = chunk_text("\n\n".join(paras), WORDS, target=200, max_tokens=300, min_tokens=80)
     assert all(len(c.split()) <= 303 for c in chunks)
     assert chunks[-1].endswith("đoạn cuối ngắn") and len(chunks) == 3
-    assert chunk_text("", 200, 300, 80) == []
+    assert chunk_text("", WORDS, 200, 300, 80) == []
 
 
 def test_quality_loi_cung_va_band():
     """Văn bản ngắn / lặp bị hard reason và band D; văn bản bình thường band A."""
-    cfg = RunConfig(mix={})
+    cfg = make_cfg()
     prof = cfg.profile("sea_pile_v2")
     m = compute_metrics(" ".join(SENT))  # 5 câu khác nhau, không lặp
     score, reasons = score_metrics(m, "vi", prof)
@@ -84,7 +96,7 @@ def test_dedup_exact_fuzzy_va_ban_tot_nhat_duoc_giu():
     near = base.replace("Hà Nội", "Thủ đô Hà Nội", 1)
     rows = [_row("a", base, 80), _row("b", base, 95), _row("c", near, 70), _row("d", vi_text(30, 99), 85),
             _row("e", "x", 10, "D")]
-    rows, stats = dedup_rows(rows, RunConfig(mix={}))
+    rows, stats = dedup_rows(rows, make_cfg())
     st = {r["doc_id"]: r for r in rows}
     assert st["b"]["status"] == "kept" and st["a"]["dup_kind"] == "exact" and st["a"]["dup_of"] == "b"
     assert st["c"]["status"] == "rejected:duplicate" and st["c"]["dup_kind"] == "fuzzy"
@@ -95,7 +107,7 @@ def test_dedup_exact_fuzzy_va_ban_tot_nhat_duoc_giu():
 
 def test_rights_gate_enforce_loai_ban_ghi():
     """Chế độ enforce loại bản ghi có quyền chưa rõ; chế độ tag thì chỉ gắn nhãn."""
-    rows, _ = dedup_rows([_row("a", vi_text(30, 1))], RunConfig(mix={}, rights_gate="enforce"))
+    rows, _ = dedup_rows([_row("a", vi_text(30, 1))], make_cfg(rights_gate="enforce"))
     assert rows[0]["status"] == "rejected:rights"
 
 
@@ -110,7 +122,7 @@ def test_knowledge_units_sft_va_split_theo_ho():
     doc.update(status="kept", dedup_family_id="fam_y")
     drop = _row("drop", "bỏ")
     drop.update(status="rejected:quality")
-    units = build_units([chat, doc, drop])
+    units = build_units([chat, doc, drop], WORDS)
     assert [u["unit_type"] for u in units] == ["sft", "sft", "cpt"]
     assert units[0]["split_bucket"] == units[1]["split_bucket"] == split_bucket("fam_x")
 
@@ -137,15 +149,20 @@ def test_pipeline_end_to_end_va_chay_lai(tmp_path):
     (ocr / "1.json").write_text(json.dumps({"pdf_path": "raw/stbook/kinh-dien/content/1.pdf", "pages": pages,
                                             "book": {"title": "Sách thử"}, "category_slug": "kinh-dien"}), encoding="utf-8")
 
-    cfg = RunConfig(mix={"sea_pile_v2": 40, "sea_lion_pile_v1": 20, "sea_instruct_2602": 8, "stbook": 10},
-                    rows_per_file=1000, chunk_target_words=200, chunk_max_words=300, embed_spec=None)
+    cfg = make_cfg(mix={"sea_pile_v2": 40, "sea_lion_pile_v1": 20, "sea_instruct_2602": 8, "stbook": 10},
+                   rows_per_file=1000, chunk_target_tokens=200, chunk_max_tokens=300, chunk_min_tokens=80, embed_spec=None)
     run = root / "run"
     manifest = run_pipeline(SOURCES, root, run, cfg)
     for name in ("01_ingest", "02_prepare", "03_language", "04_quality", "05_dedup", "clean"):
         assert (run / f"{name}.parquet").exists()
     assert (run / "report.html").exists() and (run / "knowledge_units.parquet").exists()
     rows = io.read_rows(run / "05_dedup.parquet")
-    assert len(rows) == 40 + 20 + 8 + 10
+    docs = {r["parent_doc_id"] or r["doc_id"] for r in rows if r["source_key"] != "stbook"}
+    assert len(docs) == 40 + 20 + 8 and sum(r["source_key"] == "stbook" for r in rows) == 10
+    # bài web dài hơn chunk_max_tokens bị cắt theo D-10, mỗi đoạn <= 300 token; hội thoại không bị cắt
+    assert all(r["token_count"] <= 300 for r in rows if r["parent_doc_id"])
+    assert any(r["parent_doc_id"] for r in rows if r["source_key"] == "sea_pile_v2")
+    assert not any(r["parent_doc_id"] for r in rows if r["source_key"] == "sea_instruct_2602")
     assert {r["source_key"] for r in rows} == {"sea_pile_v2", "sea_lion_pile_v1", "sea_instruct_2602", "stbook"}
     assert json.loads((run / "audit.json").read_text(encoding="utf-8"))["lineage_rate_all"] == 1.0
     assert manifest["finalize"]["clean_rows"] > 0
@@ -160,7 +177,7 @@ def test_chay_tung_buoc_bang_until(tmp_path):
     d = tmp_path / "raw/sea_vi/sea_pile_v2/vi"
     d.mkdir(parents=True)
     pq.write_table(pa.table({"text": [vi_text(25, i) for i in range(20)]}), d / "a.parquet")
-    cfg = RunConfig(mix={"sea_pile_v2": 15}, embed_spec=None)
+    cfg = make_cfg(mix={"sea_pile_v2": 15}, embed_spec=None)
     run = tmp_path / "run"
     run_pipeline(SOURCES, tmp_path, run, cfg, until="prepare")
     assert (run / "02_prepare.parquet").exists() and not (run / "03_language.parquet").exists()
@@ -176,7 +193,7 @@ def test_embed_reduce_viz_tfidf(tmp_path):
     d = tmp_path / "raw/sea_vi/sea_pile_v2/vi"
     d.mkdir(parents=True)
     pq.write_table(pa.table({"text": [vi_text(25, i) for i in range(60)]}), d / "a.parquet")
-    cfg = RunConfig(mix={"sea_pile_v2": 60}, embed_spec="tfidf", prefer_gpu=False)
+    cfg = make_cfg(mix={"sea_pile_v2": 60}, embed_spec="tfidf", prefer_gpu=False)
     run = tmp_path / "run"
     manifest = run_pipeline(SOURCES, tmp_path, run, cfg)
     ids, matrix = embed_mod.read_embeddings(run / "06_embeddings.parquet")

@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 787" width="1000" height="787" font-family="DejaVu Sans, Arial, sans-serif">
+<title>Luồng con 7: embed → reduce → bản đồ embedding</title>
+<defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#455566"/></marker></defs>
+<rect width="1000" height="787" fill="#ffffff"/>
+<text x="500.0" y="34" text-anchor="middle" font-size="19" font-weight="700" fill="#1b2733">Luồng con 7: embed → reduce → bản đồ embedding</text>
+<text x="500.0" y="58" text-anchor="middle" font-size="12" fill="#52514e">vi_corpus/pipeline/embed.py · reduce.py · viz.py</text>
+<rect x="30" y="84" width="530" height="51" rx="8" fill="#eef2f7" stroke="#7a8aa0" stroke-width="1.5"/>
+<text x="42" y="106" font-size="14" font-weight="700" fill="#1b2733">05_dedup.parquet (mọi bản ghi)</text>
+<text x="42" y="126" font-size="12" fill="#1b2733" xml:space="preserve">chỉ chạy khi cfg.embed_spec khác None</text>
+<line x1="295.0" y1="135" x2="295.0" y2="173" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
+<rect x="30" y="175" width="530" height="102" rx="8" fill="#fff4dc" stroke="#d19a1f" stroke-width="1.5"/>
+<text x="42" y="197" font-size="14" font-weight="700" fill="#1b2733">embed_spec = hf:&lt;model&gt;</text>
+<text x="42" y="217" font-size="12" fill="#1b2733" xml:space="preserve">mặc định intfloat/multilingual-e5-base</text>
+<text x="42" y="234" font-size="12" fill="#1b2733" xml:space="preserve">tiền tố "passage: ", cắt 6000 ký tự, tối đa 512 token</text>
+<text x="42" y="251" font-size="12" fill="#1b2733" xml:space="preserve">mean pooling + chuẩn hoá L2; fp16 trên GPU, fp32 trên CPU</text>
+<text x="42" y="268" font-size="12" fill="#1b2733" xml:space="preserve">song song: EmbedStage, mỗi actor giữ 1 bản mô hình trên 1 GPU</text>
+<rect x="680" y="175" width="290" height="68" rx="8" fill="#e9f5ee" stroke="#3f9b6b" stroke-width="1.5"/>
+<text x="692" y="197" font-size="14" font-weight="700" fill="#1b2733">tfidf</text>
+<text x="692" y="217" font-size="12" fill="#1b2733" xml:space="preserve">TF-IDF + SVD 64 chiều, CPU</text>
+<text x="692" y="234" font-size="12" fill="#1b2733" xml:space="preserve">fit trên toàn corpus nên chạy tuần tự</text>
+<line x1="560" y1="195" x2="678" y2="195" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
+<text x="620.0" y="189" text-anchor="middle" font-size="11.5" fill="#455566">tfidf</text>
+<line x1="295.0" y1="277" x2="295.0" y2="315" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
+<rect x="30" y="317" width="530" height="51" rx="8" fill="#e3eefb" stroke="#2a78d6" stroke-width="1.5"/>
+<text x="42" y="339" font-size="14" font-weight="700" fill="#1b2733">06_embeddings.parquet</text>
+<text x="42" y="359" font-size="12" fill="#1b2733" xml:space="preserve">(doc_id, embedding float32)</text>
+<line x1="295.0" y1="368" x2="295.0" y2="406" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
+<rect x="30" y="408" width="530" height="85" rx="8" fill="#e9f5ee" stroke="#3f9b6b" stroke-width="1.5"/>
+<text x="42" y="430" font-size="14" font-weight="700" fill="#1b2733">reduce_embeddings</text>
+<text x="42" y="450" font-size="12" fill="#1b2733" xml:space="preserve">PCA 2D: cuML nếu có và prefer_gpu, ngược lại scikit-learn</text>
+<text x="42" y="467" font-size="12" fill="#1b2733" xml:space="preserve">UMAP 2D: cuML hoặc umap-learn; thiếu thư viện thì bỏ qua, chỉ còn PCA</text>
+<text x="42" y="484" font-size="12" fill="#1b2733" xml:space="preserve">HDBSCAN trên embedding gốc (hoặc pca50 / umap10); min_cluster_size mặc định max(2, min(20, n/10)); -1 = nhiễu</text>
+<line x1="295.0" y1="493" x2="295.0" y2="531" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
+<rect x="30" y="533" width="530" height="51" rx="8" fill="#e3eefb" stroke="#2a78d6" stroke-width="1.5"/>
+<text x="42" y="555" font-size="14" font-weight="700" fill="#1b2733">07_reduced.parquet</text>
+<text x="42" y="575" font-size="12" fill="#1b2733" xml:space="preserve">doc_id, pca_x, pca_y, umap_x, umap_y, cluster_id (-1 = nhiễu)</text>
+<line x1="295.0" y1="584" x2="295.0" y2="622" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
+<rect x="30" y="624" width="530" height="85" rx="8" fill="#e9f5ee" stroke="#3f9b6b" stroke-width="1.5"/>
+<text x="42" y="646" font-size="14" font-weight="700" fill="#1b2733">build_embedding_section (viz.py)</text>
+<text x="42" y="666" font-size="12" fill="#1b2733" xml:space="preserve">plotly scattergl; plotly.js và dữ liệu điểm nhúng MỘT lần vào report.html</text>
+<text x="42" y="683" font-size="12" fill="#1b2733" xml:space="preserve">chọn UMAP / PCA × tô theo nguồn, trạng thái, band, ngôn ngữ, cụm</text>
+<text x="42" y="700" font-size="12" fill="#1b2733" xml:space="preserve">rê chuột: đoạn đầu văn bản + reason code</text>
+<rect x="30" y="753" width="18" height="14" rx="3" fill="#eef2f7" stroke="#7a8aa0"/><text x="54" y="764" font-size="11.5" fill="#455566">đầu vào / dữ liệu</text><rect x="185" y="753" width="18" height="14" rx="3" fill="#e9f5ee" stroke="#3f9b6b"/><text x="209" y="764" font-size="11.5" fill="#455566">bước xử lý</text><rect x="291" y="753" width="18" height="14" rx="3" fill="#fff4dc" stroke="#d19a1f"/><text x="315" y="764" font-size="11.5" fill="#455566">rẽ nhánh / điều kiện</text><rect x="467" y="753" width="18" height="14" rx="3" fill="#fdecea" stroke="#c94a3f"/><text x="491" y="764" font-size="11.5" fill="#455566">loại / dừng</text><rect x="580" y="753" width="18" height="14" rx="3" fill="#e3eefb" stroke="#2a78d6"/><text x="604" y="764" font-size="11.5" fill="#455566">đầu ra</text><rect x="658" y="753" width="18" height="14" rx="3" fill="#f5f5f5" stroke="#9a9a9a" stroke-dasharray="4 3"/><text x="682" y="764" font-size="11.5" fill="#455566">dự kiến, chưa có code</text>
+</svg>

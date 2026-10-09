@@ -1,6 +1,6 @@
 # Kiến trúc dự án vi-corpus-etl
 
-Tài liệu mô tả **cấu trúc repo và cấu trúc dữ liệu**. Thiết kế các bước xử lý (parse → language → normalize → quality → dedup → knowledge unit) nằm ở [`docs/PIPELINE.md`](docs/PIPELINE.md); danh mục nguồn ở [`docs/SOURCES.md`](docs/SOURCES.md); chiến lược giáo trình ở [`docs/GIAO_TRINH.md`](docs/GIAO_TRINH.md).
+Tài liệu mô tả **cấu trúc repo và cấu trúc dữ liệu**. Thiết kế các bước xử lý (parse → language → normalize → quality → dedup → knowledge unit) nằm ở [`docs/PIPELINE.md`](PIPELINE.md); danh mục nguồn ở [`docs/SOURCES.md`](SOURCES.md); chiến lược giáo trình ở [`docs/GIAO_TRINH.md`](GIAO_TRINH.md); các quyết định đã chốt ở [`docs/DECISION_LOG.md`](DECISION_LOG.md).
 
 Nguyên tắc chung:
 - **Mỗi nguồn dữ liệu có gói code riêng (`vi_corpus/<nguồn>/`) và thư mục script riêng (`scripts/<nguồn>/`)**; phần dùng chung nằm ở `vi_corpus/common/`.
@@ -12,10 +12,11 @@ Nguyên tắc chung:
 
 ```
 vi-corpus-etl/
-├── CLAUDE.md, README.md, PROJECT_ARCHITECTURE.md
+├── CLAUDE.md                        # file .md duy nhất ở gốc repo; mọi tài liệu khác nằm trong docs/
 ├── pyproject.toml, uv.lock          # thư viện quản lý bằng uv (nhóm ocr: uv sync --group ocr)
 ├── .env                             # HF_TOKEN (không đưa lên git)
-├── docs/                            # PIPELINE, SOURCES, ROADMAP, GIAO_TRINH
+├── docs/                            # README, PROJECT_ARCHITECTURE, PIPELINE, SOURCES, ROADMAP, PROGRESS, GIAO_TRINH, DECISION_LOG
+│   └── diagrams/                    # 00_pipeline.svg/png (luồng chính) + 01..12_*.svg (luồng con từng module)
 ├── scripts/
 │   ├── run_all.py                   # script tổng: chạy các script con bên dưới
 │   ├── sea/                         # download_all.py, download_sea_*.py (3 bộ), count_rows.py
