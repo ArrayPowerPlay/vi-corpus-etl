@@ -1,0 +1,104 @@
+{
+  "_chu_thich": "Cấu hình engine cho scripts/ocr_bakeoff (F-11). Khoá bắt đầu bằng '_' bị bỏ qua. Xem docstring vi_corpus/ocr_bakeoff/engines.py. Kiểm giấy phép trước khi chốt engine; 'license' chỉ là ghi chú đọc từ model card / repo ngày 2026-10-09.",
+  "baseline": {
+    "type": "baseline",
+    "output": "plain",
+    "device": "cuda",
+    "license": "PaddleOCR Apache-2.0; VietOCR chưa kiểm",
+    "note": "Engine hiện tại (P-10). Phần detect chạy CPU trừ khi cài paddlepaddle-gpu, giống cách chạy thật."
+  },
+  "paddleocr_vl": {
+    "type": "paddleocr_vl",
+    "output": "markdown",
+    "serve": [
+      "paddleocr",
+      "genai_server",
+      "--model_name",
+      "PaddleOCR-VL-0.9B",
+      "--host",
+      "127.0.0.1",
+      "--port",
+      "8118",
+      "--backend",
+      "vllm"
+    ],
+    "base_url": "http://127.0.0.1:8118/v1",
+    "pipeline_kwargs": {
+      "pipeline_version": "v1",
+      "vl_rec_backend": "vllm-server",
+      "vl_rec_server_url": "http://127.0.0.1:8118/v1"
+    },
+    "license": "Apache-2.0 (model card)",
+    "note": "Cần paddleocr[doc-parser] + paddlepaddle-gpu. Model card ghi 109 ngôn ngữ, không nêu tên tiếng Việt. Có bản mới PaddleOCR-VL-1.6. Pipeline chạy tuần tự từng trang nên tốc độ đo được là cận dưới."
+  },
+  "dots_ocr": {
+    "type": "openai",
+    "output": "dots_layout_json",
+    "model": "rednote-hilab/dots.ocr",
+    "served_name": "model",
+    "serve": [
+      "vllm",
+      "serve",
+      "rednote-hilab/dots.ocr",
+      "--port",
+      "8001",
+      "--served-model-name",
+      "model",
+      "--trust-remote-code",
+      "--chat-template-content-format",
+      "string",
+      "--max-model-len",
+      "32768",
+      "--gpu-memory-utilization",
+      "0.9"
+    ],
+    "base_url": "http://127.0.0.1:8001/v1",
+    "text_prefix": "<|img|><|imgpad|><|endofimg|>",
+    "prompt": "Please output the layout information from the PDF image, including each layout element's bbox, its category, and the corresponding text content within the bbox.\n\n1. Bbox format: [x1, y1, x2, y2]\n\n2. Layout Categories: The possible categories are ['Caption', 'Footnote', 'Formula', 'List-item', 'Page-footer', 'Page-header', 'Picture', 'Section-header', 'Table', 'Text', 'Title'].\n\n3. Text Extraction & Formatting Rules:\n    - Picture: For the 'Picture' category, the text field should be omitted.\n    - Formula: Format its text as LaTeX.\n    - Table: Format its text as HTML.\n    - All Others (Text, Title, etc.): Format their text as Markdown.\n\n4. Constraints:\n    - The output text must be the original text from the image, with no translation.\n    - All layout elements must be sorted according to human reading order.\n\n5. Final Output: The entire output must be a single JSON object.\n",
+    "max_tokens": 16384,
+    "license": "MIT + 'dots.ocr LICENSE AGREEMENT' riêng cho trọng số (phải đọc)",
+    "note": "Lời nhắc prompt_layout_all_en (giữ tiêu đề / chân trang). vLLM >= 0.11. Repo đã có bản mới rednote-hilab/dots.mocr. text_prefix theo dots_ocr/model/inference.py."
+  },
+  "qwen3vl_8b": {
+    "type": "openai",
+    "output": "markdown",
+    "model": "Qwen/Qwen3-VL-8B-Instruct",
+    "serve": [
+      "vllm",
+      "serve",
+      "Qwen/Qwen3-VL-8B-Instruct",
+      "--port",
+      "8002",
+      "--max-model-len",
+      "32768",
+      "--gpu-memory-utilization",
+      "0.9"
+    ],
+    "base_url": "http://127.0.0.1:8002/v1",
+    "prompt": "Transcribe all text on this page image exactly as printed, in natural human reading order: for a multi-column page, read each column from top to bottom before moving to the next column. Keep the original language, spelling, Vietnamese diacritics, punctuation and symbols. Include running headers, footers and page numbers. Write tables as HTML. Output only the transcription, without translation, summary or commentary.",
+    "max_tokens": 8192,
+    "license": "Apache-2.0 (model card)",
+    "note": "Model card: OCR 32 ngôn ngữ, không liệt kê tên. Giải mã tham lam (model card khuyên lấy mẫu, có thể lặp nhiều hơn)."
+  },
+  "qwen3vl_4b": {
+    "type": "openai",
+    "output": "markdown",
+    "model": "Qwen/Qwen3-VL-4B-Instruct",
+    "serve": [
+      "vllm",
+      "serve",
+      "Qwen/Qwen3-VL-4B-Instruct",
+      "--port",
+      "8003",
+      "--max-model-len",
+      "32768",
+      "--gpu-memory-utilization",
+      "0.9"
+    ],
+    "base_url": "http://127.0.0.1:8003/v1",
+    "prompt": "Transcribe all text on this page image exactly as printed, in natural human reading order: for a multi-column page, read each column from top to bottom before moving to the next column. Keep the original language, spelling, Vietnamese diacritics, punctuation and symbols. Include running headers, footers and page numbers. Write tables as HTML. Output only the transcription, without translation, summary or commentary.",
+    "max_tokens": 8192,
+    "license": "Apache-2.0 (kiểm model card)",
+    "note": "Cùng lời nhắc với qwen3vl_8b."
+  }
+}

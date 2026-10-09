@@ -13,7 +13,7 @@ Chiến lược xử lý (nguồn → parse → ngôn ngữ → làm sạch → 
 xem [`docs/PIPELINE.md`](PIPELINE.md), [`docs/SOURCES.md`](SOURCES.md) và lộ trình [`docs/ROADMAP.md`](ROADMAP.md).
 Các quyết định đã chốt qua từng phiên làm việc: [`docs/DECISION_LOG.md`](DECISION_LOG.md); sơ đồ luồng chính và luồng con: [`docs/diagrams/`](diagrams/).
 Cấu trúc repo và thư mục dữ liệu: [`docs/PROJECT_ARCHITECTURE.md`](PROJECT_ARCHITECTURE.md).
-Phần còn lại của README mô tả phần đã có code: **Phần A** tải dữ liệu SEA, **Phần B** OCR sách stbook, **Phần C** chạy tất cả bằng `scripts/run_all.py`, **Phần D** pipeline xử lý end-to-end trên N mẫu (có visualize, chạy nhiều GPU).
+Phần còn lại của README mô tả phần đã có code: **Phần A** tải dữ liệu SEA, **Phần B** OCR sách stbook, **Phần C** chạy tất cả bằng `scripts/run_all.py`, **Phần D** pipeline xử lý end-to-end trên N mẫu (có visualize, chạy nhiều GPU), **Phần E** công cụ hệ thống đọc .doc / .ppt / .djvu, **Phần F** so sánh engine OCR.
 
 ---
 
@@ -516,6 +516,38 @@ Lưu ý:
 
 ---
 
+# Phần F — So sánh engine OCR (F-11, chạy trên server GPU)
+
+Engine OCR hiện tại (Paddle detect + VietOCR) không xuất được `² ³`, nháy cong, `– —` và trộn dòng ở trang hai cột. Trước
+khi thay bằng mô hình thị giác - ngôn ngữ, chạy một đợt so sánh theo quy tắc chọn đã chốt trong `docs/DECISION_LOG.md`
+(F-11, G-02). Ứng viên khai báo ở `configs/ocr_bakeoff/engines.json`: `baseline`, `paddleocr_vl`, `dots_ocr`,
+`qwen3vl_8b`, `qwen3vl_4b` (thêm engine = thêm một mục).
+
+| Bước | Lệnh | Kết quả trong `<data-root>/processed/ocr_bakeoff/` |
+|---|---|---|
+| 1. Chọn trang (CPU) | `uv run python scripts/ocr_bakeoff/select_pages.py --data-root <root>` | `pages/`, `gt/`, `pages.jsonl`, `selection.json` (bộ A ~300 trang giáo trình có đáp án, bộ B ~40 trang stbook thật) |
+| 2. Tập âm tiết (CPU) | `uv run python scripts/ocr_bakeoff/build_syllables.py --data-root <root>` | `syllables.json` (từ SEA-PILE v2) |
+| 3. Chạy engine (GPU) | `uv run python scripts/ocr_bakeoff/run_engine.py --data-root <root> --engine <tên> --gpu <số> [--serve --vllm-bin <vllm>]` | `runs/<engine>/outputs.jsonl` (đầu ra thô từng trang), `run_info.json`, `server.log` |
+| 4. Chấm điểm | `uv run python scripts/ocr_bakeoff/score.py --data-root <root> --ppl [--gpu-hour-budget N]` | `report/summary.json`, `report/per_page.csv`, `report/report.html` |
+
+Chạy trọn cả 4 bước, mỗi engine một GPU (trong tmux):
+```bash
+DATA_ROOT=/duong/dan/data VLLM_BIN=/opt/vllm-env/bin/vllm GPU_HOUR_BUDGET=30 ./scripts/ocr_bakeoff/run_bakeoff.sh
+```
+
+Chuẩn bị môi trường:
+- `baseline`: `uv sync --group ocr` (muốn phần detect chạy GPU thì cài thêm `paddlepaddle-gpu`).
+- `dots_ocr`, `qwen3vl_*`: cài vLLM (>= 0.11) vào môi trường **riêng** (vd `python -m venv /opt/vllm-env && /opt/vllm-env/bin/pip install vllm`) rồi trỏ `--vllm-bin`. `--serve` tự dựng server bằng lệnh `serve` trong cấu hình, chờ tải xong mô hình, chạy xong thì tắt. Không dùng `--serve` thì tự dựng server trước (cổng ở `base_url`).
+- `paddleocr_vl`: cần `paddleocr[doc-parser]` và `paddlepaddle-gpu` trong môi trường chạy script (`PADDLE_VL_RUN` trong `run_bakeoff.sh`).
+- Thử nhanh một engine trước: `--limit 5`, rồi mở `runs/<engine>/outputs.jsonl` xem trường `text` và `error`.
+
+Đọc kết quả:
+- `summary.json` → `decision`: `winner` (engine chọn), `option_c` (có engine đủ chất lượng nhưng vượt ngân sách giờ GPU: chỉ chạy VLM cho trang bị nghi), `no_candidate` (giữ baseline). Chưa đặt `--gpu-hour-budget` thì kết luận chỉ là tạm.
+- `report.html`: bảng cổng loại (xanh qua, đỏ trượt, xám chưa kiểm), số đo bộ A theo tầng, bộ B (âm tiết lạ, perplexity, `?`), từng trang bộ B và vài trang hai cột bộ A đặt cạnh nhau với ảnh gốc.
+- Chạy lại được ở mọi bước: `run_engine.py` chỉ làm trang còn thiếu / lỗi (`--redo` để làm lại), `score.py` chấm lại bao nhiêu lần cũng được. Chọn lại bộ trang (`select_pages.py --overwrite`) sẽ xoá kết quả engine cũ.
+
+---
+
 # Cấu trúc code
 
 Xem chi tiết (cây thư mục, cấu trúc `data/`, luồng từng nguồn) trong [`docs/PROJECT_ARCHITECTURE.md`](PROJECT_ARCHITECTURE.md). Tóm tắt:
@@ -527,6 +559,7 @@ vi_corpus/
 ├── stbook/            # crawler stbook.vn + ocr_books (OCR có checkpoint, đọc kết quả về schema chung)
 ├── giao_trinh/        # xử lý giáo trình (đang triển khai)
 ├── pipeline/          # pipeline end-to-end: ingest…finalize, embed/reduce/viz, report, curator (chạy song song)
+├── ocr_bakeoff/       # so sánh engine OCR (Phần F): chọn trang, engine, adapter văn bản, số đo, chấm điểm
 └── vista/, vjol/      # chỗ trống, chưa có code
 scripts/
 ├── run_all.py         # chạy script của các phần theo thứ tự
@@ -535,7 +568,8 @@ scripts/
 ├── make_judge_sample.py  # mẫu phân tầng cho LLM chấm điểm
 ├── sea/               # 4 script tải, count_rows.py
 ├── stbook/            # crawl.py, ocr.py
-└── giao_trinh/        # extract.py (đang viết), profile.py
+├── giao_trinh/        # extract.py (đang viết), profile.py
+└── ocr_bakeoff/       # select_pages.py, build_syllables.py, run_engine.py, score.py, run_bakeoff.sh (Phần F)
 tests/                 # test (không cần mạng): uv run pytest
 pyproject.toml         # khai báo thư viện; uv.lock ghi phiên bản chính xác (commit cả hai)
 ```

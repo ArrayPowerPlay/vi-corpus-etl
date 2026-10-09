@@ -77,6 +77,15 @@ uv run python scripts/run_pipeline.py ... --global-verdict <root>/processed/dedu
 uv run python scripts/make_judge_sample.py --run-dir <run> --n 50000 --out <root>/processed/judge/sample_50k.parquet  # stratified LLM-judge sample
 # multi-GPU (NeMo Curator + Ray, `uv sync --group curator`): --executor xenna|ray_actor_pool|ray_data --num-gpus 4 [--ray-address auto] [--ocr-books N for parallel OCR]
 ```
+```bash
+# OCR engine bakeoff (F-11, vi_corpus/ocr_bakeoff/, docs/README.md Part F); output in <root>/processed/ocr_bakeoff/
+uv run python scripts/ocr_bakeoff/select_pages.py --data-root <root>      # set A (giáo trình text-layer pages + ground truth) + set B (real stbook scans)
+uv run python scripts/ocr_bakeoff/build_syllables.py --data-root <root>   # syllable set from SEA-PILE v2 for set B
+uv run python scripts/ocr_bakeoff/run_engine.py --data-root <root> --engine qwen3vl_8b --gpu 1 --serve --vllm-bin <vllm>  # engines in configs/ocr_bakeoff/engines.json; resumable
+uv run python scripts/ocr_bakeoff/score.py --data-root <root> --ppl [--gpu-hour-budget N]   # report/{summary.json,per_page.csv,report.html}
+DATA_ROOT=<root> VLLM_BIN=<vllm> ./scripts/ocr_bakeoff/run_bakeoff.sh     # all steps, one engine per GPU
+```
+Bakeoff gotchas: VLM adapters (PaddleOCR-VL, vLLM serve commands) and real GPU runs are untested; only fake engines / a fake OpenAI server were tested locally. Install vLLM in a separate env and pass `--vllm-bin`. Re-selecting pages (`--overwrite`) deletes engine outputs (they are keyed by page_id).
 Gotchas: Curator executors call `ray.shutdown()` after every `pipeline.run`, so `CuratorBackend.run` re-inits Ray before each stage (else the next stage hangs on a dead RAY_ADDRESS). `Task.task_id` is framework-owned (do not pass it to `DocumentBatch`); rows travel as a JSON `payload` column so ints/None survive Arrow. Parallel results are identical to serial (tests/test_curator.py, skipped without nemo-curator). Verified on CPU Ray only; real multi-GPU untested locally. `docs/README.md` Part D has the full user guide.
 ```bash
 # per-part scripts (one folder per source under scripts/)
@@ -91,7 +100,7 @@ The four SEA scripts share the flags `--data-root`, `--workers` (8), `--limit-fi
 
 ## Architecture
 
-Packages: `vi_corpus/common/` (registry, schema, `state.py` = atomic JSON + run lock + logging, `ocr.py`, `pdf_text.py`), `vi_corpus/sea/`, `vi_corpus/stbook/` (`ocr_books.py`, `crawler/`), `vi_corpus/giao_trinh/`. `vista/` and `vjol/` are empty placeholders.
+Packages: `vi_corpus/common/` (registry, schema, `state.py` = atomic JSON + run lock + logging, `ocr.py`, `pdf_text.py`), `vi_corpus/sea/`, `vi_corpus/stbook/` (`ocr_books.py`, `crawler/`), `vi_corpus/giao_trinh/`, `vi_corpus/ocr_bakeoff/` (OCR engine comparison, F-11). `vista/` and `vjol/` are empty placeholders.
 
 SEA flow: `scripts/sea/*.py` → `vi_corpus.sea.cli.main(keys)` → `vi_corpus.sea.downloader.run_dataset(key)` for each key, run sequentially. `download_all.py` iterates `DATASETS` in dict order, so the small dataset runs first.
 
