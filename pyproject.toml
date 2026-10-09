@@ -43,10 +43,13 @@ ocr = [
 # Chạy song song nhiều CPU / GPU bằng NeMo Curator + Ray (vi_corpus/pipeline/curator.py): uv sync --group curator.
 # Trên server GPU thay "text_cpu" bằng "text_cuda12" (uv pip install "nemo-curator[text_cuda12]") như ViLA.
 # transformers là bộ nhúng HF (vi_corpus/pipeline/embed.py).
+# nvidia-ml-py (module pynvml): cosmos-xenna (executor xenna) dùng nó để đếm GPU; thiếu thì báo "Assuming no GPUs" và
+# từ chối chạy stage cần GPU dù nvidia-smi thấy đủ card.
 curator = [
     "nemo-curator[text_cpu]>=0.7",
     "transformers>=4.40",
     "torch>=2.14.0",
+    "nvidia-ml-py>=12",
 ]
 # Bản đồ embedding (stage reduce + viz): PCA / UMAP / HDBSCAN và plotly (giống packages/reducer, packages/visualizer của ViLA).
 # Muốn UMAP trên GPU thì tự cài cuML (RAPIDS), pipeline tự dùng nếu import được.
