@@ -533,6 +533,7 @@ khi thay bằng mô hình thị giác - ngôn ngữ, chạy một đợt so sán
 Chạy trọn cả 4 bước, mỗi engine một GPU (trong tmux):
 ```bash
 DATA_ROOT=/duong/dan/data VLLM_BIN=/opt/vllm-env/bin/vllm HOUR_BUDGET=30 ./scripts/ocr_bakeoff/run_bakeoff.sh
+# hoặc: export DATA_ROOT=/duong/dan/data VLLM_BIN=/opt/vllm-env/bin/vllm; ./scripts/ocr_bakeoff/run_bakeoff.sh (biến phải cùng dòng hoặc export)
 ```
 
 Chuẩn bị môi trường:

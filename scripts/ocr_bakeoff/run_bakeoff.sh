@@ -4,15 +4,24 @@
 # (pages.jsonl, syllables.json, trang đã có kết quả) thì bỏ qua.
 # Dùng (từ gốc repo, trong tmux hoặc nohup):
 #   DATA_ROOT=/duong/dan/data VLLM_BIN=/opt/vllm-env/bin/vllm HOUR_BUDGET=30 ./scripts/ocr_bakeoff/run_bakeoff.sh
+# Biến phải đặt trên CÙNG dòng lệnh (như trên) hoặc bằng `export`; đặt ở dòng riêng không có export thì script không thấy.
+# DATA_ROOT mặc định giống các script khác: biến SEA_DATA_ROOT, không có thì ./data.
 # Biến tuỳ chọn: BAKEOFF_DIR (mặc định $DATA_ROOT/processed/ocr_bakeoff), HOUR_BUDGET (giới hạn số giờ server chạy OCR cả kho),
 # PADDLE_VL_RUN (lệnh python có paddleocr[doc-parser], mặc định "uv run --group ocr python").
 set -uo pipefail
 
-DATA_ROOT="${DATA_ROOT:?Đặt DATA_ROOT=/duong/dan/data}"
+DATA_ROOT="${DATA_ROOT:-${SEA_DATA_ROOT:-data}}"
 BAKEOFF_DIR="${BAKEOFF_DIR:-$DATA_ROOT/processed/ocr_bakeoff}"
 VLLM_BIN="${VLLM_BIN:-vllm}"
 PADDLE_VL_RUN="${PADDLE_VL_RUN:-uv run --group ocr python}"
 COMMON=(--data-root "$DATA_ROOT" --bakeoff-dir "$BAKEOFF_DIR")
+echo "DATA_ROOT=$DATA_ROOT  BAKEOFF_DIR=$BAKEOFF_DIR  VLLM_BIN=$VLLM_BIN"
+if [ ! -d "$DATA_ROOT/raw" ]; then
+  echo "Không thấy $DATA_ROOT/raw: đặt DATA_ROOT đúng thư mục dữ liệu (cùng dòng lệnh hoặc export)"; exit 1
+fi
+if ! command -v "$VLLM_BIN" > /dev/null; then
+  echo "Không tìm thấy lệnh vLLM '$VLLM_BIN': dots_ocr, qwen3vl_8b, qwen3vl_4b sẽ lỗi (xem docs/README.md Phần F để cài)"
+fi
 mkdir -p "$BAKEOFF_DIR/logs"
 
 if [ ! -f "$BAKEOFF_DIR/pages.jsonl" ]; then
