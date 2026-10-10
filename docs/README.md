@@ -534,6 +534,9 @@ Chạy trọn cả 4 bước, mỗi engine một GPU (trong tmux):
 ```bash
 DATA_ROOT=/duong/dan/data VLLM_BIN=/opt/vllm-env/bin/vllm HOUR_BUDGET=30 ./scripts/ocr_bakeoff/run_bakeoff.sh
 # hoặc: export DATA_ROOT=/duong/dan/data VLLM_BIN=/opt/vllm-env/bin/vllm; ./scripts/ocr_bakeoff/run_bakeoff.sh (biến phải cùng dòng hoặc export)
+# script chạy `uv sync --group ocr` một lần rồi mọi lệnh dùng `uv run --no-sync` (chạy song song `uv run` và
+# `uv run --group ocr` thì các tiến trình gỡ - cài torch của nhau); dừng nếu pages.jsonl không có trang bộ A;
+# cuối bước chạy engine in engine nào lỗi kèm 15 dòng cuối log (mã thoát ở logs/status/<engine>)
 ```
 
 Chuẩn bị môi trường:

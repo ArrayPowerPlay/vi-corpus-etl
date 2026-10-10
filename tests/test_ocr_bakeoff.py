@@ -271,6 +271,16 @@ def test_score_va_quy_tac_chon(tmp_path):
     assert "Số giờ chạy" in (tmp_path / "report/report.html").read_text(encoding="utf-8")
 
 
+def test_score_khi_khong_co_bo_a(tmp_path):
+    """Chỉ có trang bộ B (lỗi gặp ở server: KeyError trong report.html): vẫn ra báo cáo, kết luận no_set_a."""
+    _fake_bakeoff(tmp_path, n=0)
+    _write_run(tmp_path, "baseline", {"B0": "Sách quét", "B1": "trang hai"})
+    _write_run(tmp_path, "good", {"B0": "Sách quét", "B1": "trang hai"}, pps=2.0)
+    s = score_bakeoff(tmp_path, ["baseline", "good"])
+    assert s["decision"]["status"] == "no_set_a" and set(s["set_b"]) == {"baseline", "good"}
+    assert "Bộ B" in (tmp_path / "report/report.html").read_text(encoding="utf-8")
+
+
 def test_hoa_cer_chon_engine_nhanh_hon(tmp_path):
     """Hai ứng viên cùng sai đúng một ký tự mỗi trang (hiệu CER = 0, khoảng tin cậy chứa 0): chọn engine nhanh hơn."""
     refs = _fake_bakeoff(tmp_path)

@@ -60,6 +60,12 @@ def main() -> int:
                         scan_per_doc=args.scan_per_doc, max_per_doc=args.max_per_doc)
     print(json.dumps({k: sel[k] for k in ("set_a", "set_b", "target_height", "strata", "shortfall", "books_b",
                                           "corpus_pages")}, ensure_ascii=False, indent=2))
+    if not sel["set_a"]:
+        (out / "pages.jsonl").unlink(missing_ok=True)  # để lần chạy sau tự chọn lại
+        print(f"LỖI: bộ A rỗng ({sel['pdfs_found']} PDF giáo trình trong {args.data_root}/raw/giao_trinh). Bộ A là bộ duy "
+              "nhất có đáp án, thiếu nó thì không chấm CER và không chọn được engine. Cần PDF giáo trình có lớp chữ "
+              "(xem 'rejected' ở trên); tăng --max-files / --scan-per-doc nếu đã có PDF.")
+        return 1
     if sel["shortfall"]:
         print(f"Thiếu trang ở tầng {sel['shortfall']}: tăng --max-files / --scan-per-doc rồi chạy lại với --overwrite")
     return 0

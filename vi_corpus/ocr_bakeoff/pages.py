@@ -440,6 +440,9 @@ def prepare_pages(data_root: Path, out: Path, n_a: int = 300, n_b: int = 40, min
     rng.shuffle(pdfs)
     quotas = QUOTAS if quotas is None else quotas
     set_a, stats = select_set_a(pdfs, gt_root, out, n_a, height, rng, max_files, scan_per_doc, max_per_doc, quotas)
+    if not set_a:
+        logger.warning("Bộ A rỗng: %d PDF giáo trình ở %s, không trang nào có lớp chữ dùng được (lý do loại: %s)",
+                       len(pdfs), gt_root, dict(stats["rejected"]))
     with open(out / "pages.jsonl", "w", encoding="utf-8") as f:
         f.writelines(json.dumps(r, ensure_ascii=False) + "\n" for r in set_a + set_b)
     selection = {"seed": seed, "set_a": len(set_a), "set_b": len(set_b), "target_height": height,

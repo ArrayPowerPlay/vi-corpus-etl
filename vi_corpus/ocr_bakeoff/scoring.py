@@ -382,7 +382,7 @@ def _fmt(v, pct: bool = False) -> str:
 def render_html(summary: dict, pages: list[dict], outputs: dict[str, dict[str, dict]], bakeoff_dir: Path,
                 max_a_examples: int = 10) -> str:
     """Báo cáo HTML một file: bảng số đo, cổng, kết luận, bộ B và vài trang hai cột bộ A cạnh nhau."""
-    engines = list(summary["set_a"]) or list(summary["set_b"])
+    engines = list(dict.fromkeys([*summary["set_a"], *summary["set_b"], *summary["hours"]]))
     e = html.escape
     parts = ["<!doctype html><html lang='vi'><head><meta charset='utf-8'><title>So sánh OCR</title><style>",
              _CSS, "</style></head><body>",
@@ -395,7 +395,9 @@ def render_html(summary: dict, pages: list[dict], outputs: dict[str, dict[str, d
     parts.append("<h2>Cổng loại</h2><table><tr><th>engine</th>" + "".join(f"<th>{e(g)}</th>" for g in gate_names)
                  + "</tr>")
     for name in engines:
-        g = gates[name]
+        g = gates.get(name)
+        if not g:
+            continue
         cells = "".join(f"<td class='{c['status']}'>{_fmt(c['value'], k != 'corpus_hours')}"
                         f" / {_fmt(c['limit'], k != 'corpus_hours')}</td>" for k, c in g["checks"].items())
         parts.append(f"<tr><td>{e(name)}</td>{cells}</tr>")
