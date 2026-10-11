@@ -21,6 +21,11 @@ import os
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
+# Driver chạy bằng `uv run` thì Ray mặc định cho worker chạy lại `uv run` trong bản sao thư mục làm việc (bỏ .venv theo
+# .gitignore): uv tạo .venv rỗng và worker chết vì "No module named 'ray'" (gặp ở server). Tắt để worker dùng python của
+# driver; phải đặt trước lần import ray đầu tiên (nemo_curator import ray; ray_constants đọc biến lúc import).
+os.environ.setdefault("RAY_ENABLE_UV_RUN_RUNTIME_ENV", "0")
+
 import pandas as pd
 from nemo_curator.backends.base import WorkerMetadata
 from nemo_curator.pipeline import Pipeline
@@ -139,9 +144,13 @@ def init_ray(num_gpus: int | None = None, num_cpus: int | None = None, address: 
         address:  Địa chỉ cụm Ray có sẵn ("auto", "ray://host:10001", ...); None = chạy Ray cục bộ trong máy này.
     """
     import ray
+    from ray._private import ray_constants
 
     if ray.is_initialized():
         return False
+    # ray đã được import trước khi biến RAY_ENABLE_UV_RUN_RUNTIME_ENV kịp đặt (vd pytest import nemo_curator trước):
+    # tắt thẳng hằng số đã đọc, nếu không worker chạy `uv run` trong .venv rỗng (xem đầu module)
+    ray_constants.RAY_ENABLE_UV_RUN_RUNTIME_ENV = False
     if not address and os.environ.get("RAY_ADDRESS") == _PINNED.get("addr"):
         os.environ.pop("RAY_ADDRESS", None)  # địa chỉ của lần Ray trước đã bị executor tắt; không được nối vào đó
     kwargs: dict = {"ignore_reinit_error": True}

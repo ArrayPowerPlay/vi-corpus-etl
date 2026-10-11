@@ -24,6 +24,9 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # để import được vi_corpus
+# Chạy bằng `uv run`, Ray mặc định bắt worker chạy lại `uv run` trong bản sao thư mục làm việc (không có .venv vì
+# .gitignore): uv tạo .venv rỗng, worker lỗi "No module named 'ray'". Tắt để worker dùng đúng python của driver.
+os.environ.setdefault("RAY_ENABLE_UV_RUN_RUNTIME_ENV", "0")
 
 from vi_corpus.common.registry import load_sources  # noqa: E402
 from vi_corpus.common.state import acquire_run_lock, setup_logging  # noqa: E402
