@@ -532,8 +532,9 @@ khi thay bằng mô hình thị giác - ngôn ngữ, chạy một đợt so sán
 
 Chạy trọn cả 4 bước, mỗi engine một GPU (trong tmux):
 ```bash
-DATA_ROOT=/duong/dan/data VLLM_BIN=/opt/vllm-env/bin/vllm HOUR_BUDGET=30 ./scripts/ocr_bakeoff/run_bakeoff.sh
-# hoặc: export DATA_ROOT=/duong/dan/data VLLM_BIN=/opt/vllm-env/bin/vllm; ./scripts/ocr_bakeoff/run_bakeoff.sh (biến phải cùng dòng hoặc export)
+source /home/jovyan/dinh/env.sh       # mỗi lần mở server (xem "Môi trường trên server Run:ai" bên dưới)
+VLLM_BIN=$(which vllm) HOUR_BUDGET=30 ./scripts/ocr_bakeoff/run_bakeoff.sh 2>&1 | tee bakeoff.log
+# DATA_ROOT mặc định lấy SEA_DATA_ROOT (đặt trong env.sh); biến phải cùng dòng lệnh hoặc export
 # script chạy `uv sync --group ocr` một lần rồi mọi lệnh dùng `uv run --no-sync` (chạy song song `uv run` và
 # `uv run --group ocr` thì các tiến trình gỡ - cài torch của nhau); dừng nếu pages.jsonl không có trang bộ A;
 # cuối bước chạy engine in engine nào lỗi kèm 15 dòng cuối log (mã thoát ở logs/status/<engine>)
@@ -541,9 +542,47 @@ DATA_ROOT=/duong/dan/data VLLM_BIN=/opt/vllm-env/bin/vllm HOUR_BUDGET=30 ./scrip
 
 Chuẩn bị môi trường:
 - `baseline`: `uv sync --group ocr` (muốn phần detect chạy GPU thì cài thêm `paddlepaddle-gpu`).
-- `dots_ocr`, `qwen3vl_*`: cài vLLM (>= 0.11) vào môi trường **riêng** (vd `python -m venv /opt/vllm-env && /opt/vllm-env/bin/pip install vllm`) rồi trỏ `--vllm-bin`. `--serve` tự dựng server bằng lệnh `serve` trong cấu hình, chờ tải xong mô hình, chạy xong thì tắt. Không dùng `--serve` thì tự dựng server trước (cổng ở `base_url`).
-- `paddleocr_vl`: cần `paddleocr[doc-parser]` và `paddlepaddle-gpu` trong môi trường chạy script (`PADDLE_VL_RUN` trong `run_bakeoff.sh`).
+- `dots_ocr`, `qwen3vl_*`: cài vLLM (>= 0.11) bằng `uv tool install` (môi trường riêng do uv quản lý, không nằm trong `uv.lock` vì vLLM khoá cứng bản torch, dễ đụng torch của group `ocr` / `curator`) rồi trỏ `--vllm-bin`. `--serve` tự dựng server bằng lệnh `serve` trong cấu hình, chờ tải xong mô hình, chạy xong thì tắt. Không dùng `--serve` thì tự dựng server trước (cổng ở `base_url`).
+- `paddleocr_vl`: gồm hai phần. Server mô hình 0.9B dùng chung vLLM ở trên (`vllm serve PaddlePaddle/PaddleOCR-VL`, lệnh trong `engines.json`). Phần dò bố cục (PP-DocLayout) chạy bằng paddle, cần môi trường **riêng** có `paddlepaddle-gpu` + `paddleocr[doc-parser]` (môi trường repo có paddle bản CPU, hai bản không cài chung được), trỏ bằng biến `PADDLE_VL_RUN`. Thiếu môi trường này thì `run_bakeoff.sh` bỏ qua `paddleocr_vl` và báo ở đầu và cuối log. Dựng một lần (trên server, sau khi `source env.sh`):
+  ```bash
+  V=/home/jovyan/dinh/.tools/paddlevl-env
+  uv venv --python 3.12 $V
+  uv pip install --python $V/bin/python paddlepaddle-gpu==3.2.1 --extra-index-url https://www.paddlepaddle.org.cn/packages/stable/cu126/
+  uv pip install --python $V/bin/python "paddleocr[doc-parser]" safetensors pymupdf numpy pillow requests
+  echo "export PADDLE_VL_RUN=$V/bin/python" >> /home/jovyan/dinh/env.sh && source /home/jovyan/dinh/env.sh
+  $PADDLE_VL_RUN -c "import paddle; print(paddle.device.is_compiled_with_cuda())"   # phải in True
+  ```
 - Thử nhanh một engine trước: `--limit 5`, rồi mở `runs/<engine>/outputs.jsonl` xem trường `text` và `error`.
+
+Môi trường trên server Run:ai (kiểm 2026-10-11, DECISION_LOG O-06): `HOME=/home/runai-home` nằm trên ổ riêng của máy
+vật lý và **bị xoá mỗi lần server tự tắt** (mất uv, công cụ `uv tool`, Python do uv tải, `~/.cache/huggingface`);
+`/home/jovyan` là Lustre, còn nguyên (repo và `data/` ở `/home/jovyan/dinh/vi-corpus-etl`). Vì vậy mọi thứ cần giữ đặt
+dưới `/home/jovyan/dinh/.tools` qua một file `env.sh`:
+
+```bash
+# làm một lần
+P=/home/jovyan/dinh/.tools
+mkdir -p $P/bin && cp ~/.local/bin/uv ~/.local/bin/uvx $P/bin/   # hoặc cài uv mới với UV_INSTALL_DIR=$P/bin
+cat > /home/jovyan/dinh/env.sh <<'ENV'
+P=/home/jovyan/dinh/.tools
+export PATH=$P/bin:$PATH
+export UV_INSTALL_DIR=$P/bin
+export UV_TOOL_DIR=$P/uv-tools
+export UV_TOOL_BIN_DIR=$P/bin
+export UV_PYTHON_INSTALL_DIR=$P/uv-python
+export UV_CACHE_DIR=$P/uv-cache
+export HF_HOME=$P/hf-cache
+export SEA_DATA_ROOT=/home/jovyan/dinh/vi-corpus-etl/data
+ENV
+source /home/jovyan/dinh/env.sh
+uv tool install "vllm==0.31.0"   # bản đã cài trên server 2026-10-11 (O-06); đổi bản thì ghi lại vào DECISION_LOG
+cd /home/jovyan/dinh/vi-corpus-etl && uv sync --group ocr   # .venv cũ có thể trỏ tới Python trong HOME đã mất
+
+# mỗi lần mở server
+source /home/jovyan/dinh/env.sh && cd /home/jovyan/dinh/vi-corpus-etl
+```
+Lustre còn ~335 GB (2026-10-11); vLLM ~10 GB, trọng số các mô hình so sánh ~35 GB. Lustre đọc nhiều file nhỏ chậm nên
+vLLM khởi động lâu hơn vài chục giây.
 
 Đọc kết quả:
 - `summary.json` → `decision`: `winner` (engine chọn), `option_c` (có engine đủ chất lượng nhưng vượt giới hạn số giờ chạy: chỉ chạy VLM cho trang bị nghi), `no_candidate` (giữ baseline). Chưa đặt `--hour-budget` (số giờ tối đa server được chạy để OCR cả kho) thì kết luận chỉ là tạm.

@@ -11,16 +11,21 @@
     "type": "paddleocr_vl",
     "output": "markdown",
     "serve": [
-      "paddleocr",
-      "genai_server",
-      "--model_name",
-      "PaddleOCR-VL-0.9B",
-      "--host",
-      "127.0.0.1",
+      "vllm",
+      "serve",
+      "PaddlePaddle/PaddleOCR-VL",
       "--port",
       "8118",
-      "--backend",
-      "vllm"
+      "--served-model-name",
+      "PaddleOCR-VL-0.9B",
+      "--trust-remote-code",
+      "--max-num-batched-tokens",
+      "16384",
+      "--no-enable-prefix-caching",
+      "--mm-processor-cache-gb",
+      "0",
+      "--gpu-memory-utilization",
+      "0.8"
     ],
     "base_url": "http://127.0.0.1:8118/v1",
     "pipeline_kwargs": {
@@ -29,7 +34,7 @@
       "vl_rec_server_url": "http://127.0.0.1:8118/v1"
     },
     "license": "Apache-2.0 (model card)",
-    "note": "Cần paddleocr[doc-parser] + paddlepaddle-gpu. Model card ghi 109 ngôn ngữ, không nêu tên tiếng Việt. Có bản mới PaddleOCR-VL-1.6. Pipeline chạy tuần tự từng trang nên tốc độ đo được là cận dưới."
+    "note": "Server: vLLM chung với các engine khác (lệnh theo recipe PaddleOCR-VL của vLLM; --served-model-name vì pipeline gọi tên PaddleOCR-VL-0.9B; 0.8 bộ nhớ GPU để chừa chỗ cho mô hình dò bố cục). Phía pipeline (dò bố cục PP-DocLayout) cần môi trường riêng có paddlepaddle-gpu + paddleocr[doc-parser], trỏ bằng PADDLE_VL_RUN (docs/README.md Phần F). Model card ghi 109 ngôn ngữ, không nêu tên tiếng Việt. Có bản mới PaddleOCR-VL-1.6. Pipeline chạy tuần tự từng trang nên tốc độ đo được là cận dưới."
   },
   "dots_ocr": {
     "type": "openai",

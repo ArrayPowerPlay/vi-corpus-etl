@@ -3,11 +3,13 @@
 # trên 4 GPU (mỗi engine một GPU; GPU 0 chạy baseline rồi qwen3vl_4b), chấm điểm. Chạy lại được: bước nào đã xong
 # (pages.jsonl, syllables.json, trang đã có kết quả) thì bỏ qua.
 # Dùng (từ gốc repo, trong tmux hoặc nohup):
-#   DATA_ROOT=/duong/dan/data VLLM_BIN=/opt/vllm-env/bin/vllm HOUR_BUDGET=30 ./scripts/ocr_bakeoff/run_bakeoff.sh
+#   DATA_ROOT=/duong/dan/data VLLM_BIN=$(which vllm) HOUR_BUDGET=30 ./scripts/ocr_bakeoff/run_bakeoff.sh
+# vLLM cài bằng `uv tool install` (docs/README.md Phần F; trên server Run:ai cần source env.sh trước).
 # Biến phải đặt trên CÙNG dòng lệnh (như trên) hoặc bằng `export`; đặt ở dòng riêng không có export thì script không thấy.
 # DATA_ROOT mặc định giống các script khác: biến SEA_DATA_ROOT, không có thì ./data.
 # Biến tuỳ chọn: BAKEOFF_DIR (mặc định $DATA_ROOT/processed/ocr_bakeoff), HOUR_BUDGET (giới hạn số giờ server chạy OCR cả kho),
-# PADDLE_VL_RUN (lệnh python có paddleocr[doc-parser], mặc định "uv run --no-sync python").
+# PADDLE_VL_RUN (lệnh python của môi trường riêng có paddlepaddle-gpu + paddleocr[doc-parser], mặc định
+# "uv run --no-sync python" = môi trường repo, không có paddleocr nên paddleocr_vl sẽ bị bỏ qua; cách dựng: docs/README.md Phần F).
 # Môi trường: cài MỘT lần đầu script (`uv sync --group ocr`, gồm cả group mặc định), sau đó mọi lệnh dùng
 # `uv run --no-sync`. Không làm vậy thì các tiến trình song song `uv run` / `uv run --group ocr` gỡ - cài torch của nhau.
 set -uo pipefail
@@ -50,10 +52,19 @@ run() {  # run <gpu> <tên log> <lệnh python...> : log riêng, ghi mã thoát 
   echo $? > "$STATUS_DIR/$log"
 }
 
+PADDLE_VL_OK=1
+# môi trường repo có paddle bản CPU (group ocr) nên phải kiểm paddle có CUDA, không chỉ import được
+if ! $PADDLE_VL_RUN -c "import paddle, pymupdf, requests; assert paddle.device.is_compiled_with_cuda(); from paddleocr import PaddleOCRVL" > /dev/null 2>&1; then
+  PADDLE_VL_OK=0
+  echo "PADDLE_VL_RUN='$PADDLE_VL_RUN' thiếu paddlepaddle-gpu / paddleocr[doc-parser] / pymupdf / requests: BỎ QUA paddleocr_vl (dựng môi trường theo docs/README.md Phần F)"
+fi
+
 ENGINE=(scripts/ocr_bakeoff/run_engine.py "${COMMON[@]}" --engine)
 ( run 0 baseline "${PY[@]}" "${ENGINE[@]}" baseline
   run 0 qwen3vl_4b "${PY[@]}" "${ENGINE[@]}" qwen3vl_4b --serve --vllm-bin "$VLLM_BIN" ) &
-( run 1 paddleocr_vl $PADDLE_VL_RUN "${ENGINE[@]}" paddleocr_vl --serve ) &
+if [ "$PADDLE_VL_OK" = 1 ]; then
+  ( run 1 paddleocr_vl $PADDLE_VL_RUN "${ENGINE[@]}" paddleocr_vl --serve --vllm-bin "$VLLM_BIN" ) &
+fi
 ( run 2 dots_ocr "${PY[@]}" "${ENGINE[@]}" dots_ocr --serve --vllm-bin "$VLLM_BIN" ) &
 ( run 3 qwen3vl_8b "${PY[@]}" "${ENGINE[@]}" qwen3vl_8b --serve --vllm-bin "$VLLM_BIN" ) &
 wait
@@ -68,6 +79,7 @@ for f in "$STATUS_DIR"/*; do
     echo "=== $name xong: $(tail -n 1 "$BAKEOFF_DIR/logs/$name.log")"
   fi
 done
+[ "$PADDLE_VL_OK" = 1 ] || echo "=== paddleocr_vl BỎ QUA (thiếu môi trường PADDLE_VL_RUN), kết quả so sánh không có engine này"
 [ "$FAILED" = 0 ] || echo "Có engine lỗi; sửa rồi chạy lại script (trang đã xong được giữ). Vẫn chấm điểm phần đã có."
 
 SCORE=("${PY[@]}" scripts/ocr_bakeoff/score.py "${COMMON[@]}" --ppl)

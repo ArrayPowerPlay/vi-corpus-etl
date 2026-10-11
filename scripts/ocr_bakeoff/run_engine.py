@@ -8,11 +8,12 @@ lệnh "serve" trong cấu hình, chờ sẵn sàng, chạy xong thì tắt; kh�
 Mỗi engine có khoá chạy riêng: hai tiến trình không chạy cùng một engine.
 
 Môi trường: baseline cần `uv sync --group ocr` (+ paddlepaddle-gpu nếu muốn detect trên GPU); paddleocr_vl cần
-paddleocr[doc-parser] + paddlepaddle-gpu; vLLM nên cài ở môi trường riêng và trỏ bằng --vllm-bin (client chỉ cần requests).
+paddleocr[doc-parser] + paddlepaddle-gpu ở môi trường riêng (server của nó cũng là vLLM); vLLM cài bằng `uv tool install` (môi trường riêng) và trỏ bằng --vllm-bin
+(client chỉ cần requests).
 Ví dụ:
     uv run --group ocr python scripts/ocr_bakeoff/run_engine.py --data-root /duong/dan/data --engine baseline --gpu 0
     uv run python scripts/ocr_bakeoff/run_engine.py --data-root /duong/dan/data --engine qwen3vl_8b --gpu 1 --serve \
-        --vllm-bin /opt/vllm-env/bin/vllm --concurrency 16
+        --vllm-bin $(which vllm) --concurrency 16
     uv run python scripts/ocr_bakeoff/run_engine.py --data-root /duong/dan/data --engine dots_ocr --limit 5   # thử nhanh
 """
 

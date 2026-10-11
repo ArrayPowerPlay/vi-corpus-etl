@@ -34,6 +34,7 @@ Thứ tự khuyến nghị: S-10 (VJOL ưu tiên cao nhất, R-15) → S-0 → S
 ## S-0. Kiểm tra máy và cài thư viện
 
 ```bash
+source /home/jovyan/dinh/env.sh  # HOME bị xoá khi server tự tắt; uv, vLLM, cache đặt trên Lustre (docs/README.md Phần F, O-06)
 nvidia-smi                       # phải thấy 4 GPU A100 40GB; ghi lại GPU đang bận hay rảnh
 nproc && free -g && df -h $SEA_DATA_ROOT   # số CPU, RAM (GB), dung lượng đĩa còn trống
 cd /duong/dan/vi-corpus-etl && git pull
@@ -180,9 +181,9 @@ Mô hình đã chốt: `Qwen3.5-27B` (DECISION_LOG R-12), không có mô hình d
 Cài vLLM trong **môi trường riêng** (thư viện nặng, dễ xung đột phiên bản torch với môi trường OCR / curator):
 
 ```bash
-mkdir -p ~/vllm_env && cd ~/vllm_env && uv venv && uv pip install vllm
-CUDA_VISIBLE_DEVICES=0,1 ~/vllm_env/.venv/bin/vllm serve <model> --tensor-parallel-size 2 --port 8000 &
-CUDA_VISIBLE_DEVICES=2,3 ~/vllm_env/.venv/bin/vllm serve <model> --tensor-parallel-size 2 --port 8001 &
+source /home/jovyan/dinh/env.sh   # vLLM đã cài bằng `uv tool install` theo docs/README.md Phần F (O-06)
+CUDA_VISIBLE_DEVICES=0,1 vllm serve <model> --tensor-parallel-size 2 --port 8000 &
+CUDA_VISIBLE_DEVICES=2,3 vllm serve <model> --tensor-parallel-size 2 --port 8001 &
 ```
 
 Kiểm tra trước: bản vLLM cài được có hỗ trợ kiến trúc của mô hình không (mô hình mới ra thường cần vLLM mới); nếu báo lỗi kiến trúc, nâng cấp vLLM (không đổi mô hình). Với Qwen3 nên tắt chế độ "suy nghĩ" khi chấm (tham số `chat_template_kwargs: {"enable_thinking": false}` trong yêu cầu); kiểm tra tài liệu của mô hình đã chọn.
