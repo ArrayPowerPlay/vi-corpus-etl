@@ -79,13 +79,26 @@ def test_chunk_theo_token_uu_tien_tieu_de():
 
 
 def test_chunk_doan_van_qua_dai_cat_theo_cau_roi_cat_cung():
-    """Đoạn văn dài hơn max: tách theo câu; câu dài hơn max: cắt cứng."""
+    """Đoạn văn dài hơn max: tách theo câu; câu dài hơn max: cắt cứng thành các phần đều nhau."""
     long_para = " ".join(SENT * 6)  # ~ 600 từ, có dấu chấm
     chunks = chunk_text(long_para, WORDS, target=100, max_tokens=150, min_tokens=30)
     assert len(chunks) > 3 and all(WORDS.count(c) <= 150 for c in chunks)
     assert all(c.rstrip().endswith(".") for c in chunks[:-1])
     hard = chunk_text(" ".join(["x"] * 500), WORDS, target=100, max_tokens=150, min_tokens=30)
-    assert [WORDS.count(c) for c in hard] == [150, 150, 150, 50]
+    assert [WORDS.count(c) for c in hard] == [125, 125, 125, 125]
+
+
+def test_chunk_bai_web_ngan_doan_bang_mot_dau_xuong_dong_khong_de_duoi_vun():
+    """
+    Bài web ngăn đoạn văn bằng một dấu xuống dòng (cả bài là một "đoạn văn"): trước đây gom tới max nên bài 2.120 từ
+    thành [2.040, 80] và đoạn đuôi bị too_short; nay gom tới mục tiêu nên không còn đoạn nào < min.
+    """
+    line = " ".join(["từ"] * 40)
+    web = "\n".join([line] * 53)
+    sizes = [WORDS.count(c) for c in chunk_text(web, WORDS, target=1024, max_tokens=2048, min_tokens=256)]
+    assert sum(sizes) == 2120 and all(256 <= n <= 2048 for n in sizes), sizes
+    hard = chunk_text(" ".join(["x"] * 2100), WORDS, target=1024, max_tokens=2048, min_tokens=256)
+    assert [WORDS.count(c) for c in hard] == [1050, 1050]  # cắt cứng chia đều, không còn [2048, 52]
 
 
 def test_chunk_rows_bai_web_dai_moi_cat_va_gan_van_tay_van_ban():
@@ -113,12 +126,33 @@ class FakeLid:
 
 def test_detect_mix_theo_doan_vi_du_d02():
     """Ví dụ D-02: 10 đoạn dài bằng nhau, 8 vi (0,98) + 2 en (0,95) -> vi, lang_mix 0,8 / 0,2, lang_score ~0,78."""
-    vi_seg, en_seg = "x" * 49 + "a", "English " + "y" * 42
+    vi_seg, en_seg = "x" * 49 + "a", "English " + "y" * 43  # cùng 50 chữ cái (trọng số theo chữ cái)
     text = "\n\n".join([vi_seg] * 8 + [en_seg] * 2)
     lang, score, mix = detect_mix(text, FakeLid())
     assert lang == "vi" and mix == {"vi": 0.8, "en": 0.2} and score == pytest.approx(0.784, abs=1e-3)
     assert detect_mix("123 456", FakeLid()) == ("und", 0.0, {})  # F-07: không còn chữ cái
-    assert len(segments_of("\n\n".join(f"đoạn {i}" for i in range(200)), 50)) == 50
+    assert len(segments_of("\n\n".join(f"đoạn {i}" for i in range(200)), 50)) == 50  # mọi đoạn đều ngắn: vẫn dùng
+
+
+def test_detect_mix_bo_dong_it_chu_va_tinh_theo_chu_cai():
+    """
+    Report run 10.000 mẫu lần 2: câu hỏi trắc nghiệm tiếng Việt kèm 10 dòng phương án "A: [2, 4, 6]" bị gọi là tiếng Anh
+    vì các dòng phương án (nhiều ký tự, gần như không có chữ) được tính theo số ký tự. Nay dòng < 10 chữ cái bị bỏ và
+    trọng số theo chữ cái.
+    """
+    class OptionLid:
+        """Giả fastText thật: dòng có dấu tiếng Việt là vi, còn lại en."""
+
+        def predict(self, segments):
+            """(nhãn, độ tin cậy) cho từng đoạn."""
+            return [("vi", 0.99) if any(c in "ộữửế" for c in s) else ("en", 0.8) for s in segments]
+
+    options = "\n".join(f"{k}: [2, 4, 6, 8, 10, 12, 14, 16, 18, 20]" for k in "ABCDEFGHIJ")
+    lang, _, mix = detect_mix("Trong một ngôn ngữ lập trình hàm, kết quả của biểu thức sẽ là gì?\n" + options, OptionLid())
+    assert lang == "vi" and mix == {"vi": 1.0}
+    lang, _, mix = detect_mix("Chọn số còn thiếu từ các phương án\nĐáp án: (A) 143 (B) 125 (C) 261 (D) 132 (E) 156",
+                              OptionLid())
+    assert lang == "vi" and mix["vi"] > 0.7  # dòng "Đáp án" đủ 10 chữ cái nhưng nặng theo chữ cái chứ không theo ký tự
 
 
 def test_lid_text_bo_luot_system_cua_sea_instruct():

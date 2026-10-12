@@ -10,6 +10,7 @@ quét rò rỉ benchmark và các mẫu văn bản thật (ngẫu nhiên giữ l
 
 import html
 import json
+import math
 import random
 from pathlib import Path
 
@@ -79,15 +80,17 @@ def stacked_bars(data: dict[str, dict[str, int]], series: list[tuple[str, str, s
     return _legend(series) + "".join(out)
 
 
-def histogram(values: list[float], edges: list[float], label: str, log_axis: bool = False) -> str:
+def histogram(values: list[float], edges: list[float], label: str, bin_labels: bool = False) -> str:
     """
     Biểu đồ cột phân phối (một ô): đếm giá trị theo khoảng [edges[i], edges[i+1]), trục y bắt đầu từ 0.
 
     Args:
-        values:   Các giá trị.
-        edges:    Biên các khoảng (tăng dần); giá trị ngoài biên được dồn vào khoảng đầu / cuối.
-        label:    Nhãn trục x.
-        log_axis: True nếu biên là lũy thừa (chỉ ảnh hưởng nhãn: in dạng 1k, 10k).
+        values:     Các giá trị.
+        edges:      Biên các khoảng (tăng dần); giá trị ngoài biên được dồn vào khoảng đầu / cuối. Biên cuối math.inf
+                    = khoảng cuối mở ("≥ x").
+        label:      Nhãn trục x.
+        bin_labels: True khi các khoảng rộng không đều: mọi cột vẽ rộng bằng nhau nên ghi cận dưới dưới từng cột (dạng 1k,
+                    1.5k), thay vì chỉ ghi hai đầu trục như với khoảng đều.
     """
     counts = [0] * (len(edges) - 1)
     for v in values:
@@ -102,14 +105,29 @@ def histogram(values: list[float], edges: list[float], label: str, log_axis: boo
     for i, c in enumerate(counts):
         bh = (h - pad_b - 8) * c / peak
         out.append(f'<rect class="s1" x="{pad_l + i * bw + 1:.1f}" y="{h - pad_b - bh:.1f}" width="{max(bw - 2, 1):.1f}" '
-                   f'height="{bh:.1f}" rx="2"><title>{edges[i]:g} – {edges[i + 1]:g}: {c}</title></rect>')
-
-    def fmt(x: float) -> str:
-        """Nhãn biên: 1000 -> 1k."""
-        return f"{x / 1000:g}k" if log_axis and x >= 1000 else f"{x:g}"
-    out.append(f'<text x="{pad_l}" y="{h - 8}">{fmt(edges[0])}</text><text x="{w - 6}" y="{h - 8}" text-anchor="end">{fmt(edges[-1])}</text>'
-               f'<text x="{(w + pad_l) / 2}" y="{h - 8}" text-anchor="middle">{html.escape(label)}</text></svg>')
+                   f'height="{bh:.1f}" rx="2"><title>{_bin_name(edges[i], edges[i + 1])}: {c}</title></rect>')
+    if bin_labels:
+        h, pad_b = h + 14, pad_b + 14
+        out[0] = f'<svg viewBox="0 0 {w} {h}" role="img" aria-label="{html.escape(label)}">'
+        for i in range(len(counts)):
+            name = f"≥{edges[i]:g}" if math.isinf(edges[i + 1]) else _short(edges[i])
+            out.append(f'<text x="{pad_l + (i + 0.5) * bw:.1f}" y="{h - pad_b + 12}" text-anchor="middle" '
+                       f'font-size="9">{name}</text>')
+    else:
+        out.append(f'<text x="{pad_l}" y="{h - 8}">{_short(edges[0])}</text>'
+                   f'<text x="{w - 6}" y="{h - 8}" text-anchor="end">{_short(edges[-1])}</text>')
+    out.append(f'<text x="{(w + pad_l) / 2}" y="{h - 8}" text-anchor="middle">{html.escape(label)}</text></svg>')
     return "".join(out)
+
+
+def _short(x: float) -> str:
+    """Nhãn biên gọn: 1000 -> 1k, 1536 -> 1.5k, 64 -> 64."""
+    return f"{round(x / 1000, 1):g}k" if x >= 1000 else f"{x:g}"
+
+
+def _bin_name(lo: float, hi: float) -> str:
+    """Tên một khoảng trong tooltip: "lo – hi", khoảng cuối mở là "≥ lo"."""
+    return f"≥ {lo:g}" if math.isinf(hi) else f"{lo:g} – {hi:g}"
 
 
 def hbars(items: list[tuple[str, int]], title: str) -> str:
@@ -272,8 +290,8 @@ def write_report(run_dir: Path, rows: list[dict], audit: dict, manifest: dict, e
     for r in rows:
         for c in r["reason_codes"]:
             reasons[c] = reasons.get(c, 0) + 1
-    tok_edges = [1, 16, 64, 128, 256, 512, 768, 1024, 1536, 2048, 4096, 100000]
-    hist_words = "".join(f'<div class="card"><b>{html.escape(s)}</b>{histogram([r["token_count"] or 1 for r in by[s]], tok_edges, "số token (thang log)", True)}</div>' for s in sources)
+    tok_edges = [1, 16, 64, 128, 256, 512, 768, 1024, 1536, 2048, 4096, math.inf]
+    hist_words = "".join(f'<div class="card"><b>{html.escape(s)}</b>{histogram([r["token_count"] or 1 for r in by[s]], tok_edges, "số token (cận dưới mỗi khoảng)", True)}</div>' for s in sources)
     hist_score = "".join(f'<div class="card"><b>{html.escape(s)}</b>{histogram([r["quality_score"] for r in by[s]], list(range(0, 105, 5)), "điểm chất lượng")}</div>' for s in sources)
     body = f"""<h1>Báo cáo chất lượng pipeline</h1>
 <p class="sub">{html.escape(str(run_dir))} · seed {manifest.get('config', {}).get('seed')} · token đếm bằng <code>{html.escape(tokenizer)}</code>{' (số từ: ước lượng THẤP, không dùng đo KPI)' if tokenizer == 'words' else ''} · ngôn ngữ: <code>{html.escape(str(manifest.get('language', {}).get('model', '?')))}</code>{tok_note}</p>
@@ -285,7 +303,7 @@ def write_report(run_dir: Path, rows: list[dict], audit: dict, manifest: dict, e
 <h2>Ngôn ngữ</h2><p class="sub">Ngôn ngữ chiếm nhiều nhất theo đoạn văn (fastText). Văn bản trộn ngôn ngữ (ngôn ngữ thứ hai ≥ 20%) có mã <code>mixed_language</code>, chỉ gắn nhãn, không loại (R-33).</p>
 <div class="card">{stacked_bars({s: lang_count(s) for s in sources}, LANG_SERIES, 'Ngôn ngữ theo nguồn')}</div>
 <h2>Công thức / code và hội thoại SFT</h2><p class="sub">Số đo kiểm của F-03 / F-07: số đo hình dạng tính trên văn xuôi (đã bỏ công thức / code); cột "còn dính" kỳ vọng gần 0. Hội thoại nhận diện ngôn ngữ theo lượt người dùng; mẫu có câu trả lời không phải tiếng Việt được giữ (có nhãn) để rà.</p><div class="card">{_math_sft_checks(rows, manifest)}</div>
-<h2>Phân phối số token</h2><p class="sub">Mỗi nguồn một ô, cùng thang đo. Đoạn sách mục tiêu ~1.024, tối đa 2.048 token (D-10).</p><div class="grid">{hist_words}</div>
+<h2>Phân phối số token</h2><p class="sub">Mỗi nguồn một ô, cùng thang đo. Mỗi cột là một khoảng số token, các khoảng rộng KHÔNG đều (hẹp ở đầu ngắn, rộng dần) nhưng vẽ rộng bằng nhau; số dưới cột là cận dưới của khoảng, rê chuột để xem khoảng và số mẫu. Cột cuối gồm mọi mẫu ≥ 4.096 token (thường chỉ hội thoại SFT, vốn không cắt). Đoạn sách và bài web dài được cắt với mục tiêu ~1.024, tối đa 2.048 token (D-10).</p><div class="grid">{hist_words}</div>
 <h2>Phân phối điểm chất lượng</h2><div class="grid">{hist_score}</div>
 <h2>Dòng bị xoá</h2><p class="sub">Xoá dòng lặp (D-04): B tiêu đề / số trang sách lúc ingest, A dòng lặp trong một văn bản (văn bản có code / bảng được miễn, C-07), C dòng lặp ở nhiều văn bản web.</p><div class="card">{_removed_lines(manifest)}</div>
 <h2>Họ trùng (dedup vòng 1)</h2><p class="sub">Theo văn bản: exact / fuzzy (MinHash cả văn bản) / contained (nằm trong văn bản lớn hơn) / chunk_exact (đoạn giống hệt ở văn bản khác). <code>largest_family</code> = số văn bản của họ trùng lớn nhất; họ quá lớn là dấu hiệu nối nhầm.</p><div class="card">{_dedup_summary(manifest)}</div>

@@ -2,12 +2,16 @@
 Stage prepare, bước 3 (chunk): cắt văn bản thành các đoạn (mẫu) theo token Qwen3 (D-10), rồi lấy mẫu xuống đúng số đoạn.
 
 Cỡ đoạn: mục tiêu chunk_target_tokens (~1.024), tối đa chunk_max_tokens (2.048); đoạn cuối < chunk_min_tokens (256)
-gộp vào đoạn trước nếu tổng không vượt mức tối đa. Thứ tự ưu tiên chỗ cắt:
+gộp vào đoạn trước nếu tổng không vượt mức tối đa, nếu không thì nhận thêm các đoạn văn cuối của đoạn trước cho tới khi
+đủ chunk_min_tokens. Thứ tự ưu tiên chỗ cắt:
 1. Dòng tiêu đề ("Chương 3", "CHƯƠNG III", "Bài 5", "Mục 2.1", "Phần I"; chỉ khi dòng < 15 từ và không kết thúc bằng
    dấu chấm): đoạn đang gom đã đủ chunk_min_tokens thì cắt ngay trước tiêu đề, để đoạn không vắt qua hai chương.
 2. Dòng trống (hết đoạn văn): cắt khi đoạn đang gom đạt mục tiêu, hoặc khi thêm đoạn văn kế tiếp sẽ vượt mức tối đa.
-3. Hết câu: đoạn văn dài hơn mức tối đa được tách theo dòng, rồi theo câu.
-4. Cắt cứng theo token (một câu dài hơn mức tối đa).
+3. Hết câu: đoạn văn dài hơn mức tối đa được tách theo dòng, rồi theo câu; các mảnh liền nhau được gom tới chunk_target_tokens
+   (không phải tới mức tối đa). Bài web thường ngăn đoạn văn bằng một dấu xuống dòng, nên cả bài là một "đoạn văn": gom tới
+   mức tối đa thì bài 2.120 token thành [2.040, 80] và đoạn đuôi 80 token không gộp ngược được (vượt mức tối đa), bị loại
+   too_short (report run 10.000 mẫu lần 2); gom tới mục tiêu thì đoạn đuôi luôn còn chỗ để gộp.
+4. Cắt cứng theo token (một câu dài hơn mức tối đa), chia thành các phần đều nhau thay vì [max, max, ..., phần thừa].
 
 Nguồn chunked (stbook, giao_trinh) luôn cắt và được lấy mẫu theo số đoạn. Nguồn khác (bài web) giữ nguyên, chỉ bài dài hơn
 chunk_max_tokens mới cắt theo cùng quy tắc (SourceProfile.split_long; hội thoại SEA-Instruct không cắt). Mỗi đoạn là một
@@ -27,7 +31,8 @@ from vi_corpus.pipeline.dedup import minhash_bytes
 from vi_corpus.pipeline.normalize import set_counts
 from vi_corpus.pipeline.tokens import TokenCounter
 
-CHUNK_VERSION = "3"  # 1 = cắt theo số từ; 2 = cắt theo token (D-10); 3 = giữ thụt lề dòng đầu đoạn văn (C-09)
+CHUNK_VERSION = "4"  # 1 = cắt theo số từ; 2 = cắt theo token (D-10); 3 = giữ thụt lề dòng đầu đoạn văn (C-09);
+# 4 = đoạn văn quá dài gom mảnh tới mục tiêu, cắt cứng chia đều, đoạn đuôi ngắn mượn đoạn văn của đoạn trước
 HEADING_MAX_WORDS = 15
 _HEADING = re.compile(r"^(?:chương|bài|mục|phần|chapter|part|section)\s+(?:\d+(?:\.\d+)*|[ivxlcdm]+)\b",
                       re.IGNORECASE)
@@ -41,21 +46,25 @@ def is_heading(paragraph: str) -> bool:
             and not first.endswith("."))
 
 
-def _split_long(paragraph: str, max_tokens: int, counter: TokenCounter) -> list[str]:
+def _split_long(paragraph: str, max_tokens: int, counter: TokenCounter, join_tokens: int | None = None) -> list[str]:
     """
     Tách một đoạn văn dài hơn max_tokens thành các phần <= max_tokens: theo dòng, rồi theo câu, cuối cùng cắt cứng.
 
-    Các phần nhỏ liền nhau được gom lại cho tới gần max_tokens (không tạo ra quá nhiều mảnh vụn).
+    Các phần nhỏ liền nhau được gom lại cho tới gần join_tokens (mặc định max_tokens; chunk_text truyền mục tiêu, xem mức
+    cắt 3 ở docstring module). Cắt cứng chia đoạn thành ceil(n / max_tokens) phần đều nhau.
     """
-    if counter.count(paragraph) <= max_tokens:
+    join_tokens = join_tokens or max_tokens
+    n = counter.count(paragraph)
+    if n <= max_tokens:
         return [paragraph]
     for sep, pieces in (("\n", paragraph.split("\n")), (" ", _SENTENCE_SPLIT.split(paragraph))):
         if len(pieces) > 1:
             out: list[str] = []
             for piece in pieces:
-                out += _split_long(piece, max_tokens, counter)
-            return _greedy_join(out, sep, max_tokens, counter)
-    return counter.hard_split(paragraph, max_tokens)
+                out += _split_long(piece, max_tokens, counter, join_tokens)
+            return _greedy_join(out, sep, join_tokens, counter)
+    parts = -(-n // max_tokens)
+    return counter.hard_split(paragraph, -(-n // parts))
 
 
 def _greedy_join(pieces: list[str], sep: str, max_tokens: int, counter: TokenCounter) -> list[str]:
@@ -82,24 +91,30 @@ def chunk_text(text: str, counter: TokenCounter, target: int, max_tokens: int, m
     số token thật được đếm lại sau khi cắt.
     """
     paragraphs = [p for para in text.split("\n\n") if para.strip()  # strip("\n"): giữ thụt lề code (C-09)
-                  for p in _split_long(para.strip("\n").rstrip(), max_tokens, counter)]
-    chunks: list[str] = []
-    sizes: list[int] = []
-    cur: list[str] = []
+                  for p in _split_long(para.strip("\n").rstrip(), max_tokens, counter, target)]
+    groups: list[list[tuple[str, int]]] = []
+    cur: list[tuple[str, int]] = []
     cur_n = 0
     for para, n in zip(paragraphs, counter.count_batch(paragraphs)):
         if cur and ((is_heading(para) and cur_n >= min_tokens) or cur_n + n > max_tokens or cur_n >= target):
-            chunks.append("\n\n".join(cur))
-            sizes.append(cur_n)
+            groups.append(cur)
             cur, cur_n = [], 0
-        cur.append(para)
+        cur.append((para, n))
         cur_n += n
     if cur:
-        if chunks and cur_n < min_tokens and sizes[-1] + cur_n <= max_tokens:
-            chunks[-1] += "\n\n" + "\n\n".join(cur)
+        prev = groups[-1] if groups else None
+        prev_n = sum(n for _, n in prev) if prev else 0
+        if prev and cur_n < min_tokens and prev_n + cur_n <= max_tokens:
+            prev.extend(cur)
         else:
-            chunks.append("\n\n".join(cur))
-    return chunks
+            # đoạn đuôi ngắn không gộp được (gộp sẽ vượt max): chuyển các đoạn văn cuối của đoạn trước sang cho tới khi
+            # đuôi đủ min, miễn đoạn trước còn ít nhất một đoạn văn và đuôi không vượt max
+            while prev and cur_n < min_tokens and len(prev) > 1 and cur_n + prev[-1][1] <= max_tokens:
+                moved = prev.pop()
+                cur.insert(0, moved)
+                cur_n += moved[1]
+            groups.append(cur)
+    return ["\n\n".join(p for p, _ in g) for g in groups]
 
 
 def _split_doc(row: dict, texts: list[str]) -> list[dict]:

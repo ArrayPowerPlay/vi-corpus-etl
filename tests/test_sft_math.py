@@ -68,6 +68,10 @@ def test_strip_math_code_bo_cong_thuc_va_code_giu_tien():
     assert "$5 và $10" in out and "x^2" not in out and "a_1" not in out and "frac" not in out
     assert "print" not in out and "Hết" in out and " y " not in out
     assert strip_math_code("Mở $$ không đóng") == "Mở $$ không đóng"
+    # số "$$" lẻ: không bỏ vùng "$$" nào (ghép cặp tuần tự sẽ bỏ văn xuôi giữa hai công thức, giữ LaTeX)
+    odd = "Ta cần tính:\n$$\n\\lim x\nBước 1: đặt tích phân.\n$$\nI = \\int y\n$$\nDo đó kết quả."
+    assert "Bước 1: đặt tích phân." in strip_math_code(odd) and "Do đó kết quả." in strip_math_code(odd)
+    assert "Mở " in strip_math_code("```\necho $$\n```\nMở $$x$$ hết") and "x" not in strip_math_code("```\necho $$\n```\n$$x$$")
     assert strip_math_code("a$x=1$b") == "a b"
     assert math_share("abc", "abc") == 0.0 and math_share("", "") == 0.0
     assert 0.5 < math_share("ab $$xxxxxxxxxx$$", strip_math_code("ab $$xxxxxxxxxx$$")) < 1
@@ -179,6 +183,21 @@ def test_luot_nguoi_dung_qua_it_chu_thi_lui_ve_moi_luot():
     row = _conv(("human", "$$\\int_0^1 x\\,dx$$ ?"), ("gpt", "The answer is the half of the unit and the rest"))
     lang, _, _, answer = detect_row(row, LidByScript())
     assert lang == "en" and answer == "en"
+
+
+def test_dau_dola_kep_le_khong_dao_vung_bo():
+    """
+    Report run 10.000 mẫu lần 2: câu trả lời thiếu "$$" đóng ở công thức đầu; ghép cặp tuần tự bỏ văn xuôi tiếng Việt và
+    giữ LaTeX (fastText đoán "en"), mẫu bị loại lang_not_allowed. Nay số "$$" lẻ thì không bỏ vùng "$$" của lượt đó, và
+    công thức bỏ theo từng lượt nên lượt người dùng không bị ảnh hưởng.
+    """
+    latex = r"\lim of x to the n"  # LidByScript gọi dòng này là en, như fastText với LaTeX thật
+    answer = "\n\n".join(["Ta cần tính giới hạn:", f"$$\n{latex}", "Bước 1: phân tích tích phân như sau đây.",
+                          f"$$\n{latex}\n$$", "Bước 2: đổi biến để tập trung vào lân cận điểm không.",
+                          f"$$\n{latex}\n$$", "Vậy giới hạn cần tìm bằng một nửa của tích phân ban đầu."])
+    row = _conv(("human", "Tính giới hạn: \\[ \\lim n \\]"), ("gpt", answer))
+    lang, _, mix, _ = detect_row(row, LidByScript())
+    assert lang == "vi" and mix["vi"] > 0.5
 
 
 def test_khong_con_chu_cai_thi_und_va_lang_unknown():

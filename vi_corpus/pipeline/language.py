@@ -2,13 +2,15 @@
 Stage language: nhận diện ngôn ngữ THEO ĐOẠN VĂN bằng fastText lid.176 (D-02, R-20), gắn lang_mix.
 
 Cách tính (docs/DECISION_LOG.md, D-02):
-1. Tách văn bản thành các đoạn văn (theo dòng trống; văn bản chỉ có một đoạn thì theo dòng). Văn bản rất dài chỉ lấy tối
-   đa cfg.lang_max_segments đoạn rải đều để giữ chi phí cố định. Đoạn không có chữ cái bị bỏ.
+1. Tách văn bản thành các đoạn văn (theo dòng trống; văn bản chỉ có một đoạn thì theo dòng). Đoạn không có chữ cái bị
+   bỏ; đoạn có < SEGMENT_MIN_LETTERS chữ cái ("A: [2, 4, 6]", "Đáp án: (A) 143 (B) 125") cũng bị bỏ, trừ khi mọi đoạn
+   đều ngắn. Văn bản rất dài chỉ lấy tối đa cfg.lang_max_segments đoạn rải đều để giữ chi phí cố định.
 2. Bộ nhận diện đoán từng đoạn: (nhãn, độ tin cậy).
-3. lang_mix = phần độ dài (ký tự) thuộc mỗi ngôn ngữ; language = ngôn ngữ chiếm nhiều nhất;
-   lang_score = tổng (độ dài x độ tin cậy) của các đoạn thuộc `language` / tổng độ dài. Cao khi văn bản vừa thuần một
-   ngôn ngữ vừa được đoán chắc chắn. Ngưỡng min_lang_score nằm ở SourceProfile, được dùng ở stage quality.
-Trước bước 1, công thức toán và khối code được bỏ (vi_corpus.pipeline.spans.strip_math_code, F-07): LaTeX / code làm
+3. lang_mix = phần số CHỮ CÁI thuộc mỗi ngôn ngữ; language = ngôn ngữ chiếm nhiều nhất;
+   lang_score = tổng (số chữ cái x độ tin cậy) của các đoạn thuộc `language` / tổng số chữ cái. Cao khi văn bản vừa thuần
+   một ngôn ngữ vừa được đoán chắc chắn. Trọng số theo chữ cái chứ không theo ký tự: chữ số, ngoặc, dấu câu không có
+   ngôn ngữ (report run 10.000 mẫu lần 2: 10 dòng phương án trắc nghiệm thắng một câu hỏi tiếng Việt, mẫu bị loại oan). Ngưỡng min_lang_score nằm ở SourceProfile, được dùng ở stage quality.
+Trước bước 1, công thức toán và khối code được bỏ (từng lượt thoại riêng, để một lượt có "$$" lẻ không ảnh hưởng lượt khác) (vi_corpus.pipeline.spans.strip_math_code, F-07): LaTeX / code làm
 fastText đoán "en". Không còn đoạn nào có chữ cái: language = "und", lang_score = 0, lang_mix = {} (stage quality gắn mã
 lang_unknown, không loại vì ngôn ngữ). "other" là nhãn của bộ heuristic cho ngôn ngữ ngoài vi / en.
 
@@ -37,8 +39,8 @@ from pathlib import Path
 
 from vi_corpus.pipeline.spans import strip_math_code
 
-LANG_VERSION = "3"  # 1 = heuristic cả văn bản; 2 = theo đoạn + lang_mix; 3 = bỏ công thức / code, SFT theo lượt người
-# dùng, nhãn "und", lang_answer (F-07)
+LANG_VERSION = "4"  # 1 = heuristic cả văn bản; 2 = theo đoạn + lang_mix; 3 = bỏ công thức / code, SFT theo lượt người
+# dùng, nhãn "und", lang_answer (F-07); 4 = trọng số theo chữ cái, bỏ đoạn quá ít chữ, bỏ công thức theo từng lượt
 LID_URL = "https://dl.fbaipublicfiles.com/fasttext/supervised-models/lid.176.bin"
 LID_MIN_BYTES = 100_000_000  # file lid.176.bin đủ: 131.266.198 byte; nhỏ hơn mức này coi như tải dở
 
@@ -50,6 +52,7 @@ _EN_STOP = frozenset("the of and to in is that for it with as was on are by be t
 _WORD = re.compile(r"[^\W\d_]+", re.UNICODE)
 _SYSTEM_ROLES = frozenset({"system"})
 ANSWER_ROLES = frozenset({"assistant", "gpt", "model", "bot"})  # vai phía trả lời; vai khác (trừ system) là người dùng
+SEGMENT_MIN_LETTERS = 10  # đoạn ít chữ cái hơn mức này không đưa vào nhận diện (trừ khi mọi đoạn đều ngắn)
 USER_MIN_LETTERS = 20  # lượt người dùng ít chữ cái hơn mức này (vd chỉ có công thức) thì nhận diện trên mọi lượt
 UNDETERMINED = "und"  # không còn chữ cái để nhận diện
 
@@ -179,21 +182,27 @@ def _role(turn: dict) -> str:
     return str(turn.get("role", "")).lower()
 
 
-def lid_parts(row: dict) -> tuple[str, str | None, str | None]:
+def lid_parts(row: dict, clean=None) -> tuple[str, str | None, str | None]:
     """
-    Phần văn bản đưa vào nhận diện (chưa bỏ công thức / code).
+    Phần văn bản đưa vào nhận diện.
+
+    Args:
+        row:   Bản ghi.
+        clean: Hàm áp lên từng lượt thoại (hoặc cả text nếu không phải hội thoại) trước khi nối, vd strip_math_code;
+               None = giữ nguyên.
 
     Returns:
         (mọi lượt không phải system, các lượt người dùng, các lượt trả lời). Bản ghi không phải hội thoại:
         (text, None, None).
     """
+    clean = clean or (lambda s: s)
     turns = _turns(row)
     if not turns:
-        return row["text"] or "", None, None
-    talk = [t for t in turns if _role(t) not in _SYSTEM_ROLES]
-    user = [t["content"] for t in talk if _role(t) not in ANSWER_ROLES]
-    answer = [t["content"] for t in talk if _role(t) in ANSWER_ROLES]
-    return "\n\n".join(t["content"] for t in talk), "\n\n".join(user), "\n\n".join(answer)
+        return clean(row["text"] or ""), None, None
+    talk = [(_role(t), clean(t["content"])) for t in turns if _role(t) not in _SYSTEM_ROLES]
+    user = [c for r, c in talk if r not in ANSWER_ROLES]
+    answer = [c for r, c in talk if r in ANSWER_ROLES]
+    return "\n\n".join(c for _, c in talk), "\n\n".join(user), "\n\n".join(answer)
 
 
 def lid_text(row: dict) -> str:
@@ -214,7 +223,7 @@ def detect_row(row: dict, lid, max_segments: int = 50) -> tuple[str, float, dict
         (language, lang_score, lang_mix, lang_answer); lang_answer là None nếu bản ghi không phải hội thoại hoặc không
         có lượt trả lời.
     """
-    talk, user, answer = (strip_math_code(p) if p is not None else None for p in lid_parts(row))
+    talk, user, answer = lid_parts(row, strip_math_code)
     if user is None:
         lang, score, mix = detect_mix(talk, lid, max_segments)
         return lang, score, mix, None
@@ -226,11 +235,15 @@ def detect_row(row: dict, lid, max_segments: int = 50) -> tuple[str, float, dict
 
 
 def segments_of(text: str, max_segments: int) -> list[str]:
-    """Các đoạn văn có chữ cái (xem bước 1 ở docstring module), rải đều tối đa max_segments đoạn."""
+    """
+    Các đoạn văn đưa vào nhận diện (xem bước 1 ở docstring module): có chữ cái, đủ SEGMENT_MIN_LETTERS chữ cái nếu có ít
+    nhất một đoạn như vậy, rải đều tối đa max_segments đoạn.
+    """
     parts = [p for p in text.split("\n\n") if p.strip()]
     if len(parts) <= 1:
         parts = [p for p in text.split("\n") if p.strip()]
     parts = [p[:MAX_SEGMENT_CHARS] for p in parts if _WORD.search(p)]
+    parts = [p for p in parts if _letters(p) >= SEGMENT_MIN_LETTERS] or parts
     if len(parts) > max_segments:
         step = len(parts) / max_segments
         parts = [parts[int(i * step)] for i in range(max_segments)]
@@ -251,7 +264,7 @@ def detect_mix(text: str, lid, max_segments: int = 50) -> tuple[str, float, dict
     conf: dict[str, float] = {}
     total = 0
     for seg, (label, p) in zip(segs, lid.predict(segs)):
-        n = len(seg)
+        n = _letters(seg)
         total += n
         weight[label] = weight.get(label, 0) + n
         conf[label] = conf.get(label, 0) + n * p
