@@ -19,6 +19,7 @@
       "--served-model-name",
       "PaddleOCR-VL-0.9B",
       "--trust-remote-code",
+      "--trust-request-mm-kwargs",
       "--max-num-batched-tokens",
       "16384",
       "--no-enable-prefix-caching",
@@ -34,7 +35,7 @@
       "vl_rec_server_url": "http://127.0.0.1:8118/v1"
     },
     "license": "Apache-2.0 (model card)",
-    "note": "Server: vLLM chung với các engine khác (lệnh theo recipe PaddleOCR-VL của vLLM; --served-model-name vì pipeline gọi tên PaddleOCR-VL-0.9B; 0.8 bộ nhớ GPU để chừa chỗ cho mô hình dò bố cục). Phía pipeline (dò bố cục PP-DocLayout) cần môi trường riêng có paddlepaddle-gpu + paddleocr[doc-parser], trỏ bằng PADDLE_VL_RUN (docs/README.md Phần F). Model card ghi 109 ngôn ngữ, không nêu tên tiếng Việt. Có bản mới PaddleOCR-VL-1.6. Pipeline chạy tuần tự từng trang nên tốc độ đo được là cận dưới."
+    "note": "Server: vLLM chung (--trust-request-mm-kwargs: pipeline gửi mm_processor_kwargs theo từng yêu cầu, vLLM 0.31 từ chối nếu thiếu cờ này; an toàn vì server chỉ nghe 127.0.0.1) với các engine khác (lệnh theo recipe PaddleOCR-VL của vLLM; --served-model-name vì pipeline gọi tên PaddleOCR-VL-0.9B; 0.8 bộ nhớ GPU để chừa chỗ cho mô hình dò bố cục). Phía pipeline (dò bố cục PP-DocLayout) cần môi trường riêng có paddlepaddle-gpu + paddleocr[doc-parser], trỏ bằng PADDLE_VL_RUN (docs/README.md Phần F). Model card ghi 109 ngôn ngữ, không nêu tên tiếng Việt. Có bản mới PaddleOCR-VL-1.6. Pipeline chạy tuần tự từng trang nên tốc độ đo được là cận dưới."
   },
   "dots_ocr": {
     "type": "openai",
