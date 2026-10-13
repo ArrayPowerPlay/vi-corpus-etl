@@ -281,6 +281,19 @@ def test_score_khi_khong_co_bo_a(tmp_path):
     assert "Bộ B" in (tmp_path / "report/report.html").read_text(encoding="utf-8")
 
 
+def test_score_khi_engine_khong_co_ket_qua(tmp_path):
+    """Mọi ứng viên lỗi khi dựng server (thư mục runs/ rỗng): kết luận no_outputs, không phải "giữ baseline"."""
+    refs = _fake_bakeoff(tmp_path)
+    ids = [f"A{i}" for i in range(len(refs))]
+    _write_run(tmp_path, "baseline", dict(zip(ids, refs)))
+    (tmp_path / "runs" / "broken").mkdir(parents=True)
+    s = score_bakeoff(tmp_path, ["baseline", "broken"])
+    assert s["decision"]["status"] == "no_outputs" and "broken" in s["decision"]["reason"]
+    _write_run(tmp_path, "good", dict(zip(ids, refs)))
+    s = score_bakeoff(tmp_path, ["baseline", "broken", "good"])
+    assert s["decision"]["status"] != "no_outputs" and any("broken" in n for n in s["decision"]["notes"])
+
+
 def test_hoa_cer_chon_engine_nhanh_hon(tmp_path):
     """Hai ứng viên cùng sai đúng một ký tự mỗi trang (hiệu CER = 0, khoảng tin cậy chứa 0): chọn engine nhanh hơn."""
     refs = _fake_bakeoff(tmp_path)

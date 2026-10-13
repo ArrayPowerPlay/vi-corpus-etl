@@ -182,6 +182,9 @@ def start_server(cfg: dict, run_dir: Path, gpu: str | None, vllm_bin: str | None
     env = dict(os.environ)
     if gpu is not None:
         env["CUDA_VISIBLE_DEVICES"] = gpu
+    # vLLM 0.31 mặc định lấy mẫu top-k/top-p bằng FlashInfer, phải biên dịch JIT (cần ninja + nvcc) ngay lúc khởi động;
+    # server thiếu ninja thì chết (gặp 2026-10-12). Bakeoff giải mã tham lam nên tắt đi không đổi kết quả.
+    env.setdefault("VLLM_USE_FLASHINFER_SAMPLER", "0")
     log = open(run_dir / "server.log", "ab")  # noqa: SIM115 - đóng khi tiến trình server kết thúc (stop_server)
     logger.info("Dựng server: %s (CUDA_VISIBLE_DEVICES=%s)", " ".join(cmd), env.get("CUDA_VISIBLE_DEVICES"))
     return subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT, env=env, start_new_session=True)

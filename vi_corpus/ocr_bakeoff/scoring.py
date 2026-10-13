@@ -509,6 +509,16 @@ def score_bakeoff(bakeoff_dir: Path, engines: list[str] | None = None, baseline:
     gated, decision = apply_gates(a, hours, gates, baseline) if a else ({}, {
         "status": "no_set_a", "winner": None, "quality_passed": [], "tied_with": [], "notes": [],
         "reason": "không có trang bộ A", "comparisons": {}})
+    # engine không có trang nào (server không lên, thiếu thư viện) bị tính là hỏng mọi trang: không để kết luận
+    # "no_candidate / giữ baseline" trông như kết quả thật (gặp ở server 2026-10-12: mọi engine lỗi khi khởi động)
+    empty = [n for n in engines if not outputs[n]]
+    if empty and (baseline in empty or all(n in empty for n in engines if n != baseline)):
+        decision = {"status": "no_outputs", "winner": None, "quality_passed": [], "tied_with": [], "notes": [],
+                    "comparisons": {},
+                    "reason": f"engine không có trang kết quả nào: {', '.join(empty)}; chưa so sánh được, xem "
+                              "logs/<engine>.log và runs/<engine>/server.log"}
+    elif empty:
+        decision["notes"].append(f"engine không có trang kết quả nào, coi như trượt: {', '.join(empty)}")
     info = {}
     for n in engines:
         p = runs / n / "run_info.json"
