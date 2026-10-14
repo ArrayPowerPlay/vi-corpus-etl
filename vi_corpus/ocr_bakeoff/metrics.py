@@ -1,6 +1,6 @@
 """
 Số đo so sánh đầu ra OCR với đáp án (F-11): khoảng cách sửa (ký tự / từ), CER, CER bỏ dấu, WER, F1 túi từ, đếm ký tự đặc
-biệt, phát hiện vòng lặp 4-gram, bootstrap cặp theo trang.
+biệt (theo lớp tương đương, O-11), phát hiện vòng lặp 4-gram, bootstrap cặp theo trang.
 
 Khoảng cách Levenshtein dùng thuật toán song song bit của Myers / Hyyrö (số nguyên Python làm vector bit dài tuỳ ý),
 không cần thư viện C: trang ~3.000 ký tự mất vài mili giây. Hàm nhận mọi dãy phần tử băm được (chuỗi ký tự, list từ).
@@ -13,6 +13,12 @@ from collections import Counter
 from collections.abc import Hashable, Sequence
 
 SPECIAL_CHARS = "²³“”‘’–—…°"  # ký tự VietOCR không xuất được (F-06 ý 5, F-11)
+# Lớp ký tự đặc biệt để tính recall (O-11): nhãn lớp -> (ký tự trong lớp, ký tự ASCII tương đương hoặc ""). Nháy cong và
+# gạch dài được coi là đúng nếu engine ra nháy / gạch ASCII (mất kiểu chữ, không mất nội dung); ² ³ ° … phải đúng chính xác.
+SPECIAL_CLASSES: dict[str, tuple[str, str]] = {
+    "²": ("²", ""), "³": ("³", ""), "°": ("°", ""), "…": ("…", ""),
+    "“”": ("“”", '"'), "‘’": ("‘’", "'"), "–—": ("–—", "-"),
+}
 _WS = re.compile(r"\s+")
 _WORD = re.compile(r"[^\W\d_]+", re.UNICODE)
 
@@ -80,6 +86,29 @@ def special_counts(text: str) -> dict[str, int]:
     return {c: text.count(c) for c in SPECIAL_CHARS if c in text}
 
 
+def special_class_hits(hyp: str, ref: str) -> tuple[dict[str, int], dict[str, int]]:
+    """
+    Số ký tự đặc biệt của đáp án (theo lớp trong SPECIAL_CLASSES) và số ký tự engine giữ được.
+
+    Lớp có ký tự ASCII tương đương (nháy, gạch): engine ra bản cong hoặc bản ASCII đều tính đúng. Gạch nối ASCII vốn có
+    trong đáp án (từ ghép, "1-2") không phải dấu hiệu của engine, nên trừ số ASCII của đáp án khỏi tổng bên engine:
+    hit = min(số ký tự lớp trong đáp án, tổng (lớp + ASCII) ở engine - số ASCII ở đáp án). Lớp thuần (² ³ ° …) đếm chính xác.
+
+    Returns:
+        (ref, hit): {nhãn lớp: số lần} chỉ gồm lớp có trong đáp án.
+    """
+    ref_n, hit_n = {}, {}
+    for label, (members, ascii_eq) in SPECIAL_CLASSES.items():
+        n_ref = sum(ref.count(c) for c in members)
+        if not n_ref:
+            continue
+        n_hyp = sum(hyp.count(c) for c in members)
+        if ascii_eq:
+            n_hyp = max(0, n_hyp + hyp.count(ascii_eq) - ref.count(ascii_eq))
+        ref_n[label], hit_n[label] = n_ref, min(n_ref, n_hyp)
+    return ref_n, hit_n
+
+
 def max_ngram_repeat(text: str, n: int = 4) -> int:
     """Số lần lặp nhiều nhất của một n-gram từ (đo vòng lặp do mô hình sinh)."""
     ws = words(text)
@@ -98,11 +127,14 @@ def page_scores(hyp: str, ref: str) -> dict:
 
     Returns:
         {"ref_chars", "char_dist", "char_dist_nodiac", "ref_words", "word_dist", "bow_f1", "hyp_chars", "len_ratio",
-         "special_ref", "special_hit", "max4"}; special_hit[c] = min(số lần c trong hyp, trong ref).
+         "special_ref", "special_hit", "special_ref_strict", "special_hit_strict", "max4", "ref_max4"};
+        special_ref / special_hit theo lớp tương đương (special_class_hits); *_strict theo từng ký tự, đúng chính xác
+        (special_hit_strict[c] = min(số lần c trong hyp, trong ref)).
     """
     h, r = normalize(hyp), normalize(ref)
     hw, rw = h.split(), r.split()
     sref, shyp = special_counts(r), special_counts(h)
+    class_ref, class_hit = special_class_hits(h, r)
     return {
         "ref_chars": len(r), "hyp_chars": len(h),
         "char_dist": levenshtein(h, r),
@@ -110,7 +142,8 @@ def page_scores(hyp: str, ref: str) -> dict:
         "ref_words": len(rw), "word_dist": levenshtein(hw, rw),
         "bow_f1": bow_f1(hw, rw),
         "len_ratio": len(h) / len(r) if r else (1.0 if not h else float("inf")),
-        "special_ref": sref, "special_hit": {c: min(n, shyp.get(c, 0)) for c, n in sref.items()},
+        "special_ref": class_ref, "special_hit": class_hit,
+        "special_ref_strict": sref, "special_hit_strict": {c: min(n, shyp.get(c, 0)) for c, n in sref.items()},
         "max4": max_ngram_repeat(h),
         "ref_max4": max_ngram_repeat(r),
     }

@@ -23,7 +23,7 @@ vi-corpus-etl/
 │   ├── sea/                         # download_all.py, download_sea_*.py (3 bộ), count_rows.py
 │   ├── stbook/                      # crawl.py (tải sách), ocr.py (OCR PDF → text)
 │   ├── giao_trinh/                  # extract.py (xử lý thô giáo trình), profile.py (khảo sát)
-│   ├── ocr_bakeoff/                 # so sánh engine OCR (F-11): select_pages, build_syllables, run_engine, score, run_bakeoff.sh
+│   ├── ocr_bakeoff/                 # so sánh engine OCR (F-11): select_pages, build_syllables, run_engine, score, diagnose_gt, run_bakeoff.sh
 │   ├── gpu_keepalive.py             # giữ GPU trên Run:ai không bị tự dừng khi job chỉ dùng CPU
 │   └── run_with_gpu_keepalive.sh    # chạy một script bất kỳ kèm gpu_keepalive, chạy nền
 ├── vi_corpus/
@@ -44,7 +44,7 @@ vi-corpus-etl/
 │   │   ├── crawler/                 #   crawl metadata + PDF (categories, client, content, parse_*, storage, main)
 │   │   └── ocr_books.py             #   tìm sách, OCR có checkpoint theo cuốn, đọc kết quả về schema chung
 │   ├── giao_trinh/                  # nguồn giáo trình (`extract.py` kiểm kê + trích text, `records.py` bản ghi + Parquet)
-│   ├── ocr_bakeoff/                 # so sánh engine OCR: pages (chọn trang, đáp án), engines, textnorm, metrics, syllables, perplexity, scoring
+│   ├── ocr_bakeoff/                 # so sánh engine OCR: pages (chọn trang, đáp án), engines, textnorm, metrics, syllables, perplexity, scoring, gt_diag (chẩn đoán đáp án bộ A)
 │   ├── vista/, vjol/                # thư mục trống giữ chỗ, chưa có code
 │   └── __init__.py
 └── tests/                           # test không cần mạng: uv run pytest

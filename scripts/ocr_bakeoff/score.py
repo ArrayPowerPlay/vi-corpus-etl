@@ -3,12 +3,13 @@ Bước 3 của đợt so sánh engine OCR (F-11): chấm điểm và áp quy t�
 
 Đọc <bakeoff-dir>/runs/*/outputs.jsonl, ghi <bakeoff-dir>/report/{summary.json, per_page.csv, report.html}. Chấm lại
 bao nhiêu lần cũng được (không gọi engine). --ppl tính thêm perplexity Qwen3-0.6B cho bộ B (cần GPU, lưu vào
-runs/<engine>/ppl.jsonl, lần sau không tính lại). Đặt --hour-budget khi chủ dự án đã chốt ngân sách, nếu không cổng
-tốc độ để "chưa kiểm" và kết luận chỉ là tạm. Số giờ chạy (đã chạy đợt so sánh, ước tính cho cả kho) luôn được ghi vào
+runs/<engine>/ppl.jsonl, lần sau không tính lại). Giờ chạy cả kho có hai mức (O-11): --hour-soft (mặc định 30, mức mềm
+của chủ dự án, vượt chỉ cảnh báo) và --hour-budget (trần, vượt thì engine trượt cổng tốc độ; Claude đề xuất 60; không
+đặt thì kết luận chỉ là tạm). Cổng bad_rate tính tương đối so với baseline (--bad-rate-excess-max). Số giờ chạy (đã chạy đợt so sánh, ước tính cho cả kho) luôn được ghi vào
 report/hours.csv, summary.json ("hours") và report.html.
 Ví dụ:
     uv run python scripts/ocr_bakeoff/score.py --data-root /duong/dan/data
-    uv run python scripts/ocr_bakeoff/score.py --data-root /duong/dan/data --ppl --hour-budget 30
+    uv run python scripts/ocr_bakeoff/score.py --data-root /duong/dan/data --ppl --hour-budget 60
 """
 
 import argparse
@@ -41,12 +42,16 @@ def main() -> int:
     p.add_argument("--ppl-model", default=PPL_MODEL, help=f"Mô hình đo perplexity (mặc định {PPL_MODEL}).")
     p.add_argument("--num-gpus", type=int, default=4, help="Số GPU dùng để quy ra giờ GPU toàn kho (mặc định 4).")
     p.add_argument("--hour-budget", "--gpu-hour-budget", dest="hour_budget", type=float, default=None,
-                   help="Giới hạn số giờ server được chạy để OCR cả kho (mọi GPU chạy cùng lúc); không đặt = chưa kiểm.")
+                   help="Trần số giờ server được chạy để OCR cả kho (mọi GPU chạy cùng lúc), vượt thì engine trượt cổng "
+                        "tốc độ; không đặt = chưa kiểm. Đề xuất 60 (O-11).")
+    p.add_argument("--hour-soft", type=float, default=Gates.hour_soft,
+                   help="Mức mềm số giờ chạy cả kho (mặc định 30, N-02): vượt chỉ cảnh báo, không loại.")
     p.add_argument("--corpus-pages", type=int, default=None,
                    help="Tổng số trang cần OCR (mặc định lấy từ selection.json: stbook + giáo trình cần OCR).")
     p.add_argument("--special-recall-min", type=float, default=Gates.special_recall_min)
     p.add_argument("--two-col-gap-max", type=float, default=Gates.two_col_gap_max)
-    p.add_argument("--bad-rate-max", type=float, default=Gates.bad_rate_max)
+    p.add_argument("--bad-rate-excess-max", type=float, default=Gates.bad_rate_excess_max,
+                   help="Tỷ lệ trang hỏng được cao hơn baseline tối đa bao nhiêu (0,01 = 1 điểm %%).")
     p.add_argument("--trunc-rate-max", type=float, default=Gates.trunc_rate_max)
     args = p.parse_args()
     bakeoff = args.bakeoff_dir or args.data_root / "processed/ocr_bakeoff"
@@ -67,8 +72,8 @@ def main() -> int:
     vocab = load_syllables(syl_path) if syl_path.exists() else None
     if vocab is None:
         print(f"Không có {syl_path}: bỏ số đo âm tiết lạ của bộ B (chạy build_syllables.py)")
-    gates = Gates(args.special_recall_min, args.two_col_gap_max, args.bad_rate_max, args.trunc_rate_max,
-                  args.hour_budget)
+    gates = Gates(args.special_recall_min, args.two_col_gap_max, args.bad_rate_excess_max, args.trunc_rate_max,
+                  args.hour_budget, args.hour_soft)
     s = score_bakeoff(bakeoff, engines, baseline=args.baseline, vocab=vocab, num_gpus=args.num_gpus, gates=gates,
                       corpus_pages=args.corpus_pages)
     print(json.dumps(s["decision"], ensure_ascii=False, indent=2))

@@ -7,8 +7,13 @@ engine một dòng), hours.csv (mỗi engine một dòng: số giờ đã chạy
 report.html (bảng số đo, cổng, số giờ chạy, bộ B và vài trang hai cột bộ A đặt cạnh nhau để xem bằng mắt).
 
 Trang "hỏng" (bỏ sót / bịa) ở bộ A: không có đầu ra (lỗi hoặc chưa chạy), rỗng, độ dài ngoài ±LEN_TOL so với đáp án,
-hoặc vòng lặp (một 4-gram lặp >= LOOP_MIN lần và hơn hai lần số lặp trong đáp án). Trang "cắt cụt": finish_reason =
-"length". Tốc độ: phiên có nhiều trang nhất của engine, bỏ WARMUP_PAGES trang đầu, trang/giây = số trang còn lại /
+hoặc vòng lặp (một 4-gram lặp >= LOOP_MIN lần và hơn hai lần số lặp trong đáp án); số trang hỏng được tách theo lý do
+(no_output / empty / loop / too_short / too_long). Cổng bad_rate đặt tương đối so với baseline (O-11): ứng viên chỉ bị
+loại nếu tỷ lệ hỏng cao hơn baseline quá bad_rate_excess_max, vì tỷ lệ hỏng của baseline đã phản ánh cả lỗi đáp án.
+Recall ký tự đặc biệt tính theo lớp tương đương (metrics.SPECIAL_CLASSES: nháy cong / gạch dài đúng nếu ra ASCII), có
+thêm bản chính xác từng ký tự để đối chiếu. Mỗi engine có danh sách WORST_PAGES trang CER cao nhất. Cổng giờ chạy cả kho
+có hai mức: hour_soft (mức mềm của chủ dự án, vượt chỉ cảnh báo) và hour_budget (trần, vượt thì engine trượt cổng tốc
+độ). Trang "cắt cụt": finish_reason = "length". Tốc độ: phiên có nhiều trang nhất của engine, bỏ WARMUP_PAGES trang đầu, trang/giây = số trang còn lại /
 khoảng thời gian giữa t_end của chúng (quá ít trang thì dùng mọi trang); cần >= STEADY_MIN trang mới coi là ổn định.
 Số giờ cho cả kho: corpus_hours = tổng số trang cần OCR (selection.json) / (trang/giây x số GPU) / 3600 là số giờ
 server chạy khi mỗi GPU chạy một bản engine cùng lúc (đây là số so với ngân sách --hour-budget); corpus_gpu_hours =
@@ -25,6 +30,7 @@ from pathlib import Path
 
 from vi_corpus.ocr_bakeoff.metrics import (
     SPECIAL_CHARS,
+    SPECIAL_CLASSES,
     max_ngram_repeat,
     micro_rate,
     normalize,
@@ -38,15 +44,16 @@ from vi_corpus.ocr_bakeoff.syllables import unknown_rate
 LEN_TOL = 0.15
 LOOP_MIN = 5
 WARMUP_PAGES = 20
+WORST_PAGES = 10
 STEADY_MIN = 200
 _CSS = (
     "body{font-family:system-ui,sans-serif;margin:16px;background:#fff;color:#111}"
     "table{border-collapse:collapse;margin:8px 0}td,th{border:1px solid #ccc;padding:3px 6px;font-size:13px}"
-    ".pass{background:#d9f2d9}.fail{background:#f8d0d0}.na{background:#eee}"
+    ".pass{background:#d9f2d9}.fail{background:#f8d0d0}.warn{background:#fbecc4}.na{background:#eee}"
     ".grid{display:grid;gap:6px}.grid pre{white-space:pre-wrap;font-size:12px;max-height:600px;overflow:auto;"
     "border:1px solid #ddd;padding:4px;margin:0}.grid img{max-width:100%}"
     "@media (prefers-color-scheme: dark){body{background:#111;color:#eee}td,th{border-color:#444}"
-    ".pass{background:#1f3d1f}.fail{background:#4a1f1f}.na{background:#333}}"
+    ".pass{background:#1f3d1f}.fail{background:#4a1f1f}.warn{background:#4a3f1a}.na{background:#333}}"
 )
 
 
@@ -56,9 +63,10 @@ class Gates:
 
     special_recall_min: float = 0.95
     two_col_gap_max: float = 0.02
-    bad_rate_max: float = 0.01
+    bad_rate_excess_max: float = 0.01  # tỷ lệ trang hỏng được cao hơn baseline tối đa bao nhiêu (0,01 = 1 điểm %)
     trunc_rate_max: float = 0.005
-    hour_budget: float | None = None  # giờ chạy server cho cả kho; None = chưa đặt, cổng tốc độ "chưa kiểm"
+    hour_budget: float | None = None  # trần giờ chạy server cho cả kho; None = chưa đặt, cổng tốc độ "chưa kiểm"
+    hour_soft: float | None = 30.0  # mức mềm (N-02, O-11): vượt chỉ cảnh báo, không loại
 
 
 def page_bad_reason(rec: dict | None, sc: dict | None) -> str | None:
@@ -208,16 +216,21 @@ def aggregate_a(per: list[dict]) -> dict:
     strata["plain"] = [r for r in per if not any(r["flags"].values())]
     special_ref: dict[str, int] = defaultdict(int)
     special_hit: dict[str, int] = defaultdict(int)
+    strict_ref: dict[str, int] = defaultdict(int)
+    strict_hit: dict[str, int] = defaultdict(int)
     for r in per:
         for c, n in r["sc"]["special_ref"].items():
             special_ref[c] += n
             special_hit[c] += r["sc"]["special_hit"].get(c, 0)
+        for c, n in r["sc"]["special_ref_strict"].items():
+            strict_ref[c] += n
+            strict_hit[c] += r["sc"]["special_hit_strict"].get(c, 0)
     n = len(per)
     bad_counts: dict[str, int] = defaultdict(int)
     for r in per:
         if r["bad"]:
             bad_counts[r["bad"]] += 1
-    tot_ref = sum(special_ref.values())
+    tot_ref, tot_strict = sum(special_ref.values()), sum(strict_ref.values())
     return {
         "pages": n, "pages_with_output": sum(r["bad"] != "no_output" for r in per),
         "cer": cer(per), "cer_nodiac": cer(per, "char_dist_nodiac"),
@@ -228,11 +241,37 @@ def aggregate_a(per: list[dict]) -> dict:
         "cer_by_stratum": {k: cer(v) for k, v in strata.items()},
         "pages_by_stratum": {k: len(v) for k, v in strata.items()},
         "special_recall": sum(special_hit.values()) / tot_ref if tot_ref else None,
-        "special_by_char": {c: [special_hit[c], special_ref[c]] for c in SPECIAL_CHARS if special_ref[c]},
+        "special_by_class": {c: [special_hit[c], special_ref[c]] for c in SPECIAL_CLASSES if special_ref[c]},
+        "special_recall_strict": sum(strict_hit.values()) / tot_strict if tot_strict else None,
+        "special_by_char_strict": {c: [strict_hit[c], strict_ref[c]] for c in SPECIAL_CHARS if strict_ref[c]},
         "bad_rate": sum(bad_counts.values()) / n if n else None, "bad_by_reason": dict(bad_counts),
+        "bad_rate_by_reason": {k: v / n for k, v in bad_counts.items()},
         "trunc_rate": sum(r["truncated"] for r in per) / n if n else None,
         "_per_page": {"char_dist": [r["sc"]["char_dist"] for r in per], "ref_chars": [r["sc"]["ref_chars"] for r in per]},
     }
+
+
+def worst_pages(rows: list[dict], pages: list[dict], top: int = WORST_PAGES) -> dict[str, list[dict]]:
+    """
+    Các trang bộ A có CER cao nhất của từng engine (O-11): để xem lỗi do engine hay do đáp án.
+
+    Args:
+        rows:  Dòng per_page của score_set_a.
+        pages: Bản ghi trang (lấy nguồn file / số trang).
+
+    Returns:
+        {engine: [{"page_id", "source", "flags", "cer", "cer_nodiac", "len_ratio", "bad"}]} giảm dần theo CER.
+    """
+    info = {p["page_id"]: p for p in pages}
+    out: dict[str, list[dict]] = defaultdict(list)
+    for r in sorted(rows, key=lambda r: -r["cer"]):
+        if len(out[r["engine"]]) < top:
+            p = info.get(r["page_id"], {})
+            src = p.get("source", {})
+            out[r["engine"]].append({"page_id": r["page_id"], "source": f"{src.get('file') or src.get('title')} tr.{src.get('page')}",
+                                     "flags": p.get("flags", {}), "cer": r["cer"], "cer_nodiac": r["cer_nodiac"],
+                                     "len_ratio": r["len_ratio"], "bad": r["bad"]})
+    return dict(out)
 
 
 def score_set_b(pages: list[dict], outputs: dict[str, dict[str, dict]], vocab: frozenset[str] | None,
@@ -298,9 +337,17 @@ def apply_gates(a: dict, hours: dict, gates: Gates, baseline: str) -> tuple[dict
         h = hours.get(name, {})
         corpus_hours = h.get("corpus_hours")
 
-        def check(value, limit, ok) -> dict:
-            """Một cổng: None = chưa kiểm được."""
-            return {"value": value, "limit": limit, "status": "na" if ok is None else ("pass" if ok else "fail")}
+        def check(value, limit, ok, warn: bool = False) -> dict:
+            """Một cổng: None = chưa kiểm được; ok mà warn = qua nhưng đáng chú ý (không loại)."""
+            status = "na" if ok is None else ("fail" if not ok else ("warn" if warn else "pass"))
+            return {"value": value, "limit": limit, "status": status}
+
+        base_bad = base["bad_rate"] if base and base["bad_rate"] is not None else 0.0
+        bad_limit = base_bad + gates.bad_rate_excess_max
+        soft = gates.hour_soft
+        hours_ok = (None if corpus_hours is None or (gates.hour_budget is None and soft is None)
+                    else gates.hour_budget is None or corpus_hours <= gates.hour_budget)
+        hours_warn = corpus_hours is not None and soft is not None and corpus_hours > soft
 
         two = m["order_gap_two_column"]
         checks = {
@@ -309,11 +356,10 @@ def apply_gates(a: dict, hours: dict, gates: Gates, baseline: str) -> tuple[dict
             "special_recall": check(m["special_recall"], gates.special_recall_min,
                                     None if m["special_recall"] is None else m["special_recall"] >= gates.special_recall_min),
             "order_gap_two_column": check(two, gates.two_col_gap_max, None if two is None else two <= gates.two_col_gap_max),
-            "bad_rate": check(m["bad_rate"], gates.bad_rate_max, m["bad_rate"] <= gates.bad_rate_max),
+            "bad_rate": check(m["bad_rate"], bad_limit, m["bad_rate"] <= bad_limit),
             "trunc_rate": check(m["trunc_rate"], gates.trunc_rate_max, m["trunc_rate"] <= gates.trunc_rate_max),
-            "corpus_hours": check(corpus_hours, gates.hour_budget,
-                                  None if gates.hour_budget is None or corpus_hours is None
-                                  else corpus_hours <= gates.hour_budget),
+            "corpus_hours": check(corpus_hours, gates.hour_budget if gates.hour_budget is not None else soft,
+                                  hours_ok, hours_warn),
         }
         quality = all(c["status"] != "fail" for k, c in checks.items() if k != "corpus_hours")
         out[name] = {"checks": checks, "corpus_hours": corpus_hours, "pages_per_s": h.get("pages_per_s"),
@@ -340,6 +386,9 @@ def decide(a: dict, gated: dict, hours: dict, baseline: str, gates: Gates) -> di
     notes = []
     if gates.hour_budget is None:
         notes.append("chưa đặt giới hạn số giờ chạy cho cả kho (--hour-budget): cổng tốc độ chưa kiểm, kết luận là tạm")
+    slow = [f"{n} ({gated[n]['corpus_hours']:.1f} giờ)" for n in passed if gated[n]["checks"]["corpus_hours"]["status"] == "warn"]
+    if slow:
+        notes.append(f"vượt mức mềm {gates.hour_soft:g} giờ cho cả kho (chỉ cảnh báo, không loại): {', '.join(slow)}")
     if not all(hours.get(n, {}).get("steady") for n in passed):
         notes.append(f"có engine chưa đủ {STEADY_MIN} trang ổn định để đo tốc độ")
     if not passed:
@@ -420,8 +469,8 @@ def render_html(summary: dict, pages: list[dict], outputs: dict[str, dict[str, d
                      + "".join(f"<td>{_fmt(v)}</td>" for v in h["corpus_hours_by_source"].values()) + "</tr>")
     parts.append("</table>")
     cols = [("cer", True), ("cer_nodiac", True), ("diacritic_error", True), ("wer", True), ("bow_f1", True),
-            ("order_gap_all", True), ("order_gap_two_column", True), ("special_recall", True), ("bad_rate", True),
-            ("trunc_rate", True)]
+            ("order_gap_all", True), ("order_gap_two_column", True), ("special_recall", True),
+            ("special_recall_strict", True), ("bad_rate", True), ("trunc_rate", True)]
     parts.append("<h2>Bộ A (có đáp án)</h2><table><tr><th>engine</th>" + "".join(f"<th>{c}</th>" for c, _ in cols)
                  + "".join(f"<th>CER {k}</th>" for k in ("two_column", "table", "special", "plain")) + "</tr>")
     for name in engines:
@@ -432,6 +481,38 @@ def render_html(summary: dict, pages: list[dict], outputs: dict[str, dict[str, d
                      + "".join(f"<td>{_fmt(m['cer_by_stratum'][k], True)}</td>"
                                for k in ("two_column", "table", "special", "plain")) + "</tr>")
     parts.append("</table>")
+    reasons = ("no_output", "empty", "loop", "too_short", "too_long")
+    parts.append("<h3>Trang hỏng theo lý do (số trang)</h3><table><tr><th>engine</th>"
+                 + "".join(f"<th>{r}</th>" for r in reasons) + "</tr>")
+    for name in engines:
+        m = summary["set_a"].get(name)
+        if m:
+            parts.append(f"<tr><td>{e(name)}</td>" + "".join(f"<td>{m['bad_by_reason'].get(r, 0)}</td>" for r in reasons)
+                         + "</tr>")
+    parts.append("</table>")
+    parts.append("<h3>Recall ký tự đặc biệt theo lớp (đúng / có trong đáp án)</h3><table><tr><th>engine</th>"
+                 + "".join(f"<th>{e(c)}</th>" for c in SPECIAL_CLASSES) + "</tr>")
+    for name in engines:
+        m = summary["set_a"].get(name)
+        if m:
+            cells = "".join(f"<td>{m['special_by_class'][c][0]} / {m['special_by_class'][c][1]}</td>"
+                            if c in m["special_by_class"] else "<td>—</td>" for c in SPECIAL_CLASSES)
+            parts.append(f"<tr><td>{e(name)}</td>{cells}</tr>")
+    parts.append("</table>")
+    if summary.get("worst_pages"):
+        parts.append(f"<h3>{WORST_PAGES} trang CER cao nhất mỗi engine</h3>")
+        for name in engines:
+            rows = summary["worst_pages"].get(name)
+            if not rows:
+                continue
+            parts.append(f"<table><caption>{e(name)}</caption><tr><th>trang</th><th>nguồn</th><th>cờ</th><th>CER</th>"
+                         "<th>CER bỏ dấu</th><th>độ dài / đáp án</th><th>hỏng</th></tr>")
+            for w in rows:
+                flags = ",".join(k for k, v in w["flags"].items() if v)
+                parts.append(f"<tr><td>{e(w['page_id'])}</td><td>{e(w['source'])}</td><td>{e(flags)}</td>"
+                             f"<td>{_fmt(w['cer'], True)}</td><td>{_fmt(w['cer_nodiac'], True)}</td>"
+                             f"<td>{_fmt(w['len_ratio'])}</td><td>{e(w['bad'])}</td></tr>")
+            parts.append("</table>")
     if summary["decision"]["comparisons"]:
         parts.append("<h3>Hiệu CER cặp theo trang (bootstrap 95%)</h3><table><tr><th>cặp</th><th>hiệu</th><th>KTC</th></tr>")
         for k, v in summary["decision"]["comparisons"].items():
@@ -531,7 +612,7 @@ def score_bakeoff(bakeoff_dir: Path, engines: list[str] | None = None, baseline:
                               "steady_min": STEADY_MIN},
                "selection": {k: selection.get(k) for k in ("set_a", "set_b", "strata", "shortfall", "books_b")},
                "set_a": {n: {k: v for k, v in m.items() if not k.startswith("_")} for n, m in a.items()},
-               "set_b": b, "speed": speed, "hours": hours, "gates": gated, "decision": decision, "run_info": info}
+               "worst_pages": worst_pages(rows_a, set_a), "set_b": b, "speed": speed, "hours": hours, "gates": gated, "decision": decision, "run_info": info}
     rep = bakeoff_dir / "report"
     rep.mkdir(exist_ok=True)
     (rep / "summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")

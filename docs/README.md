@@ -520,20 +520,24 @@ Lưu ý:
 
 Engine OCR hiện tại (Paddle detect + VietOCR) không xuất được `² ³`, nháy cong, `– —` và trộn dòng ở trang hai cột. Trước
 khi thay bằng mô hình thị giác - ngôn ngữ, chạy một đợt so sánh theo quy tắc chọn đã chốt trong `docs/DECISION_LOG.md`
-(F-11, O-02). Ứng viên khai báo ở `configs/ocr_bakeoff/engines.json`: `baseline`, `paddleocr_vl`, `dots_ocr`,
-`qwen3vl_8b`, `qwen3vl_4b` (thêm engine = thêm một mục).
+(F-11, O-02). Ứng viên khai báo ở `configs/ocr_bakeoff/engines.json`: `baseline`, `dots_ocr`, `qwen3vl_8b`,
+`qwen3vl_4b` (thêm engine = thêm một mục). `paddleocr_vl` đã bị loại sau lượt chạy đầu (CER tệ hơn baseline có ý nghĩa,
+mất dấu thanh, perplexity 90; O-10, O-11): mục cấu hình và adapter còn trong code nhưng `run_bakeoff.sh` không chạy nó
+nữa và không còn môi trường paddle-gpu riêng; cần thì chạy tay bằng `run_engine.py --engine paddleocr_vl`.
 
 | Bước | Lệnh | Kết quả trong `<data-root>/processed/ocr_bakeoff/` |
 |---|---|---|
 | 1. Chọn trang (CPU) | `uv run python scripts/ocr_bakeoff/select_pages.py --data-root <root>` | `pages/`, `gt/`, `pages.jsonl`, `selection.json` (bộ A ~300 trang giáo trình có đáp án, bộ B ~40 trang stbook thật) |
 | 2. Tập âm tiết (CPU) | `uv run python scripts/ocr_bakeoff/build_syllables.py --data-root <root>` | `syllables.json` (từ SEA-PILE v2) |
 | 3. Chạy engine (GPU) | `uv run python scripts/ocr_bakeoff/run_engine.py --data-root <root> --engine <tên> --gpu <số> [--serve --vllm-bin <vllm>]` | `runs/<engine>/outputs.jsonl` (đầu ra thô từng trang), `run_info.json`, `server.log` |
-| 4. Chấm điểm | `uv run python scripts/ocr_bakeoff/score.py --data-root <root> --ppl [--hour-budget N]` | `report/summary.json`, `report/per_page.csv`, `report/hours.csv`, `report/report.html` |
+| 4. Chấm điểm | `uv run python scripts/ocr_bakeoff/score.py --data-root <root> --ppl [--hour-budget N] [--hour-soft N]` | `report/summary.json`, `report/per_page.csv`, `report/hours.csv`, `report/report.html` |
+| 5. Chẩn đoán đáp án bộ A (CPU) | `uv run python scripts/ocr_bakeoff/diagnose_gt.py --data-root <root>` | `report/gt_diag.json`, `report/gt_diag.csv` |
 
-Chạy trọn cả 4 bước, mỗi engine một GPU (trong tmux):
+Chạy trọn các bước 1-4, mỗi engine một GPU (trong tmux; bước 5 chạy tay sau đó):
 ```bash
 source /home/jovyan/dinh/env.sh       # mỗi lần mở server (xem "Môi trường trên server Run:ai" bên dưới)
-VLLM_BIN=$(which vllm) HOUR_BUDGET=30 ./scripts/ocr_bakeoff/run_bakeoff.sh 2>&1 | tee bakeoff.log
+VLLM_BIN=$(which vllm) HOUR_BUDGET=60 ./scripts/ocr_bakeoff/run_bakeoff.sh 2>&1 | tee bakeoff.log
+# HOUR_BUDGET = trần số giờ đồng hồ OCR cả kho (mặc định 60, O-11); HOUR_SOFT = mức mềm (mặc định 30, N-02), vượt chỉ cảnh báo
 # DATA_ROOT mặc định lấy SEA_DATA_ROOT (đặt trong env.sh); biến phải cùng dòng lệnh hoặc export
 # script chạy `uv sync --group ocr` một lần rồi mọi lệnh dùng `uv run --no-sync` (chạy song song `uv run` và
 # `uv run --group ocr` thì các tiến trình gỡ - cài torch của nhau); dừng nếu pages.jsonl không có trang bộ A;
@@ -542,16 +546,7 @@ VLLM_BIN=$(which vllm) HOUR_BUDGET=30 ./scripts/ocr_bakeoff/run_bakeoff.sh 2>&1 
 
 Chuẩn bị môi trường:
 - `baseline`: `uv sync --group ocr` (muốn phần detect chạy GPU thì cài thêm `paddlepaddle-gpu`).
-- `dots_ocr`, `qwen3vl_*`: cài vLLM (>= 0.11) bằng `uv tool install` (môi trường riêng do uv quản lý, không nằm trong `uv.lock` vì vLLM khoá cứng bản torch, dễ đụng torch của group `ocr` / `curator`) rồi trỏ `--vllm-bin`. `--serve` tự dựng server bằng lệnh `serve` trong cấu hình, chờ tải xong mô hình, chạy xong thì tắt. Không dùng `--serve` thì tự dựng server trước (cổng ở `base_url`).
-- `paddleocr_vl`: gồm hai phần. Server mô hình 0.9B dùng chung vLLM ở trên (`vllm serve PaddlePaddle/PaddleOCR-VL`, lệnh trong `engines.json`). Phần dò bố cục (PP-DocLayout) chạy bằng paddle, cần môi trường **riêng** có `paddlepaddle-gpu` + `paddleocr[doc-parser]` (môi trường repo có paddle bản CPU, hai bản không cài chung được), trỏ bằng biến `PADDLE_VL_RUN`. Thiếu môi trường này thì `run_bakeoff.sh` bỏ qua `paddleocr_vl` và báo ở đầu và cuối log. Dựng một lần (trên server, sau khi `source env.sh`):
-  ```bash
-  V=/home/jovyan/dinh/.tools/paddlevl-env
-  uv venv --python 3.12 $V
-  uv pip install --python $V/bin/python paddlepaddle-gpu==3.2.1 --extra-index-url https://www.paddlepaddle.org.cn/packages/stable/cu126/
-  uv pip install --python $V/bin/python "paddleocr[doc-parser]" safetensors pymupdf numpy pillow requests
-  echo "export PADDLE_VL_RUN=$V/bin/python" >> /home/jovyan/dinh/env.sh && source /home/jovyan/dinh/env.sh
-  $PADDLE_VL_RUN -c "import paddle; print(paddle.device.is_compiled_with_cuda())"   # phải in True
-  ```
+- `dots_ocr`, `qwen3vl_*` (đợt chạy song song 4 engine: GPU 0 `baseline`, GPU 1 `qwen3vl_4b`, GPU 2 `dots_ocr`, GPU 3 `qwen3vl_8b`): cài vLLM (>= 0.11) bằng `uv tool install` (môi trường riêng do uv quản lý, không nằm trong `uv.lock` vì vLLM khoá cứng bản torch, dễ đụng torch của group `ocr` / `curator`) rồi trỏ `--vllm-bin`. `--serve` tự dựng server bằng lệnh `serve` trong cấu hình, chờ tải xong mô hình, chạy xong thì tắt. Không dùng `--serve` thì tự dựng server trước (cổng ở `base_url`).
 - Thử nhanh một engine trước: `--limit 5`, rồi mở `runs/<engine>/outputs.jsonl` xem trường `text` và `error`.
 
 Môi trường trên server Run:ai (kiểm 2026-10-11, DECISION_LOG O-06): `HOME=/home/runai-home` nằm trên ổ riêng của máy
@@ -585,7 +580,9 @@ Lustre còn ~335 GB (2026-10-11); vLLM ~10 GB, trọng số các mô hình so s�
 vLLM khởi động lâu hơn vài chục giây.
 
 Đọc kết quả:
-- `summary.json` → `decision`: `winner` (engine chọn), `option_c` (có engine đủ chất lượng nhưng vượt giới hạn số giờ chạy: chỉ chạy VLM cho trang bị nghi), `no_candidate` (giữ baseline). Chưa đặt `--hour-budget` (số giờ tối đa server được chạy để OCR cả kho) thì kết luận chỉ là tạm.
+- `summary.json` → `decision`: `winner` (engine chọn), `option_c` (có engine đủ chất lượng nhưng vượt trần số giờ chạy: chỉ chạy VLM cho trang bị nghi, nay chỉ là dự phòng, O-11), `no_candidate` (giữ baseline), `no_outputs` (engine không có trang nào). Số giờ cho cả kho có hai mức: `--hour-soft` (mặc định 30, mức mềm của chủ dự án: vượt chỉ cảnh báo, ô vàng, engine vẫn được chọn) và `--hour-budget` (trần, Claude đề xuất 60: vượt thì engine trượt cổng tốc độ). Chưa đặt `--hour-budget` thì kết luận chỉ là tạm.
+- Cổng `bad_rate` tương đối so với baseline (O-11): ứng viên chỉ trượt nếu tỷ lệ trang hỏng cao hơn baseline quá `--bad-rate-excess-max` (mặc định 0,01 = 1 điểm %), vì baseline đã hỏng ~10% do cả đáp án. Recall ký tự đặc biệt tính theo lớp tương đương (nháy cong `“ ”` `‘ ’` và gạch dài `– —` đúng nếu engine ra `"` `'` `-`; `² ³ ° …` phải đúng chính xác); `special_recall_strict` là bản đúng từng ký tự để đối chiếu với báo cáo cũ. `report.html` có thêm bảng trang hỏng theo lý do (`no_output` thiếu, `empty` rỗng, `too_short` / `too_long` độ dài, `loop` lặp), recall theo lớp, và 10 trang CER cao nhất mỗi engine (cũng ở `summary.json` → `worst_pages`).
+- `diagnose_gt.py` (bước 5): kiểm đáp án bộ A xem CER cao do engine hay do đáp án. Đánh dấu trang ngang (nghi trang đôi), số trang lẫn giữa trang (vd "962" ở A0266), dòng đầu / cuối đáp án mà quá nửa số engine không đọc ra (tiêu đề, chân trang); in CER ba kiểu (nguyên đáp án, bỏ trang ngang, đã bỏ dòng nghi thừa trên cùng tập trang) và trang mà mọi engine đều CER cao. Chỉ là chẩn đoán dựa trên đồng thuận giữa các engine, không đổi cách chấm của `score.py`.
 - `hours.csv` (cũng có trong `summary.json` → `hours` và bảng "Số giờ chạy" của `report.html`): mỗi engine một dòng, gồm số trang và số giờ đã chạy thật trong đợt so sánh, số giờ chờ server / nạp mô hình, trang/giây trên 1 GPU, số giờ để OCR cả kho khi 4 GPU cùng chạy (`corpus_hours`), số giờ GPU tương ứng (`corpus_gpu_hours` = × 4) và số giờ tách theo nguồn.
 - `report.html`: bảng cổng loại (xanh qua, đỏ trượt, xám chưa kiểm), số đo bộ A theo tầng, bộ B (âm tiết lạ, perplexity, `?`), từng trang bộ B và vài trang hai cột bộ A đặt cạnh nhau với ảnh gốc.
 - Chạy lại được ở mọi bước: `run_engine.py` chỉ làm trang còn thiếu / lỗi (`--redo` để làm lại), `score.py` chấm lại bao nhiêu lần cũng được. Chọn lại bộ trang (`select_pages.py --overwrite`) sẽ xoá kết quả engine cũ.

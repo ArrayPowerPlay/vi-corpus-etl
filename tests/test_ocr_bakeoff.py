@@ -14,6 +14,7 @@ import pytest
 from PIL import Image
 
 from vi_corpus.ocr_bakeoff import engines as eng
+from vi_corpus.ocr_bakeoff.gt_diag import diagnose_gt, number_line_suspects
 from vi_corpus.ocr_bakeoff.metrics import (
     levenshtein,
     page_scores,
@@ -72,7 +73,23 @@ def test_page_scores_tach_loi_dau_va_thu_tu():
     s = page_scores("b a", "a b")
     assert s["bow_f1"] == 1.0 and s["word_dist"] == 2
     s = page_scores("km2 “x”", "km² “x”")
-    assert s["special_ref"] == {"²": 1, "“": 1, "”": 1} and sum(s["special_hit"].values()) == 2
+    assert s["special_ref"] == {"²": 1, "“”": 2} and sum(s["special_hit"].values()) == 2
+    assert s["special_ref_strict"] == {"²": 1, "“": 1, "”": 1} and sum(s["special_hit_strict"].values()) == 2
+
+
+def test_special_recall_theo_lop_tuong_duong():
+    """Nháy cong / gạch dài ra ASCII vẫn đúng; ² ra "2" sai; gạch nối ASCII vốn có trong đáp án không tính là engine giữ được."""
+    ref = "kinh-tế 3 km² “a” – b — c"
+    s = page_scores('kinh-tế 3 km2 "a" - b - c', ref)
+    assert s["special_ref"] == {"²": 1, "“”": 2, "–—": 2}
+    assert s["special_hit"] == {"²": 0, "“”": 2, "–—": 2}
+    assert sum(s["special_hit_strict"].values()) == 0
+    # engine bỏ hẳn gạch dài: gạch nối của "kinh-tế" không bù vào chỗ mất
+    s = page_scores("kinh-tế 3 km² “a” b c", ref)
+    assert s["special_hit"] == {"²": 1, "“”": 2, "–—": 0}
+    # bỏ cả gạch nối lẫn gạch dài, nhưng ra nhiều gạch nối nơi khác: tối đa bằng số trong đáp án
+    s = page_scores("a-b-c-d-e-f", "a – b")
+    assert s["special_hit"] == {"–—": 1}
 
 
 def test_paired_bootstrap_khoang_tin_cay():
@@ -247,7 +264,10 @@ def test_score_va_quy_tac_chon(tmp_path):
                       gates=Gates(hour_budget=None))
     a = s["set_a"]
     assert a["good"]["cer"] == 0 and a["good"]["special_recall"] == 1.0
-    assert a["baseline"]["special_recall"] == 0 and a["baseline"]["cer_nodiac"] < a["baseline"]["cer"]
+    # baseline đổi nháy cong / gạch dài thành ASCII (vẫn đúng theo lớp tương đương) nhưng mất ²
+    assert a["baseline"]["special_recall"] == pytest.approx(0.75) and a["baseline"]["special_recall_strict"] == 0
+    assert a["baseline"]["special_by_class"]["²"] == [0, 30] and a["baseline"]["special_by_class"]["–—"] == [30, 30]
+    assert a["baseline"]["cer_nodiac"] < a["baseline"]["cer"]
     assert a["swap"]["order_gap_two_column"] > 0.02 and s["gates"]["swap"]["checks"]["order_gap_two_column"]["status"] == "fail"
     assert s["gates"]["loopy"]["checks"]["bad_rate"]["status"] == "fail"
     assert a["loopy"]["bad_by_reason"] == {"loop": 1}
@@ -378,3 +398,87 @@ def test_run_engine_chay_tiep_va_ghi_loi(tmp_path, monkeypatch):
     assert len(sessions) == 2 and all("ended" in x and "seconds" in x for x in sessions)
     with pytest.raises(ValueError):
         eng.run_engine(tmp_path, "g", {"type": "lạ"})
+
+
+def test_bad_rate_tuong_doi_so_voi_baseline_va_gio_mem(tmp_path):
+    """
+    baseline có 3/30 trang hỏng (rỗng): ứng viên hỏng 3/30 qua cổng bad_rate (tương đối), hỏng 6/30 thì trượt. Giờ chạy
+    cả kho vượt mức mềm chỉ cảnh báo (vẫn được chọn), vượt trần thì trượt cổng tốc độ.
+    """
+    refs = _fake_bakeoff(tmp_path)
+    ids = [f"A{i}" for i in range(len(refs))]
+
+    def with_empty(n: int) -> dict[str, str]:
+        """Đáp án đúng, n trang đầu để rỗng."""
+        return {p: ("" if i < n else t) for i, (p, t) in enumerate(zip(ids, refs))}
+
+    _write_run(tmp_path, "baseline", with_empty(3), pps=1.0)
+    _write_run(tmp_path, "same", with_empty(3), pps=2.0)
+    _write_run(tmp_path, "worse", with_empty(6), pps=2.0)
+    s = score_bakeoff(tmp_path, ["baseline", "same", "worse"], gates=Gates(hour_budget=None, hour_soft=30))
+    assert s["set_a"]["baseline"]["bad_by_reason"] == {"empty": 3}
+    assert s["gates"]["same"]["checks"]["bad_rate"]["status"] == "pass"
+    assert s["gates"]["same"]["checks"]["bad_rate"]["limit"] == pytest.approx(0.1 + 0.01)
+    assert s["gates"]["worse"]["checks"]["bad_rate"]["status"] == "fail"
+    # 1e6 trang / (2 trang/s x 4 GPU) / 3600 ~ 34,7 giờ: quá mức mềm 30, chưa quá trần 60
+    assert s["gates"]["same"]["checks"]["corpus_hours"]["status"] == "warn"  # chưa đặt trần: chỉ cảnh báo mức mềm
+    s = score_bakeoff(tmp_path, ["baseline", "same", "worse"], gates=Gates(special_recall_min=0.5, hour_budget=60, hour_soft=30))
+    assert s["gates"]["same"]["checks"]["corpus_hours"]["status"] == "warn"
+    assert s["gates"]["same"]["passed_speed"] and s["decision"]["winner"] == "same"
+    assert any("mức mềm" in n for n in s["decision"]["notes"])
+    s = score_bakeoff(tmp_path, ["baseline", "same", "worse"], gates=Gates(special_recall_min=0.5, hour_budget=20, hour_soft=10))
+    assert s["gates"]["same"]["checks"]["corpus_hours"]["status"] == "fail" and s["decision"]["status"] == "option_c"
+
+
+def test_trang_cer_cao_nhat_va_bao_cao(tmp_path):
+    """Danh sách trang CER cao nhất giảm dần, có trong summary.json và report.html cùng bảng lý do hỏng / recall theo lớp."""
+    refs = _fake_bakeoff(tmp_path)
+    ids = [f"A{i}" for i in range(len(refs))]
+    texts = {p: t for p, t in zip(ids, refs)}
+    texts["A7"] = "sai hoàn toàn"
+    texts["A3"] = refs[3][:-30]
+    _write_run(tmp_path, "baseline", texts)
+    s = score_bakeoff(tmp_path, ["baseline"])
+    w = s["worst_pages"]["baseline"]
+    assert len(w) == 10 and w[0]["page_id"] == "A7" and w[1]["page_id"] == "A3"
+    assert [x["cer"] for x in w] == sorted((x["cer"] for x in w), reverse=True)
+    html = (tmp_path / "report/report.html").read_text(encoding="utf-8")
+    assert "trang CER cao nhất" in html and "Trang hỏng theo lý do" in html and "Recall ký tự đặc biệt theo lớp" in html
+
+
+def test_so_trang_nghi_la_so_trang_lan_vao():
+    """Hai dòng số hoặc một dòng số giữa trang là nghi; một số trang ở cuối thì không; trang bảng bỏ qua."""
+    body = [f"Dòng nội dung {i}" for i in range(10)]
+    assert number_line_suspects([*body, "962"], False) == ([], [])
+    idx, why = number_line_suspects([*body[:5], "962", *body[5:]], False)
+    assert idx == [5] and why == ["number_mid_page"]
+    idx, why = number_line_suspects(["12", *body, "13"], False)
+    assert idx == [0, 11] and why == ["two_number_lines"]
+    assert number_line_suspects(["1", "2", "3"], True) == ([], [])
+
+
+def test_chan_doan_dap_an(tmp_path):
+    """
+    Đáp án có tiêu đề + số trang mà mọi engine bỏ, một trang ngang (trang đôi) và một trang mọi engine đều sai: chẩn đoán
+    bắt đủ ba loại, CER sau khi sửa đáp án thấp hơn nguyên đáp án.
+    """
+    (tmp_path / "gt").mkdir()
+    body = " ".join(f"{SENT_L} {SENT_R}" for _ in range(2))
+    gts = {"A0": f"CHƯƠNG BA KINH TẾ VĨ MÔ\n{body}\n962", "A1": body, "A2": body, "A3": "nội dung hoàn toàn khác " * 20}
+    pages = []
+    for pid, gt in gts.items():
+        (tmp_path / "gt" / f"{pid}.txt").write_text(gt, encoding="utf-8")
+        pages.append({"page_id": pid, "set": "A", "image": f"pages/{pid}.jpg", "gt": f"gt/{pid}.txt", "flags": {},
+                      "size": [1400, 900] if pid == "A1" else [600, 900], "source": {"file": "x.pdf", "page": 1}})
+    (tmp_path / "pages.jsonl").write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in pages), encoding="utf-8")
+    ok = {"A0": body, "A1": body, "A2": body, "A3": "chữ khác hẳn không liên quan gì " * 20}
+    _write_run(tmp_path, "e1", ok)
+    _write_run(tmp_path, "e2", ok)
+    r = diagnose_gt(tmp_path)
+    assert r["pages"] == 4 and r["reasons"]["landscape"] == 1
+    assert r["reasons"]["edge_lines_dropped_by_engines"] >= 1 and r["trimmed_lines"] >= 2
+    assert r["cer"]["e1"]["trimmed"] < r["cer"]["e1"]["without_landscape"]  # cùng tập trang, chỉ khác đáp án
+    assert [h["page_id"] for h in r["hard_pages"]] == ["A3"]
+    assert r["ground_truth_share"] > 0
+    csv_text = (tmp_path / "report/gt_diag.csv").read_text(encoding="utf-8")
+    assert "CHƯƠNG BA KINH TẾ VĨ MÔ" in csv_text and (tmp_path / "report/gt_diag.json").exists()

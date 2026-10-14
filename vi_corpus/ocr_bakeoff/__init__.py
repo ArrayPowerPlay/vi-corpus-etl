@@ -11,4 +11,5 @@ Các bước (script ở scripts/ocr_bakeoff/, chạy trên server GPU):
     syllables.py: tập âm tiết lập từ SEA-PILE (đo tỷ lệ âm tiết lạ ở bộ B).
     perplexity.py: perplexity Qwen3-0.6B của đầu ra (bộ B, đo thứ tự đọc khi không có đáp án).
     scoring.py  : chấm điểm, áp quy tắc chọn đã viết trước, xuất summary.json / per_page.csv / report.html.
+    gt_diag.py  : chẩn đoán đáp án bộ A (trang đôi, số trang lẫn giữa trang, tiêu đề / chân trang engine bỏ), CPU.
 """
