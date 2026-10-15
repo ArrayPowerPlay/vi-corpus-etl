@@ -8,8 +8,11 @@ report.html (bảng số đo, cổng, số giờ chạy, bộ B và vài trang h
 
 Trang "hỏng" (bỏ sót / bịa) ở bộ A: không có đầu ra (lỗi hoặc chưa chạy), rỗng, độ dài ngoài ±LEN_TOL so với đáp án,
 hoặc vòng lặp (một 4-gram lặp >= LOOP_MIN lần và hơn hai lần số lặp trong đáp án); số trang hỏng được tách theo lý do
-(no_output / empty / loop / too_short / too_long). Cổng bad_rate đặt tương đối so với baseline (O-11): ứng viên chỉ bị
-loại nếu tỷ lệ hỏng cao hơn baseline quá bad_rate_excess_max, vì tỷ lệ hỏng của baseline đã phản ánh cả lỗi đáp án.
+(no_output / empty / loop / too_short / too_long). Các cổng đặt tương đối so với baseline (O-11): ứng viên chỉ bị loại
+nếu tỷ lệ cao hơn baseline quá bad_rate_excess_max, vì tỷ lệ hỏng của baseline đã phản ánh cả lỗi đáp án. Từ O-16 tách
+làm ba: bad_rate chỉ tính lỗi cứng của engine (no_output / empty / loop); too_short (engine bỏ sót chữ) là cổng riêng;
+too_long chỉ báo, không loại, vì đáp án là lớp chữ của PDF nên thiếu chữ nằm trong hình mà VLM đọc được (stbook là ảnh
+quét, đọc hết chữ trong hình là việc cần làm). Cổng thứ tự đọc hai cột chỉ cảnh báo (O-14 ghi nhận i: bộ A chỉ 8 trang).
 Recall ký tự đặc biệt tính theo lớp tương đương (metrics.SPECIAL_CLASSES: nháy cong / gạch dài đúng nếu ra ASCII, "…"
 đúng nếu ra "…" hoặc dãy từ 3 dấu chấm), có thêm bản chính xác từng ký tự để đối chiếu.
 CER (O-14): lỗi mỗi trang bị chặn trần bằng số ký tự đáp án (CER trang tối đa 100%) để vài trang vòng lặp (đầu ra dài gấp
@@ -46,6 +49,7 @@ from vi_corpus.ocr_bakeoff.pages import is_landscape, read_pages
 from vi_corpus.ocr_bakeoff.perplexity import latest_outputs, latest_outputs_ppl
 from vi_corpus.ocr_bakeoff.syllables import unknown_rate
 
+HARD_BAD = ("no_output", "empty", "loop")  # lỗi cứng của engine; too_short / too_long là lệch độ dài so với đáp án (O-16)
 LEN_TOL = 0.15
 LOOP_MIN = 5
 WARMUP_PAGES = 20
@@ -68,7 +72,7 @@ class Gates:
     """Ngưỡng của quy tắc loại (F-11)."""
 
     special_recall_min: float = 0.95
-    two_col_gap_max: float = 0.02
+    two_col_gap_max: float = 0.02  # chỉ cảnh báo, không loại (O-14 i, O-16): bộ A chỉ có vài trang hai cột
     bad_rate_excess_max: float = 0.01  # tỷ lệ trang hỏng được cao hơn baseline tối đa bao nhiêu (0,01 = 1 điểm %)
     trunc_rate_max: float = 0.005
     hour_budget: float | None = None  # trần giờ chạy server cho cả kho; None = chưa đặt, cổng tốc độ "chưa kiểm"
@@ -275,7 +279,11 @@ def aggregate_a(per: list[dict]) -> dict:
         "special_by_class": {c: [special_hit[c], special_ref[c]] for c in SPECIAL_CLASSES if special_ref[c]},
         "special_recall_strict": sum(strict_hit.values()) / tot_strict if tot_strict else None,
         "special_by_char_strict": {c: [strict_hit[c], strict_ref[c]] for c in SPECIAL_CHARS if strict_ref[c]},
-        "bad_rate": sum(bad_counts.values()) / n if n else None, "bad_by_reason": dict(bad_counts),
+        "bad_rate": sum(bad_counts.get(k, 0) for k in HARD_BAD) / n if n else None,
+        "bad_rate_all": sum(bad_counts.values()) / n if n else None,
+        "short_rate": bad_counts.get("too_short", 0) / n if n else None,
+        "long_rate": bad_counts.get("too_long", 0) / n if n else None,
+        "bad_by_reason": dict(bad_counts),
         "bad_rate_by_reason": {k: v / n for k, v in bad_counts.items()},
         "trunc_rate": sum(r["truncated"] for r in per) / n if n else None,
         "_per_page": {"char_dist": [capped_dist(r["sc"]) for r in rank], "ref_chars": [r["sc"]["ref_chars"] for r in rank]},
@@ -398,6 +406,8 @@ def apply_gates(a: dict, hours: dict, gates: Gates, baseline: str) -> tuple[dict
 
         base_bad = base["bad_rate"] if base and base["bad_rate"] is not None else 0.0
         bad_limit = base_bad + gates.bad_rate_excess_max
+        base_short = base["short_rate"] if base and base["short_rate"] is not None else 0.0
+        short_limit = base_short + gates.bad_rate_excess_max
         soft = gates.hour_soft
         hours_ok = (None if corpus_hours is None or (gates.hour_budget is None and soft is None)
                     else gates.hour_budget is None or corpus_hours <= gates.hour_budget)
@@ -409,8 +419,12 @@ def apply_gates(a: dict, hours: dict, gates: Gates, baseline: str) -> tuple[dict
                                      None if not base or name == baseline else m["cer_rank"] <= base["cer_rank"]),
             "special_recall": check(m["special_recall"], gates.special_recall_min,
                                     None if m["special_recall"] is None else m["special_recall"] >= gates.special_recall_min),
-            "order_gap_two_column": check(two, gates.two_col_gap_max, None if two is None else two <= gates.two_col_gap_max),
+            "order_gap_two_column": check(two, gates.two_col_gap_max, None if two is None else True,
+                                          warn=two is not None and two > gates.two_col_gap_max),
             "bad_rate": check(m["bad_rate"], bad_limit, m["bad_rate"] <= bad_limit),
+            "too_short_rate": check(m["short_rate"], short_limit, m["short_rate"] <= short_limit),
+            "too_long_rate": check(m["long_rate"], None, True,
+                                   warn=base is not None and m["long_rate"] > base["long_rate"] + gates.bad_rate_excess_max),
             "trunc_rate": check(m["trunc_rate"], gates.trunc_rate_max, m["trunc_rate"] <= gates.trunc_rate_max),
             "corpus_hours": check(corpus_hours, gates.hour_budget if gates.hour_budget is not None else soft,
                                   hours_ok, hours_warn),
@@ -524,7 +538,7 @@ def render_html(summary: dict, pages: list[dict], outputs: dict[str, dict[str, d
     parts.append("</table>")
     cols = [("cer_rank", True), ("cer", True), ("cer_raw", True), ("cer_nodiac", True), ("diacritic_error", True), ("wer", True), ("bow_f1", True),
             ("order_gap_all", True), ("order_gap_two_column", True), ("special_recall", True),
-            ("special_recall_strict", True), ("bad_rate", True), ("trunc_rate", True)]
+            ("special_recall_strict", True), ("bad_rate", True), ("short_rate", True), ("long_rate", True), ("trunc_rate", True)]
     parts.append("<h2>Bộ A (có đáp án)</h2><table><tr><th>engine</th>" + "".join(f"<th>{c}</th>" for c, _ in cols)
                  + "".join(f"<th>CER {k}</th>" for k in ("two_column", "table", "special", "plain")) + "</tr>")
     for name in engines:

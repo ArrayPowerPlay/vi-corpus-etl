@@ -106,5 +106,74 @@
     "max_tokens": 8192,
     "license": "Apache-2.0 (kiểm model card)",
     "note": "Cùng lời nhắc với qwen3vl_8b."
+  },
+  "qwen3vl_8b_mt4k": {
+    "type": "openai",
+    "output": "markdown",
+    "model": "Qwen/Qwen3-VL-8B-Instruct",
+    "serve": [
+      "vllm",
+      "serve",
+      "Qwen/Qwen3-VL-8B-Instruct",
+      "--port",
+      "8012",
+      "--max-model-len",
+      "32768",
+      "--gpu-memory-utilization",
+      "0.9"
+    ],
+    "base_url": "http://127.0.0.1:8012/v1",
+    "prompt": "Transcribe all text on this page image exactly as printed, in natural human reading order: for a multi-column page, read each column from top to bottom before moving to the next column. Keep the original language, spelling, Vietnamese diacritics, punctuation and symbols. Include running headers, footers and page numbers. Write tables as HTML. Output only the transcription, without translation, summary or commentary.",
+    "max_tokens": 4096,
+    "license": "Apache-2.0 (model card)",
+    "note": "O-16: như qwen3vl_8b nhưng max_tokens 4096 (không đổi gì khác) để tách tác dụng của giới hạn độ dài khỏi repetition_penalty."
+  },
+  "qwen3vl_8b_rp105": {
+    "type": "openai",
+    "output": "markdown",
+    "model": "Qwen/Qwen3-VL-8B-Instruct",
+    "serve": [
+      "vllm",
+      "serve",
+      "Qwen/Qwen3-VL-8B-Instruct",
+      "--port",
+      "8013",
+      "--max-model-len",
+      "32768",
+      "--gpu-memory-utilization",
+      "0.9"
+    ],
+    "base_url": "http://127.0.0.1:8013/v1",
+    "prompt": "Transcribe all text on this page image exactly as printed, in natural human reading order: for a multi-column page, read each column from top to bottom before moving to the next column. Keep the original language, spelling, Vietnamese diacritics, punctuation and symbols. Include running headers, footers and page numbers. Write tables as HTML. Output only the transcription, without translation, summary or commentary.",
+    "max_tokens": 4096,
+    "license": "Apache-2.0 (model card)",
+    "note": "O-16: như qwen3vl_8b, max_tokens 4096 + repetition_penalty 1,05 (vLLM, tham số lấy mẫu mở rộng) để giảm vòng lặp / cắt cụt.",
+    "extra_body": {
+      "repetition_penalty": 1.05
+    }
+  },
+  "qwen3vl_8b_rp110": {
+    "type": "openai",
+    "output": "markdown",
+    "model": "Qwen/Qwen3-VL-8B-Instruct",
+    "serve": [
+      "vllm",
+      "serve",
+      "Qwen/Qwen3-VL-8B-Instruct",
+      "--port",
+      "8014",
+      "--max-model-len",
+      "32768",
+      "--gpu-memory-utilization",
+      "0.9"
+    ],
+    "base_url": "http://127.0.0.1:8014/v1",
+    "prompt": "Transcribe all text on this page image exactly as printed, in natural human reading order: for a multi-column page, read each column from top to bottom before moving to the next column. Keep the original language, spelling, Vietnamese diacritics, punctuation and symbols. Include running headers, footers and page numbers. Write tables as HTML. Output only the transcription, without translation, summary or commentary.",
+    "max_tokens": 4096,
+    "license": "Apache-2.0 (model card)",
+    "note": "O-16: như qwen3vl_8b, max_tokens 4096 + repetition_penalty 1,10 (mạnh hơn rp105; có thể làm sai chữ lặp hợp lệ như bảng số).",
+    "extra_body": {
+      "repetition_penalty": 1.1
+    }
   }
 }

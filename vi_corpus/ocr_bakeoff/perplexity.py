@@ -12,14 +12,33 @@ import logging
 import math
 from pathlib import Path
 
+from vi_corpus.ocr_bakeoff.textnorm import to_plain
+
 logger = logging.getLogger("vi_corpus")
 
 PPL_MODEL = "Qwen/Qwen3-0.6B"
 PPL_TOKENS = 512
 
 
+def _output_format(run_dir: Path) -> str | None:
+    """Định dạng đầu ra ("plain" | "markdown" | ...) của engine từ run_info.json, None nếu không có."""
+    path = run_dir / "run_info.json"
+    if not path.exists():
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8")).get("config", {}).get("output")
+    except (json.JSONDecodeError, OSError):
+        return None
+
+
 def latest_outputs(run_dir: Path) -> dict[str, dict]:
-    """Kết quả mới nhất không lỗi của từng trang trong runs/<engine>/outputs.jsonl."""
+    """
+    Kết quả mới nhất không lỗi của từng trang trong runs/<engine>/outputs.jsonl.
+
+    Trường "text" được suy lại từ "raw" bằng adapter textnorm.to_plain hiện hành (O-16): sửa adapter có hiệu lực ngay khi
+    chấm lại, không cần chạy lại engine. Không có run_info.json (hoặc "raw" rỗng) thì giữ "text" đã lưu.
+    """
+    fmt = _output_format(run_dir)
     out: dict[str, dict] = {}
     path = run_dir / "outputs.jsonl"
     if not path.exists():
@@ -31,6 +50,11 @@ def latest_outputs(run_dir: Path) -> dict[str, dict]:
             except json.JSONDecodeError:
                 continue
             if not rec.get("error"):
+                if fmt and isinstance(rec.get("raw"), str):
+                    try:
+                        rec["text"] = to_plain(rec["raw"], fmt)
+                    except ValueError:
+                        pass  # định dạng lạ: giữ text đã lưu
                 out[rec["page_id"]] = rec
     return out
 

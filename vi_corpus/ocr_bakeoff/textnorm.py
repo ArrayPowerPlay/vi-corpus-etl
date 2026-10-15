@@ -35,6 +35,9 @@ _CATEGORY_FIELD = re.compile(r'"category"\s*:\s*"([^"]*)"')
 # cũng sẽ đổi như vậy, nên engine biết đó là số mũ được tính đúng.
 _SUPERSCRIPT = re.compile(r"<sup>\s*([23])\s*</sup>|\$\s*\^\s*\{?\s*([23])\s*\}?\s*\$")
 _SUP_CHAR = {"2": "²", "3": "³"}
+# Thẻ HTML bị escape ("&lt;sup&gt;(n)&lt;/sup&gt;"): đổi lại thành thẻ thật để bước bỏ thẻ xử lý (O-16). Chỉ các thẻ định
+# dạng quen thuộc, để không đụng tới "a &lt; b" trong toán.
+_ESCAPED_TAG = re.compile(r"&lt;(/?(?:sub|sup|br|b|i|u|em|strong|span|p|div)\b[^&<>]*?)&gt;", re.IGNORECASE)
 
 
 class _CellParser(HTMLParser):
@@ -80,7 +83,7 @@ def _pipe_row_cells(line: str) -> list[str]:
 
 def markdown_to_plain(text: str) -> str:
     """Bỏ cú pháp markdown / HTML, bảng thành mỗi ô một dòng (xem docstring module)."""
-    text = _SUPERSCRIPT.sub(lambda m: _SUP_CHAR[m.group(1) or m.group(2)], text or "")
+    text = _SUPERSCRIPT.sub(lambda m: _SUP_CHAR[m.group(1) or m.group(2)], _ESCAPED_TAG.sub(r"<\1>", text or ""))
     text = _TABLE.sub(lambda m: "\n" + "\n".join(html_table_lines(m.group(0))) + "\n", text)
     out: list[str] = []
     for line in text.split("\n"):

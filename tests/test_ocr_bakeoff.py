@@ -249,7 +249,7 @@ def _write_run(root: Path, name: str, texts: dict[str, str], pps: float = 1.0, f
 
 def test_score_va_quy_tac_chon(tmp_path):
     """
-    baseline mất ký tự đặc biệt và dấu; good gần hoàn hảo; swap đảo hai câu ở trang hai cột (bị loại vì thứ tự đọc);
+    baseline mất ký tự đặc biệt và dấu; good gần hoàn hảo; swap đảo hai câu ở trang hai cột (chỉ bị cảnh báo thứ tự đọc);
     loopy lặp ở 1 trang (bị loại vì tỷ lệ trang hỏng). Kết luận: good.
     """
     refs = _fake_bakeoff(tmp_path)
@@ -271,7 +271,9 @@ def test_score_va_quy_tac_chon(tmp_path):
     assert a["baseline"]["special_recall"] == pytest.approx(0.75) and a["baseline"]["special_recall_strict"] == 0
     assert a["baseline"]["special_by_class"]["²"] == [0, 30] and a["baseline"]["special_by_class"]["–—"] == [30, 30]
     assert a["baseline"]["cer_nodiac"] < a["baseline"]["cer"]
-    assert a["swap"]["order_gap_two_column"] > 0.02 and s["gates"]["swap"]["checks"]["order_gap_two_column"]["status"] == "fail"
+    # cổng thứ tự đọc hai cột chỉ cảnh báo (O-16): swap không bị loại vì cổng này, nhưng CER cao hơn good nên không thắng
+    assert a["swap"]["order_gap_two_column"] > 0.02 and s["gates"]["swap"]["checks"]["order_gap_two_column"]["status"] == "warn"
+    assert s["gates"]["swap"]["passed_quality"]
     assert s["gates"]["loopy"]["checks"]["bad_rate"]["status"] == "fail"
     assert a["loopy"]["bad_by_reason"] == {"loop": 1}
     d = s["decision"]
@@ -283,7 +285,7 @@ def test_score_va_quy_tac_chon(tmp_path):
     assert (rep / "report.html").read_text(encoding="utf-8").count("<details>") == 2 + 10 + len(s["raw_cer_examples"])
     assert "page_id" in (rep / "per_page.csv").read_text(encoding="utf-8").splitlines()[0]
     # giới hạn giờ chạy: 1e6 trang / (2 trang/s x 4 GPU) / 3600 ~ 34,7 giờ > 30 -> good trượt cổng tốc độ -> phương án C
-    s = score_bakeoff(tmp_path, ["baseline", "good", "swap", "loopy"], gates=Gates(hour_budget=30))
+    s = score_bakeoff(tmp_path, ["baseline", "good", "loopy"], gates=Gates(hour_budget=30))  # swap nhanh, bỏ ra để good là ứng viên duy nhất
     h = s["hours"]["good"]
     assert s["gates"]["good"]["corpus_hours"] == h["corpus_hours"] == pytest.approx(1e6 / (2.0 * 4) / 3600, rel=0.05)
     assert h["corpus_gpu_hours"] == pytest.approx(4 * h["corpus_hours"])
@@ -291,7 +293,7 @@ def test_score_va_quy_tac_chon(tmp_path):
     assert h["bakeoff_pages"] == 32 and h["bakeoff_run_hours"] == pytest.approx(32 / 2.0 / 3600)
     assert s["decision"]["status"] == "option_c"
     rows = (tmp_path / "report/hours.csv").read_text(encoding="utf-8").splitlines()
-    assert rows[0].startswith("engine,bakeoff_pages,bakeoff_run_hours") and len(rows) == 5
+    assert rows[0].startswith("engine,bakeoff_pages,bakeoff_run_hours") and len(rows) == 4
     assert "Số giờ chạy" in (tmp_path / "report/report.html").read_text(encoding="utf-8")
 
 
@@ -566,3 +568,59 @@ def test_trang_cer_tho_cao_nhat_dat_canh_nhau(tmp_path):
     assert ex["A1"]["cer_raw"]["a"] > ex["A1"]["cer_raw"]["b"] == 0
     html = (tmp_path / "report/report.html").read_text(encoding="utf-8")
     assert "trang CER thô cao nhất mỗi engine" in html and html.count("top của") == 5
+
+
+def test_tach_bad_rate_loi_cung_va_lech_do_dai(tmp_path):
+    """
+    O-16: bad_rate chỉ tính lỗi cứng (rỗng / lặp / thiếu đầu ra); too_long chỉ báo (engine đọc cả chữ trong hình mà đáp án
+    không có) nên không loại; too_short (bỏ sót chữ) là cổng riêng tương đối với baseline.
+    """
+    refs = _fake_bakeoff(tmp_path)
+    ids = [f"A{i}" for i in range(len(refs))]
+    _write_run(tmp_path, "baseline", dict(zip(ids, refs)), pps=1.0)
+    longer = {p: (t + " chữ nằm trong hình mà lớp chữ của PDF không có" * 2 if i < 12 else t) for i, (p, t) in enumerate(zip(ids, refs))}
+    _write_run(tmp_path, "long", longer, pps=2.0)
+    shorter = {p: (t[: len(t) // 2] if i < 12 else t) for i, (p, t) in enumerate(zip(ids, refs))}
+    _write_run(tmp_path, "short", shorter, pps=2.0)
+    s = score_bakeoff(tmp_path, ["baseline", "long", "short"], gates=Gates(special_recall_min=0.0, hour_budget=None, hour_soft=None))
+    a = s["set_a"]
+    assert a["long"]["bad_by_reason"] == {"too_long": 12} and a["long"]["bad_rate"] == 0 and a["long"]["long_rate"] == pytest.approx(0.4)
+    assert a["long"]["bad_rate_all"] == pytest.approx(0.4)
+    c = s["gates"]["long"]["checks"]
+    assert c["bad_rate"]["status"] == "pass" and c["too_long_rate"]["status"] == "warn" and c["too_short_rate"]["status"] == "pass"
+    c = s["gates"]["short"]["checks"]
+    assert c["too_short_rate"]["status"] == "fail" and c["bad_rate"]["status"] == "pass" and not s["gates"]["short"]["passed_quality"]
+
+
+def test_text_suy_lai_tu_raw_bang_adapter_hien_hanh(tmp_path):
+    """
+    O-16: score đọc lại "text" từ "raw" bằng adapter hiện hành (theo run_info.json), nên sửa adapter không cần chạy lại engine;
+    thẻ HTML bị escape cũng được bỏ; "a < b" trong toán không bị coi là thẻ.
+    """
+    from vi_corpus.ocr_bakeoff.perplexity import latest_outputs
+
+    assert to_plain("X&lt;sup&gt;(n)&lt;/sup&gt;&lt;sub&gt;Δ&lt;/sub&gt; và km&lt;sup&gt;2&lt;/sup&gt;; a &lt; b", "markdown") == "X(n)Δ và km²; a < b"
+    run = tmp_path / "runs" / "e"
+    run.mkdir(parents=True)
+    (run / "run_info.json").write_text(json.dumps({"config": {"output": "markdown"}}), encoding="utf-8")
+    old = {"page_id": "A0", "raw": "**đậm** X<sup>(n)</sup>", "text": "**đậm** X<sup>(n)</sup>", "error": None}
+    (run / "outputs.jsonl").write_text(json.dumps(old, ensure_ascii=False) + "\n", encoding="utf-8")
+    assert latest_outputs(run)["A0"]["text"] == "đậm X(n)"
+    (run / "run_info.json").unlink()  # không biết định dạng: giữ text đã lưu
+    assert latest_outputs(run)["A0"]["text"] == "**đậm** X<sup>(n)</sup>"
+
+
+def test_bien_the_qwen3vl_8b_trong_cau_hinh(tmp_path):
+    """O-16: ba biến thể có cổng server riêng, max_tokens 4096; repetition_penalty đi vào thân yêu cầu; cấu hình gốc không đổi."""
+    cfgs = eng.load_engines()
+    base = cfgs["qwen3vl_8b"]
+    ports = {cfgs[n]["base_url"] for n in ("qwen3vl_8b", "qwen3vl_8b_mt4k", "qwen3vl_8b_rp105", "qwen3vl_8b_rp110")}
+    assert len(ports) == 4 and base["max_tokens"] == 8192 and "extra_body" not in base
+    for n, pen in (("qwen3vl_8b_mt4k", None), ("qwen3vl_8b_rp105", 1.05), ("qwen3vl_8b_rp110", 1.10)):
+        c = cfgs[n]
+        assert c["max_tokens"] == 4096 and c["prompt"] == base["prompt"] and c["model"] == base["model"]
+        assert c["serve"][c["serve"].index("--port") + 1] in c["base_url"]
+        img = tmp_path / "p.jpg"
+        Image.new("RGB", (8, 8)).save(img)
+        body = eng.OpenAIEngine(c).payload(img)
+        assert body.get("repetition_penalty") == pen and body["max_tokens"] == 4096 and body["temperature"] == 0
