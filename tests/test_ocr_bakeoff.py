@@ -624,3 +624,29 @@ def test_bien_the_qwen3vl_8b_trong_cau_hinh(tmp_path):
         Image.new("RGB", (8, 8)).save(img)
         body = eng.OpenAIEngine(c).payload(img)
         assert body.get("repetition_penalty") == pen and body["max_tokens"] == 4096 and body["temperature"] == 0
+
+
+def test_to_plain_bo_anh_nhung_base64():
+    """O-17: dữ liệu base64 của ảnh VLM nhúng (kể cả thẻ <img> bị cắt cụt, dãy base64 trần) bị bỏ; chữ và đường dẫn ảnh thường giữ."""
+    blob = "iVBORw0KGgoAAAANSUhEUgAAAGQAAAAmCAYAAABwU0q" + "IyMj" * 100
+    assert to_plain(f'ĐẠI HỌC\n<img src="data:image/png;base64,{blob}', "markdown") == "ĐẠI HỌC"
+    assert to_plain(f'a <img src="data:image/png;base64,{blob}"> b', "markdown") == "a  b"
+    assert to_plain("Hết\n\n" + "mZmZ" * 120, "markdown") == "Hết"
+    assert to_plain('Có ảnh <img src="a.png"> rồi chữ; https://x.vn/abc', "markdown") == "Có ảnh  rồi chữ; https://x.vn/abc"
+    assert to_plain(f'<img src="data:image/png;base64,{blob}', "markdown") == ""  # cả trang là ảnh: rỗng, tính là lỗi cứng
+
+
+def test_bien_the_co_chuoi_dung(tmp_path):
+    """O-17: biến thể *_stop gửi `stop` (và repetition_penalty nếu có), cổng server riêng, max_tokens 4096."""
+    cfgs = eng.load_engines()
+    base = cfgs["qwen3vl_8b"]
+    names = ("qwen3vl_8b_stop", "qwen3vl_8b_stop_rp105", "qwen3vl_8b_stop_rp110")
+    allports = {c["base_url"] for c in cfgs.values() if c.get("base_url")}
+    assert len({cfgs[n]["base_url"] for n in names}) == 3 and all(cfgs[n]["base_url"] in allports for n in names)
+    assert len(allports) == len([c for c in cfgs.values() if c.get("base_url")])  # không trùng cổng giữa mọi engine
+    img = tmp_path / "p.jpg"
+    Image.new("RGB", (8, 8)).save(img)
+    for n, pen in zip(names, (None, 1.05, 1.10)):
+        body = eng.OpenAIEngine(cfgs[n]).payload(img)
+        assert body["stop"] == ["<img", "data:image", "!["] and body.get("repetition_penalty") == pen
+        assert body["max_tokens"] == 4096 and cfgs[n]["prompt"] == base["prompt"]

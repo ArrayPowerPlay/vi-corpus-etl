@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
-# Thử các biến thể của qwen3vl_8b để giảm vòng lặp / cắt cụt (O-14 iv, O-16), song song trên GPU 1-3:
-#   qwen3vl_8b_mt4k  : max_tokens 4096 (không đổi gì khác)
-#   qwen3vl_8b_rp105 : max_tokens 4096 + repetition_penalty 1,05
-#   qwen3vl_8b_rp110 : max_tokens 4096 + repetition_penalty 1,10
+# Thử các biến thể của qwen3vl_8b để giảm vòng lặp / cắt cụt (O-14 iv, O-16, O-17), song song trên GPU 1-3 (mặc định 3 biến thể
+# đầu; biến thể khác: VARIANTS="tên1 tên2 tên3"):
+#   qwen3vl_8b_stop       : max_tokens 4096 + chuỗi dừng <img / data:image / ![ (cắt gốc lỗi nhúng ảnh base64, O-17)
+#   qwen3vl_8b_stop_rp105 : như trên + repetition_penalty 1,05 (sửa thêm vòng lặp dấu chấm)
+#   qwen3vl_8b_stop_rp110 : như trên + repetition_penalty 1,10
+#   (lượt O-16, đã chạy: qwen3vl_8b_mt4k, qwen3vl_8b_rp105, qwen3vl_8b_rp110: không có chuỗi dừng)
 # Mỗi biến thể chạy đủ bộ A + B (giống qwen3vl_8b), chấm cùng baseline / qwen3vl_8b. Chạy lại được (chỉ làm trang còn thiếu).
 # Dùng (từ gốc repo, sau `source /home/jovyan/dinh/env.sh`; trong tmux hoặc nohup):
 #   DATA_ROOT=/duong/dan/data VLLM_BIN=$(which vllm) ./scripts/ocr_bakeoff/run_qwen_variants.sh
@@ -14,7 +16,7 @@ DATA_ROOT="${DATA_ROOT:-${SEA_DATA_ROOT:-data}}"
 BAKEOFF_DIR="${BAKEOFF_DIR:-$DATA_ROOT/processed/ocr_bakeoff}"
 VLLM_BIN="${VLLM_BIN:-vllm}"
 CONCURRENCY="${CONCURRENCY:-16}"
-VARIANTS="${VARIANTS:-qwen3vl_8b_mt4k qwen3vl_8b_rp105 qwen3vl_8b_rp110}"
+VARIANTS="${VARIANTS:-qwen3vl_8b_stop qwen3vl_8b_stop_rp105 qwen3vl_8b_stop_rp110}"
 PY=(uv run --no-sync python)
 COMMON=(--data-root "$DATA_ROOT" --bakeoff-dir "$BAKEOFF_DIR")
 echo "DATA_ROOT=$DATA_ROOT  BAKEOFF_DIR=$BAKEOFF_DIR  VLLM_BIN=$VLLM_BIN  VARIANTS=$VARIANTS"

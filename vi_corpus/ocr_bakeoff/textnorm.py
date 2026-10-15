@@ -35,6 +35,12 @@ _CATEGORY_FIELD = re.compile(r'"category"\s*:\s*"([^"]*)"')
 # cũng sẽ đổi như vậy, nên engine biết đó là số mũ được tính đúng.
 _SUPERSCRIPT = re.compile(r"<sup>\s*([23])\s*</sup>|\$\s*\^\s*\{?\s*([23])\s*\}?\s*\$")
 _SUP_CHAR = {"2": "²", "3": "³"}
+# Ảnh nhúng base64 do VLM sinh khi gặp logo / hình trên trang ("<img src=\"data:image/png;base64,iVBOR...", O-17): không phải
+# chữ của trang và thường chạy tới hết max_tokens. Bỏ dữ liệu base64, thẻ <img> chưa đóng (bị cắt cụt) và dãy ký tự base64
+# trần dài (>= 200 ký tự liền, không từ nào dài thế); thẻ <img> đã đóng do bước bỏ thẻ xử lý.
+_DATA_URI = re.compile(r"data:image/[\w.+-]+;base64,[A-Za-z0-9+/=]*")
+_OPEN_IMG = re.compile(r"<img\b[^>]*\Z", re.IGNORECASE | re.DOTALL)
+_BASE64_RUN = re.compile(r"[A-Za-z0-9+/]{200,}={0,2}")
 # Thẻ HTML bị escape ("&lt;sup&gt;(n)&lt;/sup&gt;"): đổi lại thành thẻ thật để bước bỏ thẻ xử lý (O-16). Chỉ các thẻ định
 # dạng quen thuộc, để không đụng tới "a &lt; b" trong toán.
 _ESCAPED_TAG = re.compile(r"&lt;(/?(?:sub|sup|br|b|i|u|em|strong|span|p|div)\b[^&<>]*?)&gt;", re.IGNORECASE)
@@ -83,7 +89,8 @@ def _pipe_row_cells(line: str) -> list[str]:
 
 def markdown_to_plain(text: str) -> str:
     """Bỏ cú pháp markdown / HTML, bảng thành mỗi ô một dòng (xem docstring module)."""
-    text = _SUPERSCRIPT.sub(lambda m: _SUP_CHAR[m.group(1) or m.group(2)], _ESCAPED_TAG.sub(r"<\1>", text or ""))
+    text = _BASE64_RUN.sub("", _OPEN_IMG.sub("", _DATA_URI.sub("", text or "")))
+    text = _SUPERSCRIPT.sub(lambda m: _SUP_CHAR[m.group(1) or m.group(2)], _ESCAPED_TAG.sub(r"<\1>", text))
     text = _TABLE.sub(lambda m: "\n" + "\n".join(html_table_lines(m.group(0))) + "\n", text)
     out: list[str] = []
     for line in text.split("\n"):
