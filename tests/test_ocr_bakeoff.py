@@ -16,6 +16,7 @@ from PIL import Image
 from vi_corpus.ocr_bakeoff import engines as eng
 from vi_corpus.ocr_bakeoff.gt_diag import diagnose_gt, number_line_suspects
 from vi_corpus.ocr_bakeoff.metrics import (
+    ellipsis_runs,
     levenshtein,
     page_scores,
     paired_bootstrap,
@@ -23,12 +24,14 @@ from vi_corpus.ocr_bakeoff.metrics import (
 )
 from vi_corpus.ocr_bakeoff.pages import (
     analyze_page,
+    is_landscape,
     parse_forced,
     prepare_pages,
     read_pages,
 )
 from vi_corpus.ocr_bakeoff.scoring import (
     Gates,
+    capped_dist,
     page_bad_reason,
     score_bakeoff,
     throughput,
@@ -276,7 +279,8 @@ def test_score_va_quy_tac_chon(tmp_path):
     assert d["comparisons"]["good - baseline"]["ci95"][1] < 0
     assert s["set_b"]["good"]["unknown_syllable_rate"] == pytest.approx(2 / 8)
     rep = tmp_path / "report"
-    assert (rep / "report.html").read_text(encoding="utf-8").count("<details>") == 2 + 10
+    # 2 trang bộ B + 10 trang hai cột + các trang CER thô cao nhất (bỏ trùng giữa engine)
+    assert (rep / "report.html").read_text(encoding="utf-8").count("<details>") == 2 + 10 + len(s["raw_cer_examples"])
     assert "page_id" in (rep / "per_page.csv").read_text(encoding="utf-8").splitlines()[0]
     # giới hạn giờ chạy: 1e6 trang / (2 trang/s x 4 GPU) / 3600 ~ 34,7 giờ > 30 -> good trượt cổng tốc độ -> phương án C
     s = score_bakeoff(tmp_path, ["baseline", "good", "swap", "loopy"], gates=Gates(hour_budget=30))
@@ -482,3 +486,83 @@ def test_chan_doan_dap_an(tmp_path):
     assert r["ground_truth_share"] > 0
     csv_text = (tmp_path / "report/gt_diag.csv").read_text(encoding="utf-8")
     assert "CHƯƠNG BA KINH TẾ VĨ MÔ" in csv_text and (tmp_path / "report/gt_diag.json").exists()
+
+
+def test_dau_ba_cham_gop_voi_ellipsis_theo_day():
+    """O-14 (b): "…" đúng nếu engine ra "…" hoặc dãy >= 3 dấu chấm; đếm theo dãy; dãy chấm vốn có trong đáp án bị trừ."""
+    ref = "Mục lục Chương 1 …………… 5 và Chương 2 …… 9, vân vân… hết"
+    assert ellipsis_runs("Mục lục Chương 1 ........ 5 và Chương 2 ... 9, vân vân... hết", ref) == (3, 3)
+    assert ellipsis_runs("Mục lục Chương 1 … 5 và Chương 2 … 9, vân vân… hết", ref) == (3, 3)
+    assert ellipsis_runs("Chương 1 5 và Chương 2 9, vân vân hết", ref) == (3, 0)  # engine bỏ hết
+    assert ellipsis_runs("Chương 1 .. 5 và 2 .. 9 vân vân. hết", ref) == (3, 0)  # chỉ 1-2 dấu chấm không phải dấu ba chấm
+    # dãy chấm vốn có trong đáp án không bù vào chỗ "…" mất
+    assert ellipsis_runs("a ... b", "a ... b … c") == (1, 0)
+    assert ellipsis_runs("a ... b ...", "a ... b … c") == (1, 1)
+    assert ellipsis_runs("x", "không có") == (0, 0)
+    s = page_scores("Mục 1 ........ 5", "Mục 1 …………… 5")
+    assert s["special_ref"] == {"…": 1} and s["special_hit"] == {"…": 1}
+    assert s["special_hit_strict"] == {"…": 0}  # bản chính xác từng ký tự không đổi
+
+
+def test_cer_chan_tran_moi_trang(tmp_path):
+    """
+    O-14 (a): một trang vòng lặp (đầu ra dài gấp 20 lần đáp án) không được kéo CER gộp quá 1 trang đầy lỗi; cer_raw vẫn
+    giữ số thô; số trang CER thô > 100% và trang vòng lặp được đếm.
+    """
+    assert capped_dist({"char_dist": 500, "ref_chars": 100}) == 100 and capped_dist({"char_dist": 7, "ref_chars": 100}) == 7
+    refs = _fake_bakeoff(tmp_path)
+    ids = [f"A{i}" for i in range(len(refs))]
+    texts = dict(zip(ids, refs))
+    texts["A4"] = refs[4] + " lặp lại mãi thôi" * 100
+    _write_run(tmp_path, "baseline", dict(zip(ids, refs)))
+    _write_run(tmp_path, "loopy", texts, pps=2.0)
+    m = score_bakeoff(tmp_path, ["baseline", "loopy"])["set_a"]["loopy"]
+    ref_chars = sum(len(r) for r in refs)
+    assert m["cer"] <= len(refs[4]) / ref_chars + 1e-9  # tối đa một trang sai hoàn toàn
+    assert m["cer_raw"] > 5 * m["cer"]
+    assert m["pages_cer_raw_over_100"] == 1 and m["pages_loop"] == 1 and m["cer_rank"] == m["cer"]
+    assert "cer_capped" in (tmp_path / "report/per_page.csv").read_text(encoding="utf-8").splitlines()[0]
+
+
+def test_xep_hang_tren_trang_doc(tmp_path):
+    """
+    O-14 (c): trang ngang (slide) không tính vào xếp hạng; engine tệ ở trang ngang nhưng tốt ở trang dọc vẫn qua cổng
+    cer_vs_baseline. CER toàn bộ và theo hướng vẫn được báo, kèm số trang dọc / hai cột dọc.
+    """
+    assert is_landscape([1600, 900]) and not is_landscape([600, 900]) and not is_landscape(None) and not is_landscape([1000, 0])
+    refs = _fake_bakeoff(tmp_path)
+    rows = [json.loads(ln) for ln in (tmp_path / "pages.jsonl").read_text(encoding="utf-8").splitlines()]
+    for r in rows:
+        if r["set"] == "A":
+            r["size"] = [1600, 900] if int(r["page_id"][1:]) >= 20 else [600, 900]  # A20..A29 là slide
+    (tmp_path / "pages.jsonl").write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in rows), encoding="utf-8")
+    ids = [f"A{i}" for i in range(len(refs))]
+    _write_run(tmp_path, "baseline", {p: ("" if i >= 20 else t[:-10]) for i, (p, t) in enumerate(zip(ids, refs))})
+    _write_run(tmp_path, "slide_bad", {p: ("sai hoàn toàn" if i >= 20 else t) for i, (p, t) in enumerate(zip(ids, refs))}, pps=2.0)
+    s = score_bakeoff(tmp_path, ["baseline", "slide_bad"])
+    m = s["set_a"]["slide_bad"]
+    assert (m["pages_portrait"], m["pages_landscape"], m["rank_pages"], m["rank_scope"]) == (20, 10, 20, "portrait")
+    assert m["pages_two_column_portrait"] == 10
+    assert m["cer_rank"] == m["cer_portrait"] == 0 and m["cer_landscape"] > 0.5 and m["cer"] > 0
+    assert s["gates"]["slide_bad"]["checks"]["cer_vs_baseline"]["status"] == "pass"
+    html = (tmp_path / "report/report.html").read_text(encoding="utf-8")
+    assert "CER theo hướng trang" in html and "20 trang" in html
+
+
+def test_trang_cer_tho_cao_nhat_dat_canh_nhau(tmp_path):
+    """O-14 (d): mỗi engine đưa 3 trang CER thô cao nhất vào báo cáo cạnh nhau; trang trùng giữa engine chỉ xuất hiện một lần."""
+    refs = _fake_bakeoff(tmp_path)
+    ids = [f"A{i}" for i in range(len(refs))]
+    a, b = dict(zip(ids, refs)), dict(zip(ids, refs))
+    for k, pid in enumerate(["A1", "A2", "A3"]):  # engine a sai nặng ở A1..A3
+        a[pid] = refs[int(pid[1:])] + " lặp" * (50 * (3 - k))
+    for k, pid in enumerate(["A2", "A8", "A9"]):  # engine b sai nặng ở A2, A8, A9 (A2 trùng với a)
+        b[pid] = refs[int(pid[1:])] + " lặp" * (50 * (3 - k))
+    _write_run(tmp_path, "a", a)
+    _write_run(tmp_path, "b", b, pps=2.0)
+    s = score_bakeoff(tmp_path, ["a", "b"])
+    ex = {x["page_id"]: x for x in s["raw_cer_examples"]}
+    assert set(ex) == {"A1", "A2", "A3", "A8", "A9"} and ex["A2"]["engines"] == ["a", "b"]
+    assert ex["A1"]["cer_raw"]["a"] > ex["A1"]["cer_raw"]["b"] == 0
+    html = (tmp_path / "report/report.html").read_text(encoding="utf-8")
+    assert "trang CER thô cao nhất mỗi engine" in html and html.count("top của") == 5

@@ -14,12 +14,16 @@ from collections.abc import Hashable, Sequence
 
 SPECIAL_CHARS = "²³“”‘’–—…°"  # ký tự VietOCR không xuất được (F-06 ý 5, F-11)
 # Lớp ký tự đặc biệt để tính recall (O-11): nhãn lớp -> (ký tự trong lớp, ký tự ASCII tương đương hoặc ""). Nháy cong và
-# gạch dài được coi là đúng nếu engine ra nháy / gạch ASCII (mất kiểu chữ, không mất nội dung); ² ³ ° … phải đúng chính xác.
+# gạch dài được coi là đúng nếu engine ra nháy / gạch ASCII (mất kiểu chữ, không mất nội dung); ² ³ ° phải đúng chính xác.
+# "…" (O-14): đúng nếu engine ra "…" hoặc một dãy từ 3 dấu chấm trở lên; đếm theo dãy (xem ellipsis_runs).
 SPECIAL_CLASSES: dict[str, tuple[str, str]] = {
-    "²": ("²", ""), "³": ("³", ""), "°": ("°", ""), "…": ("…", ""),
+    "²": ("²", ""), "³": ("³", ""), "°": ("°", ""), "…": ("…", "..."),
     "“”": ("“”", '"'), "‘’": ("‘’", "'"), "–—": ("–—", "-"),
 }
 _WS = re.compile(r"\s+")
+_ELLIPSIS_REF = re.compile(r"…+")
+_ELLIPSIS_HYP = re.compile(r"(?:…|\.{3,})+")
+_DOT_RUN = re.compile(r"\.{3,}")
 _WORD = re.compile(r"[^\W\d_]+", re.UNICODE)
 
 
@@ -86,19 +90,41 @@ def special_counts(text: str) -> dict[str, int]:
     return {c: text.count(c) for c in SPECIAL_CHARS if c in text}
 
 
+def ellipsis_runs(hyp: str, ref: str) -> tuple[int, int]:
+    """
+    Số dãy "…" của đáp án và số dãy engine giữ được (O-14).
+
+    Dấu chấm dẫn mục lục có thể dài nhiều ký tự ("…………" hay "........"), nên đếm theo dãy ở cả hai phía chứ không theo
+    ký tự: một dãy liền nhau của đáp án (chuỗi "…") ứng với một dãy của engine (chuỗi "…" hoặc từ 3 dấu chấm trở lên).
+    Dãy dấu chấm vốn có trong đáp án (không phải "…") không phải dấu hiệu của engine nên trừ khỏi bên engine, như gạch nối ASCII.
+
+    Returns:
+        (số dãy trong đáp án, số dãy engine đúng).
+    """
+    n_ref = len(_ELLIPSIS_REF.findall(ref))
+    n_hyp = len(_ELLIPSIS_HYP.findall(hyp)) - len(_DOT_RUN.findall(ref))
+    return n_ref, min(n_ref, max(0, n_hyp))
+
+
 def special_class_hits(hyp: str, ref: str) -> tuple[dict[str, int], dict[str, int]]:
     """
     Số ký tự đặc biệt của đáp án (theo lớp trong SPECIAL_CLASSES) và số ký tự engine giữ được.
 
-    Lớp có ký tự ASCII tương đương (nháy, gạch): engine ra bản cong hoặc bản ASCII đều tính đúng. Gạch nối ASCII vốn có
-    trong đáp án (từ ghép, "1-2") không phải dấu hiệu của engine, nên trừ số ASCII của đáp án khỏi tổng bên engine:
-    hit = min(số ký tự lớp trong đáp án, tổng (lớp + ASCII) ở engine - số ASCII ở đáp án). Lớp thuần (² ³ ° …) đếm chính xác.
+    "…" đếm theo dãy (ellipsis_runs). Lớp có ký tự ASCII tương đương (nháy, gạch): engine ra bản cong hoặc bản ASCII đều
+    tính đúng. Gạch nối ASCII vốn có trong đáp án (từ ghép, "1-2") không phải dấu hiệu của engine, nên trừ số ASCII của
+    đáp án khỏi tổng bên engine: hit = min(số ký tự lớp trong đáp án, tổng (lớp + ASCII) ở engine - số ASCII ở đáp án).
+    Lớp thuần (² ³ °) đếm chính xác.
 
     Returns:
         (ref, hit): {nhãn lớp: số lần} chỉ gồm lớp có trong đáp án.
     """
     ref_n, hit_n = {}, {}
     for label, (members, ascii_eq) in SPECIAL_CLASSES.items():
+        if label == "…":
+            n_ref, n_hit = ellipsis_runs(hyp, ref)
+            if n_ref:
+                ref_n[label], hit_n[label] = n_ref, n_hit
+            continue
         n_ref = sum(ref.count(c) for c in members)
         if not n_ref:
             continue

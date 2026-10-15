@@ -2,12 +2,13 @@
 Chẩn đoán đáp án bộ A của đợt so sánh engine OCR (O-10, O-11): CER 15-27% là do engine hay do đáp án?
 
 Đáp án bộ A là lớp chữ của PDF giáo trình nên có thể khác thứ mà một engine đọc từ ảnh. Ba nguồn lệch đã biết hoặc nghi:
-(1) trang đôi (hai trang in trên một tờ, vd A0266 Guyton có số trang "962" giữa trang): đáp án có hai dãy nội dung và hai
-số trang; (2) số trang đứng riêng một dòng giữa trang; (3) tiêu đề / chân trang có trong đáp án mà đa số engine bỏ.
+(1) trang ngang: phần lớn là slide bài giảng 16:9 (O-14; giả định cũ "trang ngang = trang đôi" sai cho bộ này, dù vài
+trang đôi như A0266 Guyton có số trang "962" giữa trang vẫn có thể nằm trong nhóm này); (2) số trang đứng riêng một dòng
+giữa trang; (3) tiêu đề / chân trang có trong đáp án mà đa số engine bỏ.
 Không có sự thật tuyệt đối, nên dùng đồng thuận giữa các engine: dòng ở đầu / cuối đáp án mà quá nửa số engine có đầu
 ra không đọc ra (dưới LINE_PRESENT_MIN số từ của dòng xuất hiện trong đầu ra) là "dòng nghi thừa" của đáp án.
 
-Với mỗi engine tính CER ba kiểu: nguyên đáp án (như score.py), bỏ trang ngang (nghi trang đôi), và đáp án đã bỏ dòng nghi
+Với mỗi engine tính CER ba kiểu: nguyên đáp án (như score.py), chỉ trang dọc (giống trang sách stbook), và đáp án đã bỏ dòng nghi
 thừa + số trang nghi lẫn trên các trang không ngang. Ngoài ra liệt kê trang mà mọi engine đều có CER cao (đáp án sai,
 hoặc trang khó như bảng). Chỉ dùng CPU, đọc runs/*/outputs.jsonl, ghi report/gt_diag.json và report/gt_diag.csv.
 Đây là chẩn đoán để quyết định có sửa cách lập đáp án hay không; không đổi cách chấm của score.py.
@@ -19,10 +20,9 @@ import re
 from pathlib import Path
 
 from vi_corpus.ocr_bakeoff.metrics import levenshtein, micro_rate, normalize
-from vi_corpus.ocr_bakeoff.pages import read_pages
+from vi_corpus.ocr_bakeoff.pages import is_landscape, read_pages
 from vi_corpus.ocr_bakeoff.perplexity import latest_outputs
 
-LANDSCAPE_RATIO = 1.15  # rộng / cao lớn hơn mức này: nghi trang đôi (trang sách đứng có tỷ lệ ~0,7)
 EDGE_LINES = 3  # số dòng đầu và cuối đáp án coi là tiêu đề / chân trang ứng viên
 EDGE_MAX_CHARS = 80  # dòng dài hơn mức này là nội dung, không phải tiêu đề / chân trang
 LINE_PRESENT_MIN = 0.6  # tỷ lệ từ của dòng phải có trong đầu ra thì coi engine đã đọc dòng đó
@@ -93,9 +93,9 @@ def diagnose_gt(bakeoff_dir: Path, engines: list[str] | None = None, high_cer: f
         high_cer: Ngưỡng CER của mục "trang mọi engine đều cao".
 
     Returns:
-        {"engines", "pages", "reasons" (số trang theo lý do nghi), "trimmed_lines" (số dòng đáp án bị coi là thừa),
+        {"engines", "pages", "reasons" (số trang theo lý do nghi; "landscape" = trang ngang / slide), "trimmed_lines" (số dòng đáp án bị coi là thừa),
          "cer" ({engine: {"original", "without_landscape", "trimmed"}}), "hard_pages" (trang mọi engine CER cao),
-         "ground_truth_share" (CER của engine tốt nhất giảm bao nhiêu phần khi sửa đáp án, trên cùng tập trang không ngang)}.
+         "ground_truth_share" (CER của engine tốt nhất giảm bao nhiêu phần khi sửa đáp án, trên cùng tập trang dọc)}.
     """
     pages = [p for p in read_pages(bakeoff_dir) if p["set"] == "A"]
     runs = bakeoff_dir / "runs"
@@ -111,9 +111,8 @@ def diagnose_gt(bakeoff_dir: Path, engines: list[str] | None = None, high_cer: f
     for p in pages:
         gt = (bakeoff_dir / p["gt"]).read_text(encoding="utf-8")
         lines = gt_lines(gt)
-        size = p.get("size") or [0, 0]
         reasons = []
-        if size[1] and size[0] > LANDSCAPE_RATIO * size[1]:
+        if is_landscape(p.get("size")):
             reasons.append("landscape")
         num_idx, num_reasons = number_line_suspects(lines, bool(p.get("flags", {}).get("table")))
         reasons += num_reasons

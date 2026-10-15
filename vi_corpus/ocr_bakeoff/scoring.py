@@ -10,8 +10,13 @@ Trang "hỏng" (bỏ sót / bịa) ở bộ A: không có đầu ra (lỗi hoặ
 hoặc vòng lặp (một 4-gram lặp >= LOOP_MIN lần và hơn hai lần số lặp trong đáp án); số trang hỏng được tách theo lý do
 (no_output / empty / loop / too_short / too_long). Cổng bad_rate đặt tương đối so với baseline (O-11): ứng viên chỉ bị
 loại nếu tỷ lệ hỏng cao hơn baseline quá bad_rate_excess_max, vì tỷ lệ hỏng của baseline đã phản ánh cả lỗi đáp án.
-Recall ký tự đặc biệt tính theo lớp tương đương (metrics.SPECIAL_CLASSES: nháy cong / gạch dài đúng nếu ra ASCII), có
-thêm bản chính xác từng ký tự để đối chiếu. Mỗi engine có danh sách WORST_PAGES trang CER cao nhất. Cổng giờ chạy cả kho
+Recall ký tự đặc biệt tính theo lớp tương đương (metrics.SPECIAL_CLASSES: nháy cong / gạch dài đúng nếu ra ASCII, "…"
+đúng nếu ra "…" hoặc dãy từ 3 dấu chấm), có thêm bản chính xác từng ký tự để đối chiếu.
+CER (O-14): lỗi mỗi trang bị chặn trần bằng số ký tự đáp án (CER trang tối đa 100%) để vài trang vòng lặp (đầu ra dài gấp
+10-50 lần đáp án) không làm méo số gộp; CER thô giữ lại là cer_raw. Bộ A chủ yếu là slide 16:9 nên xếp hạng (cổng
+cer_vs_baseline, decide, bootstrap) chỉ tính trên trang dọc, giống trang sách stbook (thiếu trang dọc thì dùng mọi trang);
+CER toàn bộ và theo từng hướng vẫn được báo. Báo cáo đặt cạnh nhau (ảnh, đáp án, đầu ra các engine) cho EXAMPLES_PER_ENGINE
+trang CER thô cao nhất mỗi engine để xem đó là lỗi engine hay đáp án thiếu chữ trong hình. Mỗi engine có danh sách WORST_PAGES trang CER cao nhất. Cổng giờ chạy cả kho
 có hai mức: hour_soft (mức mềm của chủ dự án, vượt chỉ cảnh báo) và hour_budget (trần, vượt thì engine trượt cổng tốc
 độ). Trang "cắt cụt": finish_reason = "length". Tốc độ: phiên có nhiều trang nhất của engine, bỏ WARMUP_PAGES trang đầu, trang/giây = số trang còn lại /
 khoảng thời gian giữa t_end của chúng (quá ít trang thì dùng mọi trang); cần >= STEADY_MIN trang mới coi là ổn định.
@@ -37,7 +42,7 @@ from vi_corpus.ocr_bakeoff.metrics import (
     page_scores,
     paired_bootstrap,
 )
-from vi_corpus.ocr_bakeoff.pages import read_pages
+from vi_corpus.ocr_bakeoff.pages import is_landscape, read_pages
 from vi_corpus.ocr_bakeoff.perplexity import latest_outputs, latest_outputs_ppl
 from vi_corpus.ocr_bakeoff.syllables import unknown_rate
 
@@ -45,6 +50,7 @@ LEN_TOL = 0.15
 LOOP_MIN = 5
 WARMUP_PAGES = 20
 WORST_PAGES = 10
+EXAMPLES_PER_ENGINE = 3
 STEADY_MIN = 200
 _CSS = (
     "body{font-family:system-ui,sans-serif;margin:16px;background:#fff;color:#111}"
@@ -179,14 +185,16 @@ def score_set_a(pages: list[dict], bakeoff_dir: Path, outputs: dict[str, dict[st
             rec = outs.get(p["page_id"])
             sc = page_scores((rec or {}).get("text") or "", refs[p["page_id"]])
             bad = page_bad_reason(rec, sc)
+            landscape = is_landscape(p.get("size"))
             row = {"engine": name, "page_id": p["page_id"], "set": "A", "flags": p.get("flags", {}), "sc": sc,
-                   "bad": bad, "truncated": bool(rec and rec.get("finish_reason") == "length")}
+                   "bad": bad, "truncated": bool(rec and rec.get("finish_reason") == "length"), "landscape": landscape}
             per.append(row)
             rows.append({
                 "engine": name, "page_id": p["page_id"], "set": "A",
                 "flags": ",".join(k for k, v in p.get("flags", {}).items() if v),
                 "ref_chars": sc["ref_chars"], "hyp_chars": sc["hyp_chars"],
-                "cer": round(sc["char_dist"] / max(sc["ref_chars"], 1), 4),
+                "cer": round(sc["char_dist"] / max(sc["ref_chars"], 1), 4),  # CER thô, không chặn trần
+                "cer_capped": round(capped_dist(sc) / max(sc["ref_chars"], 1), 4), "landscape": landscape,
                 "cer_nodiac": round(sc["char_dist_nodiac"] / max(sc["ref_chars"], 1), 4),
                 "wer": round(sc["word_dist"] / max(sc["ref_words"], 1), 4), "bow_f1": round(sc["bow_f1"], 4),
                 "len_ratio": round(sc["len_ratio"], 3), "max4": sc["max4"],
@@ -198,12 +206,25 @@ def score_set_a(pages: list[dict], bakeoff_dir: Path, outputs: dict[str, dict[st
     return agg, rows
 
 
-def aggregate_a(per: list[dict]) -> dict:
-    """Gộp số đo bộ A của một engine từ các dòng theo trang của score_set_a."""
+def capped_dist(sc: dict, key: str = "char_dist") -> int:
+    """Lỗi ký tự của một trang bị chặn trần bằng số ký tự đáp án (O-14): CER trang tối đa 100%."""
+    return min(sc[key], sc["ref_chars"])
 
-    def cer(sel: list[dict], key: str = "char_dist") -> float | None:
-        """CER gộp trên một nhóm trang."""
-        return micro_rate([r["sc"][key] for r in sel], [r["sc"]["ref_chars"] for r in sel]) if sel else None
+
+def aggregate_a(per: list[dict]) -> dict:
+    """
+    Gộp số đo bộ A của một engine từ các dòng theo trang của score_set_a.
+
+    "cer" và "cer_nodiac" là CER gộp có chặn trần mỗi trang; "cer_raw" là CER thô; "cer_rank" là CER chặn trần trên trang
+    dọc (thiếu trang dọc thì trên mọi trang), số dùng cho cổng cer_vs_baseline, decide và bootstrap ("_per_page").
+    """
+
+    def cer(sel: list[dict], key: str = "char_dist", cap: bool = True) -> float | None:
+        """CER gộp trên một nhóm trang; cap=False là CER thô."""
+        if not sel:
+            return None
+        num = [capped_dist(r["sc"], key) if cap else r["sc"][key] for r in sel]
+        return micro_rate(num, [r["sc"]["ref_chars"] for r in sel])
 
     def gap(sel: list[dict]) -> float | None:
         """F1 túi từ trung bình trừ (1 - WER) trung bình: dương lớn = sai thứ tự đọc."""
@@ -225,6 +246,9 @@ def aggregate_a(per: list[dict]) -> dict:
         for c, n in r["sc"]["special_ref_strict"].items():
             strict_ref[c] += n
             strict_hit[c] += r["sc"]["special_hit_strict"].get(c, 0)
+    portrait = [r for r in per if not r["landscape"]]
+    landscape = [r for r in per if r["landscape"]]
+    rank = portrait or per
     n = len(per)
     bad_counts: dict[str, int] = defaultdict(int)
     for r in per:
@@ -233,7 +257,14 @@ def aggregate_a(per: list[dict]) -> dict:
     tot_ref, tot_strict = sum(special_ref.values()), sum(strict_ref.values())
     return {
         "pages": n, "pages_with_output": sum(r["bad"] != "no_output" for r in per),
-        "cer": cer(per), "cer_nodiac": cer(per, "char_dist_nodiac"),
+        "cer": cer(per), "cer_nodiac": cer(per, "char_dist_nodiac"), "cer_raw": cer(per, cap=False),
+        "cer_rank": cer(rank), "rank_pages": len(rank), "rank_scope": "portrait" if portrait else "all",
+        "cer_portrait": cer(portrait), "cer_landscape": cer(landscape), "cer_raw_portrait": cer(portrait, cap=False),
+        "cer_raw_landscape": cer(landscape, cap=False),
+        "pages_portrait": len(portrait), "pages_landscape": len(landscape),
+        "pages_two_column_portrait": sum(bool(r["flags"].get("two_column")) for r in portrait),
+        "pages_cer_raw_over_100": sum(r["sc"]["char_dist"] > r["sc"]["ref_chars"] for r in per),
+        "pages_loop": sum(r["bad"] == "loop" for r in per), "pages_truncated": sum(r["truncated"] for r in per),
         "diacritic_error": (cer(per) or 0) - (cer(per, "char_dist_nodiac") or 0),
         "wer": micro_rate([r["sc"]["word_dist"] for r in per], [r["sc"]["ref_words"] for r in per]),
         "bow_f1": _mean([r["sc"]["bow_f1"] for r in per]),
@@ -247,7 +278,7 @@ def aggregate_a(per: list[dict]) -> dict:
         "bad_rate": sum(bad_counts.values()) / n if n else None, "bad_by_reason": dict(bad_counts),
         "bad_rate_by_reason": {k: v / n for k, v in bad_counts.items()},
         "trunc_rate": sum(r["truncated"] for r in per) / n if n else None,
-        "_per_page": {"char_dist": [r["sc"]["char_dist"] for r in per], "ref_chars": [r["sc"]["ref_chars"] for r in per]},
+        "_per_page": {"char_dist": [capped_dist(r["sc"]) for r in rank], "ref_chars": [r["sc"]["ref_chars"] for r in rank]},
     }
 
 
@@ -272,6 +303,29 @@ def worst_pages(rows: list[dict], pages: list[dict], top: int = WORST_PAGES) -> 
                                      "flags": p.get("flags", {}), "cer": r["cer"], "cer_nodiac": r["cer_nodiac"],
                                      "len_ratio": r["len_ratio"], "bad": r["bad"]})
     return dict(out)
+
+
+def raw_cer_examples(rows: list[dict], top: int = EXAMPLES_PER_ENGINE) -> list[dict]:
+    """
+    Các trang để đặt cạnh nhau trong report.html (O-14): `top` trang CER thô cao nhất của mỗi engine, bỏ trùng giữa engine.
+
+    Args:
+        rows: Dòng per_page của score_set_a (cột "cer" là CER thô).
+
+    Returns:
+        [{"page_id", "engines" (engine có trang này trong top), "cer_raw" ({engine: CER thô của mọi engine})}], theo thứ
+        tự gặp đầu tiên (engine theo thứ tự trong rows, trang giảm dần theo CER thô).
+    """
+    by_engine: dict[str, list[dict]] = defaultdict(list)
+    for r in rows:
+        by_engine[r["engine"]].append(r)
+    cer_of = {(r["engine"], r["page_id"]): r["cer"] for r in rows}
+    found: dict[str, list[str]] = {}
+    for name, rs in by_engine.items():
+        for r in sorted(rs, key=lambda r: -r["cer"])[:top]:
+            found.setdefault(r["page_id"], []).append(name)
+    return [{"page_id": pid, "engines": names,
+             "cer_raw": {n: cer_of[(n, pid)] for n in by_engine if (n, pid) in cer_of}} for pid, names in found.items()]
 
 
 def score_set_b(pages: list[dict], outputs: dict[str, dict[str, dict]], vocab: frozenset[str] | None,
@@ -351,8 +405,8 @@ def apply_gates(a: dict, hours: dict, gates: Gates, baseline: str) -> tuple[dict
 
         two = m["order_gap_two_column"]
         checks = {
-            "cer_vs_baseline": check(m["cer"], base["cer"] if base else None,
-                                     None if not base or name == baseline else m["cer"] <= base["cer"]),
+            "cer_vs_baseline": check(m["cer_rank"], base["cer_rank"] if base else None,
+                                     None if not base or name == baseline else m["cer_rank"] <= base["cer_rank"]),
             "special_recall": check(m["special_recall"], gates.special_recall_min,
                                     None if m["special_recall"] is None else m["special_recall"] >= gates.special_recall_min),
             "order_gap_two_column": check(two, gates.two_col_gap_max, None if two is None else two <= gates.two_col_gap_max),
@@ -370,8 +424,8 @@ def apply_gates(a: dict, hours: dict, gates: Gates, baseline: str) -> tuple[dict
 
 def decide(a: dict, gated: dict, hours: dict, baseline: str, gates: Gates) -> dict:
     """
-    Chọn engine: trong các ứng viên qua mọi cổng, CER thấp nhất; ứng viên khác chỉ thua khi khoảng tin cậy bootstrap
-    95% của hiệu CER (khác - tốt nhất) nằm hẳn trên 0; nhóm hoà chọn engine nhanh nhất. Không ai qua cổng tốc độ mà có
+    Chọn engine: trong các ứng viên qua mọi cổng, CER xếp hạng (cer_rank: chặn trần mỗi trang, trang dọc) thấp nhất; ứng
+    viên khác chỉ thua khi khoảng tin cậy bootstrap 95% của hiệu CER (khác - tốt nhất) nằm hẳn trên 0; nhóm hoà chọn engine nhanh nhất. Không ai qua cổng tốc độ mà có
     người qua cổng chất lượng: phương án C.
     """
     cands = [n for n in a if n != baseline]
@@ -397,7 +451,7 @@ def decide(a: dict, gated: dict, hours: dict, baseline: str, gates: Gates) -> di
                   if quality else "không ứng viên nào qua cổng chất lượng: giữ baseline, xem lại ứng viên / ngưỡng")
         return {"status": status, "winner": None, "quality_passed": quality, "tied_with": [], "reason": reason,
                 "notes": notes, "comparisons": comparisons}
-    passed.sort(key=lambda n: a[n]["cer"])
+    passed.sort(key=lambda n: a[n]["cer_rank"])
     best = passed[0]
     tied = []
     for n in passed[1:]:
@@ -468,7 +522,7 @@ def render_html(summary: dict, pages: list[dict], outputs: dict[str, dict[str, d
                      f"<td>{_fmt(h['corpus_gpu_hours'])}</td>"
                      + "".join(f"<td>{_fmt(v)}</td>" for v in h["corpus_hours_by_source"].values()) + "</tr>")
     parts.append("</table>")
-    cols = [("cer", True), ("cer_nodiac", True), ("diacritic_error", True), ("wer", True), ("bow_f1", True),
+    cols = [("cer_rank", True), ("cer", True), ("cer_raw", True), ("cer_nodiac", True), ("diacritic_error", True), ("wer", True), ("bow_f1", True),
             ("order_gap_all", True), ("order_gap_two_column", True), ("special_recall", True),
             ("special_recall_strict", True), ("bad_rate", True), ("trunc_rate", True)]
     parts.append("<h2>Bộ A (có đáp án)</h2><table><tr><th>engine</th>" + "".join(f"<th>{c}</th>" for c, _ in cols)
@@ -480,6 +534,24 @@ def render_html(summary: dict, pages: list[dict], outputs: dict[str, dict[str, d
         parts.append(f"<tr><td>{e(name)}</td>" + "".join(f"<td>{_fmt(m[c], p)}</td>" for c, p in cols)
                      + "".join(f"<td>{_fmt(m['cer_by_stratum'][k], True)}</td>"
                                for k in ("two_column", "table", "special", "plain")) + "</tr>")
+    parts.append("</table>")
+    first = next(iter(summary["set_a"].values()), None)
+    if first:
+        parts.append(f"<p>Xếp hạng (cer_rank, cổng cer_vs_baseline, bootstrap) tính trên <b>{first['rank_pages']} trang "
+                     f"{'dọc' if first['rank_scope'] == 'portrait' else '(không có trang dọc nên lấy mọi trang)'}</b> "
+                     f"(bộ A có {first['pages_portrait']} trang dọc, trong đó {first['pages_two_column_portrait']} trang hai cột; "
+                     f"{first['pages_landscape']} trang ngang, phần lớn là slide). Lỗi mỗi trang bị chặn trần 100%; "
+                     "cer_raw là CER thô.</p>")
+    hcols = [("cer_portrait", "CER trang dọc"), ("cer_landscape", "CER trang ngang"), ("cer_raw_portrait", "CER thô trang dọc"),
+             ("cer_raw_landscape", "CER thô trang ngang")]
+    parts.append("<h3>CER theo hướng trang và trang bất thường</h3><table><tr><th>engine</th>"
+                 + "".join(f"<th>{t}</th>" for _, t in hcols)
+                 + "<th>trang CER thô &gt; 100%</th><th>trang vòng lặp</th><th>trang cắt cụt</th></tr>")
+    for name in engines:
+        m = summary["set_a"].get(name)
+        if m:
+            parts.append(f"<tr><td>{e(name)}</td>" + "".join(f"<td>{_fmt(m[k], True)}</td>" for k, _ in hcols)
+                         + f"<td>{m['pages_cer_raw_over_100']}</td><td>{m['pages_loop']}</td><td>{m['pages_truncated']}</td></tr>")
     parts.append("</table>")
     reasons = ("no_output", "empty", "loop", "too_short", "too_long")
     parts.append("<h3>Trang hỏng theo lý do (số trang)</h3><table><tr><th>engine</th>"
@@ -530,8 +602,8 @@ def render_html(summary: dict, pages: list[dict], outputs: dict[str, dict[str, d
                 f"<td>{_fmt(m[c], c in ('unknown_syllable_rate', 'len_off_median_rate'))}</td>" for c in bcols) + "</tr>")
     parts.append("</table>")
 
-    def side_by_side(p: dict, ref: str | None) -> str:
-        """Một trang: ảnh, đáp án (nếu có), đầu ra từng engine."""
+    def side_by_side(p: dict, ref: str | None, note: str = "") -> str:
+        """Một trang: ảnh, đáp án (nếu có), đầu ra từng engine; note nối vào tiêu đề."""
         n_cols = 1 + (ref is not None) + len(engines)
         cells = [f"<div><img loading='lazy' src='../{e(p['image'])}'></div>"]
         if ref is not None:
@@ -540,12 +612,21 @@ def render_html(summary: dict, pages: list[dict], outputs: dict[str, dict[str, d
             rec = outputs.get(name, {}).get(p["page_id"]) or {}
             cells.append(f"<div><b>{e(name)}</b><pre>{e(rec.get('text') or rec.get('error') or '(không có)')}</pre></div>")
         src = p["source"]
-        title = e(f"{p['page_id']} — {src.get('title') or src.get('file')} trang {src.get('page')}")
+        title = e(f"{p['page_id']} — {src.get('title') or src.get('file')} trang {src.get('page')}" + (f" ({note})" if note else ""))
         return (f"<details><summary>{title}</summary><div class='grid' "
                 f"style='grid-template-columns:repeat({n_cols},minmax(220px,1fr))'>{''.join(cells)}</div></details>")
 
     parts.append("<h3>Từng trang bộ B</h3>")
     parts += [side_by_side(p, None) for p in pages if p["set"] == "B"]
+    by_id = {p["page_id"]: p for p in pages}
+    raw = [x for x in summary.get("raw_cer_examples", []) if x["page_id"] in by_id]
+    if raw:
+        parts.append(f"<h3>{EXAMPLES_PER_ENGINE} trang CER thô cao nhất mỗi engine (bộ A)</h3>"
+                     "<p>Xem trang vòng lặp / đầu ra quá dài là lỗi engine hay đáp án thiếu chữ trong hình.</p>")
+        for x in raw:
+            p = by_id[x["page_id"]]
+            tag = ", ".join(f"{n} {100 * x['cer_raw'][n]:.0f}%" for n in x["cer_raw"])
+            parts.append(side_by_side(p, (bakeoff_dir / p["gt"]).read_text(encoding="utf-8"), f"top của {', '.join(x['engines'])} — CER thô: {tag}"))
     two = [p for p in pages if p["set"] == "A" and p.get("flags", {}).get("two_column")][:max_a_examples]
     if two:
         parts.append("<h3>Vài trang hai cột bộ A</h3>")
@@ -612,7 +693,8 @@ def score_bakeoff(bakeoff_dir: Path, engines: list[str] | None = None, baseline:
                               "steady_min": STEADY_MIN},
                "selection": {k: selection.get(k) for k in ("set_a", "set_b", "strata", "shortfall", "books_b")},
                "set_a": {n: {k: v for k, v in m.items() if not k.startswith("_")} for n, m in a.items()},
-               "worst_pages": worst_pages(rows_a, set_a), "set_b": b, "speed": speed, "hours": hours, "gates": gated, "decision": decision, "run_info": info}
+               "worst_pages": worst_pages(rows_a, set_a), "raw_cer_examples": raw_cer_examples(rows_a),
+               "set_b": b, "speed": speed, "hours": hours, "gates": gated, "decision": decision, "run_info": info}
     rep = bakeoff_dir / "report"
     rep.mkdir(exist_ok=True)
     (rep / "summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")

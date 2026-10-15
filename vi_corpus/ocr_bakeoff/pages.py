@@ -38,6 +38,19 @@ from vi_corpus.common.pdf_text import is_tcvn3
 from vi_corpus.ocr_bakeoff.metrics import SPECIAL_CHARS, normalize
 from vi_corpus.pipeline.language import vi_diacritic_ratio
 
+LANDSCAPE_RATIO = 1.15  # rộng / cao lớn hơn mức này là trang ngang (trang sách đứng có tỷ lệ ~0,7; slide 16:9 ~1,78)
+
+
+def is_landscape(size: list[int] | None) -> bool:
+    """
+    Trang có phải trang ngang không (O-14): rộng > LANDSCAPE_RATIO x cao.
+
+    Bộ A phần lớn là slide bài giảng 16:9 chứ không phải trang sách, nên cần tách để xếp hạng trên trang dọc giống sách
+    stbook. Thiếu kích thước (bản ghi cũ hoặc trang giả trong test) thì coi là trang dọc.
+    """
+    w, h = (size or [0, 0])[:2]
+    return bool(h) and w > LANDSCAPE_RATIO * h
+
 logger = logging.getLogger("vi_corpus")
 
 REQUIRED_BOOKS = ("1248", "1271", "1241", "1425")  # sách đã rà ở F-06
