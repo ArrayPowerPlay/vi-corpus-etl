@@ -703,3 +703,34 @@ def test_do_bo_kiem_tren_dau_ra_gia(tmp_path):
     r = mod.evaluate(tmp_path, ["qwen3vl_8b_x"], 0.5, 0.3)["qwen3vl_8b_x"]
     assert r["bad_pages"] == 2 and r["caught"] == 1 and [m["page_id"] for m in r["missed"]] == ["A3"]
     assert r["good_pages"] == 28 and r["false_alarms"] == 0 and r["set_b_flagged"] == 0
+
+
+def test_mo_phong_chuoi_engine_va_bang_trang_bo_sot(tmp_path):
+    """
+    O-19: engine chính lặp ở 2 trang và đọc sai (khó) ở 1 trang; engine chạy lại sửa được 2 trang lặp; engine cuối (baseline)
+    nhận bất kể. Chuỗi có CER thấp hơn engine đầu một mình, 0 trang còn bị báo; trang sai mà không dấu hiệu nào vào bảng bỏ sót.
+    """
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("eval_guard", Path(__file__).parents[1] / "scripts/ocr_bakeoff/eval_guard.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    refs = _fake_bakeoff(tmp_path)
+    ids = [f"A{i}" for i in range(len(refs))]
+    first = dict(zip(ids, refs))
+    first["A2"] = refs[2][:60] + " . " * 300
+    first["A5"] = refs[5][:60] + " , " * 300
+    first["A7"] = "chữ khác hẳn " * 40                       # sai mà không dấu hiệu: không ai sửa được
+    retry = dict(zip(ids, refs))
+    retry["A7"] = "chữ khác hẳn " * 40
+    base = {p: t[:-5] for p, t in zip(ids, refs)}
+    for name, texts in (("a_first", first), ("b_retry", retry), ("baseline", base)):
+        _write_run(tmp_path, name, texts)
+    sim = mod.simulate_cascade(tmp_path, ["a_first", "b_retry", "baseline"])
+    assert sim["pages_by_tier"] == {"a_first": 28, "b_retry": 2, "baseline": 0}
+    assert sim["cascade"]["cer_all"] < sim["first_only"]["cer_all"] and sim["first_only"]["flagged"] == 2
+    assert sim["cascade"]["flagged"] == 0 and sim["cascade"]["missing"] == 0
+    res = mod.evaluate(tmp_path, ["a_first", "b_retry"], 0.5, 0.3)
+    path = mod.write_missed_html(tmp_path, ["a_first", "b_retry"], res, 5)
+    text = path.read_text(encoding="utf-8")
+    assert "A7" in text and "A2" not in text and text.count("<details") == 1
