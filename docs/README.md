@@ -319,6 +319,47 @@ và `pages` (danh sách text từng trang, giữ nguyên xuống dòng như trê
 - Có vài sách tiếng Anh (vd bản dịch Cương lĩnh), bước nhận diện ngôn ngữ sẽ lọc.
 - Sách có bản quyền của NXB (chỉ được đọc miễn phí online), nên `rights_status = "unknown"` → sẽ bị quarantine cho tới khi xác nhận quyền.
 
+## B4. OCR bằng mô hình thị giác - ngôn ngữ (engine chính từ O-20)
+
+Sau đợt so sánh engine (Phần F), engine OCR chính cho stbook là **chuỗi VLM**: mỗi trang đi qua Qwen3-VL-8B (`qwen3vl_8b_mt4k`, phục vụ bằng vLLM); trang bị
+**bộ kiểm từng trang** báo lỗi (cắt cụt, rỗng, lặp, ảnh nhúng, lời tiếng Anh, quá dài) chạy lại bằng `qwen3vl_8b_rp110` (phạt lặp mạnh); còn bị báo thì
+dùng OCR cũ (PaddleOCR + VietOCR); engine cuối vẫn bị báo thì trang bị **loại** (text rỗng, không vào kho, văn bản bị loại giữ để kiểm tay). Cần
+`uv sync --group ocr` (engine OCR cũ) và vLLM cài riêng (`uv tool install vllm`, xem Phần F "Môi trường trên server Run:ai").
+
+```bash
+# chạy thử 1 cuốn trên GPU 0 (tự dựng server vLLM, chạy xong tự tắt)
+uv run --no-sync python scripts/stbook/ocr_vlm.py --data-root /duong/dan/data --gpu 0 --serve --vllm-bin $(which vllm) --limit-books 1
+# chạy thật trên 4 GPU (mỗi GPU một server vLLM + một tiến trình, tự chia cuốn), trong tmux
+DATA_ROOT=/duong/dan/data VLLM_BIN=$(which vllm) CONCURRENCY=16 ./scripts/stbook/run_ocr_vlm.sh
+# tiến độ + thống kê trang trắng / bị loại / chạy lại
+uv run --no-sync python scripts/stbook/ocr_vlm.py --data-root /duong/dan/data --status
+```
+
+| Tham số (`ocr_vlm.py`) | Mặc định | Ý nghĩa |
+|---|---|---|
+| `--tiers` | `qwen3vl_8b_mt4k,qwen3vl_8b_rp110,baseline` | Chuỗi engine (tên trong `configs/ocr_bakeoff/engines.json`). Các engine VLM phải cùng mô hình, dùng chung một server. |
+| `--gpu`, `--port` | không đặt | GPU và cổng của server (`run_ocr_vlm.sh` đặt cổng `8100 + số GPU`). |
+| `--serve`, `--vllm-bin` | tắt | Tự dựng / tắt server vLLM bằng lệnh `serve` của engine VLM đầu. |
+| `--gpu-mem` | `0,85` | `--gpu-memory-utilization` của server; chừa chỗ cho engine OCR cũ chạy cùng GPU (hết bộ nhớ thì thêm `--fallback-device cpu`). |
+| `--concurrency` | `16` | Số trang của một cuốn gửi đồng thời cho server. Chỉnh sau khi chạy bộ thử bên dưới. |
+| `--redo` | tắt | OCR lại mọi cuốn, kể cả cuốn đã xong bằng chuỗi VLM. |
+
+- Kết quả ghi vào **cùng thư mục** `interim/stbook_ocr/<danh-mục>/<product_id>.json` nên `iter_records` đọc như cũ. Thêm `ocr.engine = "vlm_cascade"`,
+  `page_info` (mỗi trang: `status` = `ok` / `blank` (trang trắng thật) / `flagged` (bị loại), engine được chọn, `finish_reason`, mã lý do, các lần thử,
+  `rejected_text` nếu bị loại) và `stats`.
+- **Cuốn đã OCR bằng bộ cũ được làm lại** bằng chuỗi VLM; file cũ được chép sang `interim/stbook_ocr_baseline/` trước khi ghi đè.
+- Checkpoint theo cuốn, `kill -9` rồi chạy lại đúng lệnh cũ là đủ. Nhiều tiến trình nhận cuốn bằng khoá nên không làm trùng.
+- Server VLM chết giữa chừng (20 lượt gọi liên tiếp không kết nối được): dừng cả lượt, **không** ghi cuốn đang làm; dựng lại server rồi chạy lại.
+
+**Bộ thử concurrency và tỷ lệ trang bị báo** (~1.000 trang stbook thật, mỗi mức concurrency một GPU chạy song song, cùng bộ trang):
+```bash
+DATA_ROOT=/duong/dan/data VLLM_BIN=$(which vllm) ./scripts/stbook/run_ocr_vlm_bench.sh 2>&1 | tee ocr_vlm_bench.log
+# LEVELS="16 32 64 128" (mức → GPU 0..3), PAGES=1000, BOOKS=50, GPU_MEM=0.85; chạy lại được (chỉ làm trang còn thiếu)
+```
+Kết quả trong `<data-root>/processed/ocr_vlm_bench/`: `pages/` + `pages.jsonl` (mẫu), `runs/c<N>/outputs.jsonl`, `retry/runs/rp110/` (trang bị báo chạy lại), `report/summary.json`; bảng in cuối log
+gồm trang/giây ổn định, độ trễ p50 / p95, token sinh ra, tỷ lệ trang bị báo theo lý do, giờ chạy cả kho (366.089 trang, 4 GPU, giả định tuyến tính theo GPU) và số trang còn bị báo sau khi chạy lại bằng `rp110`
+(phần rơi xuống OCR cũ). Chọn mức concurrency nhanh nhất mà không có trang lỗi, rồi đặt `CONCURRENCY` cho `run_ocr_vlm.sh`.
+
 ---
 
 # Phần C — Chạy tất cả bằng `scripts/run_all.py`
@@ -586,6 +627,7 @@ vLLM khởi động lâu hơn vài chục giây.
 - Cổng sau O-16: `bad_rate` chỉ tính lỗi cứng của engine (`no_output`, `empty`, `loop`) so với baseline; `too_short_rate` (engine bỏ sót chữ) là cổng riêng, cũng so với baseline; `too_long_rate` chỉ báo (ô vàng khi cao hơn baseline), không loại, vì đáp án là lớp chữ của PDF nên thiếu chữ nằm trong hình mà VLM đọc được. Cổng thứ tự đọc hai cột (`order_gap_two_column`) chỉ cảnh báo vì bộ A chỉ có vài trang hai cột. `score.py` suy lại `text` từ `raw` bằng bộ chuyển đổi hiện hành (theo `run_info.json`), nên sửa `textnorm.py` có hiệu lực khi chấm lại mà không cần chạy lại engine.
 - Thử giảm vòng lặp / cắt cụt của qwen3vl_8b (O-16): `DATA_ROOT=<root> VLLM_BIN=$(which vllm) ./scripts/ocr_bakeoff/run_qwen_variants.sh` chạy 3 biến thể song song trên GPU 1-3 rồi chấm lại cùng baseline. Lượt O-16 (`qwen3vl_8b_mt4k`, `_rp105`, `_rp110`: `max_tokens` 4096, thêm `repetition_penalty` 1,05 / 1,10) không giảm được cắt cụt vì nguyên nhân là VLM nhúng logo thành ảnh base64 (O-17); lượt O-17 (mặc định) thêm chuỗi dừng `<img` / `data:image` / `![` (`qwen3vl_8b_stop`, `_stop_rp105`, `_stop_rp110`). `textnorm.py` cũng bỏ dữ liệu base64 của ảnh nhúng.
 - Bộ kiểm từng trang (O-18, `vi_corpus/ocr_bakeoff/guard.py`): nhận ra trang OCR bằng VLM hỏng hẳn mà không cần đáp án, qua các dấu hiệu `length` (cắt cụt hoặc chạm trần token), `empty`, `embedded_image` (base64), `english_meta` (lời suy nghĩ tiếng Anh), `loop` (đoạn ngắn lặp phủ phần lớn trang), `too_long`. Đo trên đầu ra thật: `uv run python scripts/ocr_bakeoff/eval_guard.py --data-root <root>` (CPU; ghi `report/guard_eval.json`, in số trang hỏng bắt được / bỏ sót và trang tốt bị báo nhầm, liệt kê từng trang). Bộ kiểm chỉ bắt lỗi hỏng hẳn, không bắt đọc sai lẻ tẻ hay đọc xen kẽ cột. `--cascade a,b,c` mô phỏng chuỗi engine a -> b -> c (mỗi trang lấy đầu ra của engine đầu tiên không bị báo) trên đầu ra có sẵn; `--show-missed N` ghi `report/guard_missed.html` với N trang mà mọi engine đều bị bỏ sót, để xem là lỗi đáp án / trang khó hay lỗi engine (O-19).
+- Chuỗi engine (O-20, code ở O-21): `score.py --cascade qwen3vl_8b_mt4k,qwen3vl_8b_rp110,baseline` thêm engine ảo `cascade` vào bảng chấm: mỗi trang lấy đầu ra của engine đầu tiên không bị bộ kiểm báo (cùng quy tắc `cascade.pick_tier` với lúc chạy thật). Cổng cắt cụt `trunc_rate` và chỉ số `flagged_rate` (trang còn bị báo sau cả chuỗi; chỉ cảnh báo khi vượt 0,5%) tính SAU bước kiểm; số giờ cả kho = tổng giờ từng engine x tỷ lệ trang phải tới nó. Đây là cận gần đúng vì dùng lại đầu ra có sẵn của đợt so sánh. Cách chạy thật: Phần B, mục B4.
 - Cách tính CER (O-14): lỗi mỗi trang bị chặn trần bằng số ký tự đáp án (CER trang tối đa 100%) nên vài trang vòng lặp không làm méo số gộp; `cer_raw` là CER thô, `pages_cer_raw_over_100` / `pages_loop` / `pages_truncated` đếm trang bất thường. Bộ A phần lớn là slide 16:9 nên **xếp hạng** (`cer_rank`, cổng `cer_vs_baseline`, `decide`, bootstrap) chỉ tính trên **trang dọc** (rộng ≤ 1,15 × cao); `cer_portrait` / `cer_landscape` và số trang dọc, trang hai cột dọc có trong `summary.json` và bảng "CER theo hướng trang" của `report.html`. `per_page.csv` có thêm cột `cer_capped` và `landscape` (cột `cer` vẫn là CER thô).
 - `hours.csv` (cũng có trong `summary.json` → `hours` và bảng "Số giờ chạy" của `report.html`): mỗi engine một dòng, gồm số trang và số giờ đã chạy thật trong đợt so sánh, số giờ chờ server / nạp mô hình, trang/giây trên 1 GPU, số giờ để OCR cả kho khi 4 GPU cùng chạy (`corpus_hours`), số giờ GPU tương ứng (`corpus_gpu_hours` = × 4) và số giờ tách theo nguồn.
 - `report.html`: bảng cổng loại (xanh qua, đỏ trượt, xám chưa kiểm), số đo bộ A theo tầng, bộ B (âm tiết lạ, perplexity, `?`), từng trang bộ B vài trang hai cột bộ A và 3 trang CER thô cao nhất mỗi engine (bỏ trùng; `summary.json` → `raw_cer_examples`) đặt cạnh nhau với ảnh gốc và đáp án.
@@ -601,7 +643,7 @@ Xem chi tiết (cây thư mục, cấu trúc `data/`, luồng từng nguồn) tr
 vi_corpus/
 ├── common/            # dùng chung: registry (sổ đăng ký nguồn), schema, state (checkpoint/khoá/log), ocr, pdf_text, parsers/ (docx, doc/ppt, djvu, html, epub)
 ├── sea/               # tải SEA (datasets, hub, checkpoint, downloader, cli) + reader về schema chung
-├── stbook/            # crawler stbook.vn + ocr_books (OCR có checkpoint, đọc kết quả về schema chung)
+├── stbook/            # crawler stbook.vn + ocr_books (OCR Paddle + VietOCR, đọc kết quả về schema chung) + ocr_vlm (OCR bằng chuỗi VLM)
 ├── giao_trinh/        # xử lý giáo trình (đang triển khai)
 ├── pipeline/          # pipeline end-to-end: ingest…finalize, embed/reduce/viz, report, curator (chạy song song)
 ├── ocr_bakeoff/       # so sánh engine OCR (Phần F): chọn trang, engine, adapter văn bản, số đo, chấm điểm
@@ -612,7 +654,7 @@ scripts/
 ├── dedup_global.py    # dedup vòng 2 trên kho dấu vân tay
 ├── make_judge_sample.py  # mẫu phân tầng cho LLM chấm điểm
 ├── sea/               # 4 script tải, count_rows.py
-├── stbook/            # crawl.py, ocr.py
+├── stbook/            # crawl.py, ocr.py, ocr_vlm.py, run_ocr_vlm.sh, ocr_vlm_bench.py, run_ocr_vlm_bench.sh
 ├── giao_trinh/        # extract.py (đang viết), profile.py
 └── ocr_bakeoff/       # select_pages.py, build_syllables.py, run_engine.py, score.py, run_bakeoff.sh (Phần F)
 tests/                 # test (không cần mạng): uv run pytest

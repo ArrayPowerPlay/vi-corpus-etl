@@ -10,6 +10,9 @@ report/hours.csv, summary.json ("hours") và report.html.
 Ví dụ:
     uv run python scripts/ocr_bakeoff/score.py --data-root /duong/dan/data
     uv run python scripts/ocr_bakeoff/score.py --data-root /duong/dan/data --ppl --hour-budget 60
+    uv run python scripts/ocr_bakeoff/score.py --data-root /duong/dan/data --cascade qwen3vl_8b_mt4k,qwen3vl_8b_rp110,baseline
+(--cascade, O-20: thêm engine ảo "cascade" ghép đầu ra theo bộ kiểm từng trang; cổng cắt cụt, số trang còn bị báo và số giờ chạy
+cả kho của nó tính SAU bước kiểm.)
 """
 
 import argparse
@@ -48,6 +51,9 @@ def main() -> int:
                    help="Mức mềm số giờ chạy cả kho (mặc định 30, N-02): vượt chỉ cảnh báo, không loại.")
     p.add_argument("--corpus-pages", type=int, default=None,
                    help="Tổng số trang cần OCR (mặc định lấy từ selection.json: stbook + giáo trình cần OCR).")
+    p.add_argument("--cascade", default=None,
+                   help="Chuỗi engine (O-20), vd qwen3vl_8b_mt4k,qwen3vl_8b_rp110,baseline: thêm engine ảo 'cascade' ghép đầu ra "
+                        "theo bộ kiểm; cổng cắt cụt và giờ chạy cả kho tính trên chuỗi, không trên đầu ra thô của từng engine.")
     p.add_argument("--special-recall-min", type=float, default=Gates.special_recall_min)
     p.add_argument("--two-col-gap-max", type=float, default=Gates.two_col_gap_max)
     p.add_argument("--bad-rate-excess-max", type=float, default=Gates.bad_rate_excess_max,
@@ -75,7 +81,8 @@ def main() -> int:
     gates = Gates(args.special_recall_min, args.two_col_gap_max, args.bad_rate_excess_max, args.trunc_rate_max,
                   args.hour_budget, args.hour_soft)
     s = score_bakeoff(bakeoff, engines, baseline=args.baseline, vocab=vocab, num_gpus=args.num_gpus, gates=gates,
-                      corpus_pages=args.corpus_pages)
+                      corpus_pages=args.corpus_pages,
+                      cascade=[t.strip() for t in args.cascade.split(",") if t.strip()] if args.cascade else None)
     print(json.dumps(s["decision"], ensure_ascii=False, indent=2))
     for name, h in s["hours"].items():
         est = f"{h['corpus_hours']:.1f} giờ cho cả kho" if h["corpus_hours"] is not None else "chưa đo được tốc độ"

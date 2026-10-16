@@ -32,6 +32,7 @@ Luồng con của từng module (cùng thư mục `docs/diagrams/`, vẽ theo co
 | [10_sea_download](diagrams/10_sea_download.svg) | `vi_corpus/sea/` | tải SEA có khoá, checkpoint từng file |
 | [11_stbook_ocr](diagrams/11_stbook_ocr.svg) | `vi_corpus/stbook/`, `common/ocr.py` | OCR sách, `clean_pages` |
 | [12_giao_trinh](diagrams/12_giao_trinh.svg) | `vi_corpus/giao_trinh/`, `common/batch_extract.py`, `pdf_text.py` | kiểm kê, trích text theo trang |
+| [13_stbook_ocr_vlm](diagrams/13_stbook_ocr_vlm.svg) | `vi_corpus/stbook/ocr_vlm.py`, `ocr_bakeoff/cascade.py`, `guard.py` | OCR sách bằng chuỗi VLM (O-20): kiểm từng trang, chạy lại, dự phòng |
 
 Thiết kế đầy đủ, gồm cả phần chưa code (triage + parse PDF cho VISTA/VJOL, exact và fuzzy dedup tách bước):
 ```mermaid

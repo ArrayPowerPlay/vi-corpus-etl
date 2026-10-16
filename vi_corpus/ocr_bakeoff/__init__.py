@@ -11,5 +11,8 @@ Các bước (script ở scripts/ocr_bakeoff/, chạy trên server GPU):
     syllables.py: tập âm tiết lập từ SEA-PILE (đo tỷ lệ âm tiết lạ ở bộ B).
     perplexity.py: perplexity Qwen3-0.6B của đầu ra (bộ B, đo thứ tự đọc khi không có đáp án).
     scoring.py  : chấm điểm, áp quy tắc chọn đã viết trước, xuất summary.json / per_page.csv / report.html.
+    guard.py    : bộ kiểm từng trang cho OCR bằng VLM (O-18): nhận ra trang hỏng hẳn mà không cần đáp án.
+    cascade.py  : chuỗi engine (O-20): quy tắc chọn pick_tier dùng chung cho chạy thật (CascadeOcr), mô phỏng và chấm điểm.
+    vlm_bench.py: thử concurrency và tỷ lệ trang bị báo trên ~1.000 trang stbook thật (scripts/stbook/ocr_vlm_bench.py).
     gt_diag.py  : chẩn đoán đáp án bộ A (trang đôi, số trang lẫn giữa trang, tiêu đề / chân trang engine bỏ), CPU.
 """

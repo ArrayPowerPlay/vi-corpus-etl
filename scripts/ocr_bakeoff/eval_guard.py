@@ -28,6 +28,7 @@ from pathlib import Path
 
 sys.path[0] = str(Path(__file__).resolve().parents[2])
 
+from vi_corpus.ocr_bakeoff.cascade import merge_cascade  # noqa: E402
 from vi_corpus.ocr_bakeoff.guard import guard_page  # noqa: E402
 from vi_corpus.ocr_bakeoff.metrics import micro_rate, page_scores  # noqa: E402
 from vi_corpus.ocr_bakeoff.pages import is_landscape, read_pages  # noqa: E402
@@ -114,7 +115,7 @@ def simulate_cascade(bakeoff: Path, tiers: list[str]) -> dict:
         runs[name] = latest_outputs(run)
         info = json.loads((run / "run_info.json").read_text(encoding="utf-8")) if (run / "run_info.json").exists() else {}
         mt[name] = info.get("config", {}).get("max_tokens")
-    used: Counter = Counter()
+    merged, used = merge_cascade(runs, tiers, mt, [p["page_id"] for p in pages])  # quy tắc chọn dùng chung với chạy thật (cascade.pick_tier)
 
     def score(pick) -> dict:
         """Số đo của cách chọn đầu ra `pick(page) -> (engine, rec)` trên mọi trang bộ A."""
@@ -140,13 +141,9 @@ def simulate_cascade(bakeoff: Path, tiers: list[str]) -> dict:
         return tiers[0], runs[tiers[0]].get(p["page_id"])
 
     def cascade(p):
-        """Engine đầu tiên không bị báo; engine cuối nhận bất kể."""
-        for name in tiers:
-            rec = runs[name].get(p["page_id"])
-            if rec is not None and (name == tiers[-1] or not guard_page(rec, mt[name])):
-                used[name] += 1
-                return name, rec
-        return tiers[-1], None
+        """Đầu ra đã ghép của cả chuỗi."""
+        rec = merged.get(p["page_id"])
+        return (rec["tier"] if rec else tiers[-1]), rec
 
     out = {"tiers": tiers, "first_only": score(first_only)}
     out["cascade"] = score(cascade)

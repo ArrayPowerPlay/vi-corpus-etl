@@ -16,12 +16,12 @@ vi-corpus-etl/
 ├── pyproject.toml, uv.lock          # thư viện quản lý bằng uv (nhóm ocr: uv sync --group ocr)
 ├── .env                             # HF_TOKEN (không đưa lên git)
 ├── docs/                            # README, PROJECT_ARCHITECTURE, PIPELINE, SOURCES, ROADMAP, PROGRESS, GIAO_TRINH, DECISION_LOG
-│   └── diagrams/                    # 00_pipeline.svg/png (luồng chính) + 01..12_*.svg (luồng con từng module)
+│   └── diagrams/                    # 00_pipeline.svg/png (luồng chính) + 01..13_*.svg (luồng con từng module)
 ├── configs/ocr_bakeoff/engines.json # cấu hình engine OCR cho đợt so sánh (lệnh dựng server, lời nhắc, giấy phép)
 ├── scripts/
 │   ├── run_all.py                   # script tổng: chạy các script con bên dưới
 │   ├── sea/                         # download_all.py, download_sea_*.py (3 bộ), count_rows.py
-│   ├── stbook/                      # crawl.py (tải sách), ocr.py (OCR PDF → text)
+│   ├── stbook/                      # crawl.py (tải sách), ocr.py (OCR Paddle + VietOCR), ocr_vlm.py + run_ocr_vlm.sh (OCR bằng chuỗi VLM, O-20), ocr_vlm_bench.py + run_ocr_vlm_bench.sh (thử concurrency)
 │   ├── giao_trinh/                  # extract.py (xử lý thô giáo trình), profile.py (khảo sát)
 │   ├── ocr_bakeoff/                 # so sánh engine OCR (F-11): select_pages, build_syllables, run_engine, score, diagnose_gt, run_bakeoff.sh
 │   ├── gpu_keepalive.py             # giữ GPU trên Run:ai không bị tự dừng khi job chỉ dùng CPU
@@ -42,9 +42,10 @@ vi-corpus-etl/
 │   │   └── reader.py                #   đọc parquet/jsonl.gz về schema chung
 │   ├── stbook/                      # nguồn sách stbook.vn
 │   │   ├── crawler/                 #   crawl metadata + PDF (categories, client, content, parse_*, storage, main)
-│   │   └── ocr_books.py             #   tìm sách, OCR có checkpoint theo cuốn, đọc kết quả về schema chung
+│   │   ├── ocr_books.py             #   tìm sách, OCR Paddle + VietOCR có checkpoint theo cuốn, đọc kết quả về schema chung
+│   │   └── ocr_vlm.py               #   OCR bằng chuỗi VLM: nhận cuốn bằng khoá, ghi page_info / stats, sao lưu kết quả bộ cũ
 │   ├── giao_trinh/                  # nguồn giáo trình (`extract.py` kiểm kê + trích text, `records.py` bản ghi + Parquet)
-│   ├── ocr_bakeoff/                 # so sánh engine OCR: pages (chọn trang, đáp án), engines, textnorm, metrics, syllables, perplexity, scoring, gt_diag (chẩn đoán đáp án bộ A)
+│   ├── ocr_bakeoff/                 # so sánh engine OCR: pages (chọn trang, đáp án), engines, textnorm, metrics, syllables, perplexity, scoring, gt_diag (chẩn đoán đáp án bộ A), guard (bộ kiểm từng trang), cascade (chuỗi engine: pick_tier, CascadeOcr), vlm_bench (thử concurrency)
 │   ├── vista/, vjol/                # thư mục trống giữ chỗ, chưa có code
 │   └── __init__.py
 └── tests/                           # test không cần mạng: uv run pytest
@@ -66,13 +67,15 @@ data/
 │   ├── giao_trinh/<ngành>/<môn>/<file>    #   bản sao từ Google Drive bằng rclone (16 ngành)
 │   └── VJOL/                              #   cấu trúc sẽ bổ sung khi có dữ liệu
 ├── interim/                               # kết quả trung gian của từng nguồn
-│   ├── stbook_ocr/<danh-mục>/<product_id>.json     # text từng trang + metadata sách
+│   ├── stbook_ocr/<danh-mục>/<product_id>.json     # text từng trang + metadata sách (chuỗi VLM: thêm page_info, stats)
+│   ├── stbook_ocr_baseline/<danh-mục>/             # bản kết quả của bộ OCR cũ, chép sang trước khi chuỗi VLM ghi đè
 │   └── giao_trinh_text/<sha256>.json               # text từng trang + method, khoá theo sha256 file
 ├── processed/                             # kết quả cuối của từng nguồn (theo schema chung)
 │   └── giao_trinh/giao_trinh.parquet
 ├── state/                                 # checkpoint + khoá chống chạy trùng
 │   ├── sea_instruct_2602/, sea_pile_v2/, sea_lion_pile_v1/   # <tên-file>.json + _manifest.json + .run.lock
 │   ├── stbook_ocr/                        # .run.lock
+│   ├── stbook_ocr_vlm/<worker>/, claims/  # .run.lock từng tiến trình + khoá nhận từng cuốn
 │   └── ...                                # giao_trinh: do bước xử lý giáo trình tạo
 └── logs/<việc>_<ngày_giờ>.log             # log từng lần chạy
 ```
@@ -84,7 +87,7 @@ Ghi chú: state của SEA nằm ở `state/<bộ>/` (không nằm trong `raw/sea
 | Nguồn | Tải về | raw | Bước xử lý | interim | processed |
 |---|---|---|---|---|---|
 | SEA | `scripts/sea/download_all.py` (Hugging Face, có checkpoint) | `raw/sea_vi/<bộ>/` | `vi_corpus/sea/reader.py` đọc thẳng về schema chung (đã là text, bỏ bước parse) | (không cần) | kế hoạch: các stage chung |
-| stbook | `scripts/stbook/crawl.py` | `raw/stbook/` | `scripts/stbook/ocr.py` (PaddleOCR + VietOCR, checkpoint theo cuốn) | `interim/stbook_ocr/` | `ocr_books.iter_records`: mỗi cuốn một bản ghi |
+| stbook | `scripts/stbook/crawl.py` | `raw/stbook/` | `scripts/stbook/ocr_vlm.py` (chuỗi VLM Qwen3-VL-8B + bộ kiểm + OCR cũ dự phòng, O-20; `scripts/stbook/ocr.py` = bộ OCR cũ, checkpoint theo cuốn) | `interim/stbook_ocr/` | `ocr_books.iter_records`: mỗi cuốn một bản ghi |
 | giáo trình | `rclone copy` từ Google Drive (chạy tay, xem `docs/GIAO_TRINH.md`) | `raw/giao_trinh/` | `scripts/giao_trinh/extract.py`: kiểm kê sha256, trích text PDF/pptx, OCR trang scan (xuất Parquet tự động cuối lần chạy) | `interim/giao_trinh_text/<sha256>.json` | `processed/giao_trinh/giao_trinh.parquet` |
 | VJOL, VISTA | không crawl trong repo này | `raw/VJOL/` (VISTA: đường dẫn tạm) | chưa có: chờ cấu trúc dữ liệu | | |
 
@@ -94,7 +97,7 @@ Sau khi mỗi nguồn ra bản ghi theo `vi_corpus/common/schema.py`, các stage
 
 - **`vi_corpus/common/`**: không biết gì về một nguồn cụ thể. `registry.py` là nơi duy nhất khai báo đường dẫn raw của từng nguồn (`raw/sea_vi/...`, `raw/stbook`, `raw/VJOL`, ...) và thông tin owner/license/rights; `state.py` cung cấp cơ chế checkpoint/khoá/log mà mọi bước chạy lâu dùng chung.
 - **`vi_corpus/sea/`**: tải phần tiếng Việt của 3 bộ SEA và đọc lại về schema chung. Đường dẫn raw dựng trong `downloader.DatasetPaths` (`raw/sea_vi/<bộ>`), state ở `state/<bộ>`.
-- **`vi_corpus/stbook/`**: crawler lấy sách từ stbook.vn (chép từ repo `stbook-crawler`, mặc định ghi vào `raw/stbook`) và `ocr_books.py` OCR PDF dạng ảnh.
+- **`vi_corpus/stbook/`**: crawler lấy sách từ stbook.vn (chép từ repo `stbook-crawler`, mặc định ghi vào `raw/stbook`) `ocr_books.py` OCR PDF dạng ảnh bằng Paddle + VietOCR và `ocr_vlm.py` OCR bằng chuỗi VLM (engine chính từ O-20).
 - **`vi_corpus/giao_trinh/`**: kiểm kê file theo sha256, trích text theo định dạng, làm sạch theo trang (`clean_pages` khi sinh bản ghi), sinh bản ghi schema chung (chưa phân loại sách/slide, ngôn ngữ, chất lượng). Đầu ra: `interim/giao_trinh_text/<sha256>.json` và `processed/giao_trinh/giao_trinh.parquet`.
 - **`vi_corpus/vista/`, `vi_corpus/vjol/`**: giữ chỗ, chưa có code (YAGNI đến khi có cấu trúc dữ liệu).
 

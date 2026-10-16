@@ -26,6 +26,10 @@ khoảng thời gian giữa t_end của chúng (quá ít trang thì dùng mọi 
 Số giờ cho cả kho: corpus_hours = tổng số trang cần OCR (selection.json) / (trang/giây x số GPU) / 3600 là số giờ
 server chạy khi mỗi GPU chạy một bản engine cùng lúc (đây là số so với ngân sách --hour-budget); corpus_gpu_hours =
 corpus_hours x số GPU. Mọi ngưỡng là khởi điểm, chỉnh được bằng tham số.
+Chuỗi engine (O-20, score_bakeoff(cascade=[...])): thêm một "engine" ảo tên CASCADE_NAME ghép đầu ra có sẵn của các engine
+theo quy tắc chạy thật (cascade.pick_tier): mỗi trang lấy đầu ra của engine đầu tiên không bị bộ kiểm báo. Cổng cắt cụt
+(trunc_rate) và số trang còn bị báo (flagged_rate, chỉ cảnh báo) vì vậy tính trên phần còn lại SAU bước kiểm, không phải trên
+đầu ra thô của từng engine; số giờ cả kho là tổng giờ từng engine nhân tỷ lệ trang phải tới nó (cascade_hours).
 """
 
 import csv
@@ -36,6 +40,7 @@ from collections import defaultdict
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
+from vi_corpus.ocr_bakeoff.cascade import cascade_hours, merge_cascade
 from vi_corpus.ocr_bakeoff.metrics import (
     SPECIAL_CHARS,
     SPECIAL_CLASSES,
@@ -56,6 +61,7 @@ WARMUP_PAGES = 20
 WORST_PAGES = 10
 EXAMPLES_PER_ENGINE = 3
 STEADY_MIN = 200
+CASCADE_NAME = "cascade"  # tên engine ảo của chuỗi trong báo cáo
 _CSS = (
     "body{font-family:system-ui,sans-serif;margin:16px;background:#fff;color:#111}"
     "table{border-collapse:collapse;margin:8px 0}td,th{border:1px solid #ccc;padding:3px 6px;font-size:13px}"
@@ -191,7 +197,8 @@ def score_set_a(pages: list[dict], bakeoff_dir: Path, outputs: dict[str, dict[st
             bad = page_bad_reason(rec, sc)
             landscape = is_landscape(p.get("size"))
             row = {"engine": name, "page_id": p["page_id"], "set": "A", "flags": p.get("flags", {}), "sc": sc,
-                   "bad": bad, "truncated": bool(rec and rec.get("finish_reason") == "length"), "landscape": landscape}
+                   "bad": bad, "truncated": bool(rec and rec.get("finish_reason") == "length"), "landscape": landscape,
+                   "flagged": bool(rec["guard"]) if rec and "guard" in rec else None}  # chỉ engine chuỗi có "guard"
             per.append(row)
             rows.append({
                 "engine": name, "page_id": p["page_id"], "set": "A",
@@ -286,6 +293,8 @@ def aggregate_a(per: list[dict]) -> dict:
         "bad_by_reason": dict(bad_counts),
         "bad_rate_by_reason": {k: v / n for k, v in bad_counts.items()},
         "trunc_rate": sum(r["truncated"] for r in per) / n if n else None,
+        "flagged_rate": (sum(bool(r["flagged"]) for r in per) / n if n and any(r["flagged"] is not None for r in per)
+                         else None),  # trang còn bị bộ kiểm báo (chỉ có với engine chuỗi)
         "_per_page": {"char_dist": [capped_dist(r["sc"]) for r in rank], "ref_chars": [r["sc"]["ref_chars"] for r in rank]},
     }
 
@@ -426,6 +435,8 @@ def apply_gates(a: dict, hours: dict, gates: Gates, baseline: str) -> tuple[dict
             "too_long_rate": check(m["long_rate"], None, True,
                                    warn=base is not None and m["long_rate"] > base["long_rate"] + gates.bad_rate_excess_max),
             "trunc_rate": check(m["trunc_rate"], gates.trunc_rate_max, m["trunc_rate"] <= gates.trunc_rate_max),
+            "flagged_rate": check(m["flagged_rate"], gates.trunc_rate_max, None if m["flagged_rate"] is None else True,
+                                  warn=m["flagged_rate"] is not None and m["flagged_rate"] > gates.trunc_rate_max),
             "corpus_hours": check(corpus_hours, gates.hour_budget if gates.hour_budget is not None else soft,
                                   hours_ok, hours_warn),
         }
@@ -538,7 +549,8 @@ def render_html(summary: dict, pages: list[dict], outputs: dict[str, dict[str, d
     parts.append("</table>")
     cols = [("cer_rank", True), ("cer", True), ("cer_raw", True), ("cer_nodiac", True), ("diacritic_error", True), ("wer", True), ("bow_f1", True),
             ("order_gap_all", True), ("order_gap_two_column", True), ("special_recall", True),
-            ("special_recall_strict", True), ("bad_rate", True), ("short_rate", True), ("long_rate", True), ("trunc_rate", True)]
+            ("special_recall_strict", True), ("bad_rate", True), ("short_rate", True), ("long_rate", True), ("trunc_rate", True),
+            ("flagged_rate", True)]
     parts.append("<h2>Bộ A (có đáp án)</h2><table><tr><th>engine</th>" + "".join(f"<th>{c}</th>" for c, _ in cols)
                  + "".join(f"<th>CER {k}</th>" for k in ("two_column", "table", "special", "plain")) + "</tr>")
     for name in engines:
@@ -649,9 +661,33 @@ def render_html(summary: dict, pages: list[dict], outputs: dict[str, dict[str, d
     return "\n".join(parts)
 
 
+def _add_cascade(tiers: list[str], runs: Path, pages: list[dict], corpus: dict[str, int], num_gpus: int,
+                 outputs: dict, ppl: dict, speed: dict, hours: dict):
+    """
+    Thêm engine chuỗi CASCADE_NAME vào outputs / ppl / speed / hours (sửa tại chỗ): đầu ra ghép theo cascade.merge_cascade,
+    giờ chạy theo cascade.cascade_hours. Engine của chuỗi chưa có trong `outputs` thì nạp thêm chỉ để ghép (không chấm riêng).
+
+    Returns:
+        Counter số trang lấy từ mỗi engine của chuỗi.
+    """
+    tier_outputs, tier_hours, max_tokens = {}, {}, {}
+    for t in tiers:
+        tier_outputs[t] = outputs[t] if t in outputs else latest_outputs(runs / t)
+        tier_hours[t] = hours[t] if t in hours else run_hours(runs / t, throughput(runs / t), corpus, num_gpus)
+        info = runs / t / "run_info.json"
+        max_tokens[t] = json.loads(info.read_text(encoding="utf-8")).get("config", {}).get("max_tokens") if info.exists() else None
+    merged, used = merge_cascade(tier_outputs, tiers, max_tokens, [p["page_id"] for p in pages])
+    outputs[CASCADE_NAME] = merged
+    ppl[CASCADE_NAME] = {}
+    hours[CASCADE_NAME] = cascade_hours(tier_hours, tiers, used, num_gpus)
+    speed[CASCADE_NAME] = {"session": None, "pages": len(merged), "pages_per_s": hours[CASCADE_NAME]["pages_per_s"],
+                           "steady": hours[CASCADE_NAME]["steady"]}
+    return used
+
+
 def score_bakeoff(bakeoff_dir: Path, engines: list[str] | None = None, baseline: str = "baseline",
                   vocab: frozenset[str] | None = None, num_gpus: int = 4, gates: Gates | None = None,
-                  corpus_pages: int | None = None) -> dict:
+                  corpus_pages: int | None = None, cascade: list[str] | None = None) -> dict:
     """
     Chấm toàn bộ và ghi report/ (xem docstring module).
 
@@ -659,6 +695,8 @@ def score_bakeoff(bakeoff_dir: Path, engines: list[str] | None = None, baseline:
         engines:      Engine cần chấm; None = mọi thư mục trong runs/.
         vocab:        Tập âm tiết cho bộ B (None = bỏ số đo âm tiết lạ).
         corpus_pages: Tổng số trang cần OCR; None = lấy từ selection.json (stbook + giáo trình cần OCR).
+        cascade:      Thứ tự các engine của chuỗi (O-20), vd ["qwen3vl_8b_mt4k", "qwen3vl_8b_rp110", "baseline"]; có thì thêm
+                      engine ảo CASCADE_NAME vào bảng chấm. Các engine trong chuỗi không cần nằm trong `engines`.
 
     Returns:
         Nội dung summary.json.
@@ -678,10 +716,14 @@ def score_bakeoff(bakeoff_dir: Path, engines: list[str] | None = None, baseline:
     corpus_pages = sum(corpus.values())
     set_a = [p for p in pages if p["set"] == "A"]
     set_b = [p for p in pages if p["set"] == "B"]
-    a, rows_a = score_set_a(set_a, bakeoff_dir, outputs) if set_a else ({}, [])
-    b, rows_b = score_set_b(set_b, outputs, vocab, ppl) if set_b else ({}, [])
     speed = {n: throughput(runs / n) for n in engines}
     hours = {n: run_hours(runs / n, speed[n], corpus, num_gpus) for n in engines}
+    cascade_used = None
+    if cascade:  # trước khi chấm: engine chuỗi được chấm như mọi engine khác
+        engines = [*engines, CASCADE_NAME]
+        cascade_used = _add_cascade(cascade, runs, pages, corpus, num_gpus, outputs, ppl, speed, hours)
+    a, rows_a = score_set_a(set_a, bakeoff_dir, outputs) if set_a else ({}, [])
+    b, rows_b = score_set_b(set_b, outputs, vocab, ppl) if set_b else ({}, [])
     gated, decision = apply_gates(a, hours, gates, baseline) if a else ({}, {
         "status": "no_set_a", "winner": None, "quality_passed": [], "tied_with": [], "notes": [],
         "reason": "không có trang bộ A", "comparisons": {}})
@@ -702,7 +744,8 @@ def score_bakeoff(bakeoff_dir: Path, engines: list[str] | None = None, baseline:
             ri = json.loads(p.read_text(encoding="utf-8"))
             info[n] = {"gpu": ri.get("gpu"), "license": ri.get("config", {}).get("license"),
                        "note": ri.get("config", {}).get("note")}
-    summary = {"engines": engines, "baseline": baseline, "corpus_pages": corpus_pages, "num_gpus": num_gpus,
+    summary = {"engines": engines, "baseline": baseline, "cascade": ({"tiers": cascade, "pages_by_tier": dict(cascade_used)}
+                                                                if cascade else None), "corpus_pages": corpus_pages, "num_gpus": num_gpus,
                "thresholds": {**asdict(gates), "len_tol": LEN_TOL, "loop_min": LOOP_MIN, "warmup_pages": WARMUP_PAGES,
                               "steady_min": STEADY_MIN},
                "selection": {k: selection.get(k) for k in ("set_a", "set_b", "strata", "shortfall", "books_b")},

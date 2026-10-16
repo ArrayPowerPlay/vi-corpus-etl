@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 861" width="1000" height="861" font-family="DejaVu Sans, Arial, sans-serif">
+<title>Luồng con 13: OCR sách stbook bằng chuỗi VLM</title>
+<defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#455566"/></marker></defs>
+<rect width="1000" height="861" fill="#ffffff"/>
+<text x="500.0" y="34" text-anchor="middle" font-size="19" font-weight="700" fill="#1b2733">Luồng con 13: OCR sách stbook bằng chuỗi VLM (O-20)</text>
+<text x="500.0" y="58" text-anchor="middle" font-size="12" fill="#52514e">vi_corpus/stbook/ocr_vlm.py · vi_corpus/ocr_bakeoff/cascade.py · guard.py · scripts/stbook/ocr_vlm.py</text>
+<rect x="30" y="84" width="940" height="51" rx="8" fill="#eef2f7" stroke="#7a8aa0" stroke-width="1.5"/>
+<text x="42" y="106" font-size="14" font-weight="700" fill="#1b2733">raw/stbook/&lt;slug&gt;/content/&lt;product_id&gt;.pdf</text>
+<text x="42" y="126" font-size="12" fill="#1b2733" xml:space="preserve">PDF dạng ảnh; cuốn nào cần OCR: chưa có kết quả của chuỗi VLM, hoặc pdf_size đổi (kể cả cuốn đã OCR bằng bộ cũ)</text>
+<line x1="500" y1="135" x2="500" y2="169" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
+<rect x="30" y="171" width="940" height="51" rx="8" fill="#fff4dc" stroke="#d19a1f" stroke-width="1.5"/>
+<text x="42" y="193" font-size="14" font-weight="700" fill="#1b2733">claim_book: nhận cuốn bằng flock</text>
+<text x="42" y="213" font-size="12" fill="#1b2733" xml:space="preserve">state/stbook_ocr_vlm/claims/; cuốn có tiến trình khác đang làm thì bỏ qua (mỗi GPU một tiến trình)</text>
+<line x1="500" y1="222" x2="500" y2="256" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
+<rect x="30" y="258" width="940" height="51" rx="8" fill="#e9f5ee" stroke="#3f9b6b" stroke-width="1.5"/>
+<text x="42" y="280" font-size="14" font-weight="700" fill="#1b2733">Mỗi trang: ảnh gốc nhúng trong PDF (page_image_bytes), tối đa concurrency trang cùng lúc</text>
+<text x="42" y="300" font-size="12" fill="#1b2733" xml:space="preserve">CascadeOcr.page → pick_tier: engine đầu tiên không bị guard_page báo; engine cuối nhận bất kể</text>
+<line x1="500" y1="309" x2="500" y2="343" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
+<rect x="30" y="345" width="940" height="51" rx="8" fill="#e9f5ee" stroke="#3f9b6b" stroke-width="1.5"/>
+<text x="42" y="367" font-size="14" font-weight="700" fill="#1b2733">1. qwen3vl_8b_mt4k (vLLM, max_tokens 4096)</text>
+<text x="42" y="387" font-size="12" fill="#1b2733" xml:space="preserve">Qwen3-VL-8B, một server mỗi GPU; lỗi tạm thời thử lại 2 lần; 20 lượt liên tiếp mất kết nối → ServerDown, dừng cả lượt</text>
+<line x1="500" y1="396" x2="500" y2="430" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
+<rect x="30" y="432" width="940" height="51" rx="8" fill="#e9f5ee" stroke="#3f9b6b" stroke-width="1.5"/>
+<text x="42" y="454" font-size="14" font-weight="700" fill="#1b2733">2. qwen3vl_8b_rp110 (cùng server, repetition_penalty 1,10)</text>
+<text x="42" y="474" font-size="12" fill="#1b2733" xml:space="preserve">chỉ chạy khi trang bị báo: length, empty, embedded_image, english_meta, loop, too_long, error</text>
+<line x1="500" y1="483" x2="500" y2="517" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
+<rect x="30" y="519" width="940" height="51" rx="8" fill="#e9f5ee" stroke="#3f9b6b" stroke-width="1.5"/>
+<text x="42" y="541" font-size="14" font-weight="700" fill="#1b2733">3. baseline: PaddleOCR detect + VietOCR (nạp lười, tuần tự)</text>
+<text x="42" y="561" font-size="12" fill="#1b2733" xml:space="preserve">chỉ chạy khi cả hai VLM đều bị báo; cùng GPU với server nên server hạ --gpu-mem 0,85</text>
+<line x1="500" y1="570" x2="500" y2="604" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
+<rect x="30" y="606" width="940" height="51" rx="8" fill="#fff4dc" stroke="#d19a1f" stroke-width="1.5"/>
+<text x="42" y="628" font-size="14" font-weight="700" fill="#1b2733">Trạng thái từng trang</text>
+<text x="42" y="648" font-size="12" fill="#1b2733" xml:space="preserve">ok: giữ text · blank: mọi engine trả rỗng (trang trắng thật) · flagged: engine cuối vẫn bị báo → text rỗng, giữ rejected_text</text>
+<line x1="500" y1="657" x2="500" y2="691" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
+<rect x="30" y="693" width="940" height="51" rx="8" fill="#e9f5ee" stroke="#3f9b6b" stroke-width="1.5"/>
+<text x="42" y="715" font-size="14" font-weight="700" fill="#1b2733">Ghi nguyên tử interim/stbook_ocr/&lt;slug&gt;/&lt;product_id&gt;.json</text>
+<text x="42" y="735" font-size="12" fill="#1b2733" xml:space="preserve">pages, page_info, stats, ocr.engine = vlm_cascade; file của bộ OCR cũ chép sang interim/stbook_ocr_baseline/ trước khi ghi đè</text>
+<line x1="500" y1="744" x2="500" y2="778" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
+<rect x="30" y="780" width="940" height="51" rx="8" fill="#e3eefb" stroke="#2a78d6" stroke-width="1.5"/>
+<text x="42" y="802" font-size="14" font-weight="700" fill="#1b2733">ocr_books.iter_records</text>
+<text x="42" y="822" font-size="12" fill="#1b2733" xml:space="preserve">đọc pages như cũ (trang flagged là chuỗi rỗng, không vào kho) → bản ghi schema chung, mỗi cuốn một bản ghi</text>
+</svg>

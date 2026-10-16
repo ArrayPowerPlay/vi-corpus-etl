@@ -55,9 +55,15 @@ class BaselineEngine:
 
     def run(self, image_path: Path) -> dict:
         """OCR một ảnh trang."""
+        return self.run_bytes(image_path.read_bytes(), image_path.suffix.lstrip("."))
+
+    def run_bytes(self, data: bytes, ext: str = "jpg") -> dict:
+        """OCR một ảnh trang cho sẵn byte (bộ chạy VLM của stbook không ghi ảnh ra đĩa); `ext` không dùng."""
+        import io
+
         from PIL import Image
 
-        with Image.open(image_path) as im:
+        with Image.open(io.BytesIO(data)) as im:
             return {"raw": self.ocr.page_text(im.convert("RGB")), "finish_reason": None}
 
 
@@ -67,15 +73,22 @@ class OpenAIEngine:
     def __init__(self, cfg: dict) -> None:
         """Lưu tham số gọi API."""
         import requests
+        from requests.adapters import HTTPAdapter
 
         self.session = requests.Session()
+        # Mặc định requests chỉ giữ 10 kết nối; concurrency cao hơn thì mở rồi bỏ kết nối mới mỗi yêu cầu (và cảnh báo đầy bể)
+        self.session.mount("http://", HTTPAdapter(pool_connections=4, pool_maxsize=cfg.get("pool_size", 256)))
         self.cfg = cfg
         self.url = cfg["base_url"].rstrip("/") + "/chat/completions"
 
     def payload(self, image_path: Path) -> dict:
-        """Thân yêu cầu: ảnh (data URL base64, byte gốc) rồi lời nhắc; giải mã tham lam."""
-        mime = _MIME.get(image_path.suffix.lower().lstrip("."), "image/png")
-        data = base64.b64encode(image_path.read_bytes()).decode("ascii")
+        """Thân yêu cầu cho một file ảnh (xem payload_bytes)."""
+        return self.payload_bytes(image_path.read_bytes(), image_path.suffix)
+
+    def payload_bytes(self, image: bytes, ext: str) -> dict:
+        """Thân yêu cầu: ảnh (data URL base64, byte gốc, `ext` quyết định kiểu MIME) rồi lời nhắc; giải mã tham lam."""
+        mime = _MIME.get(ext.lower().lstrip("."), "image/png")
+        data = base64.b64encode(image).decode("ascii")
         content = [{"type": "image_url", "image_url": {"url": f"data:{mime};base64,{data}"}},
                    {"type": "text", "text": self.cfg.get("text_prefix", "") + self.cfg["prompt"]}]
         return {"model": self.cfg.get("served_name") or self.cfg["model"],
@@ -84,8 +97,12 @@ class OpenAIEngine:
                 **self.cfg.get("extra_body", {})}
 
     def run(self, image_path: Path) -> dict:
-        """Gửi một trang, trả nội dung và lý do dừng (length = bị cắt vì hết max_tokens)."""
-        r = self.session.post(self.url, json=self.payload(image_path), timeout=self.cfg.get("timeout", 900))
+        """Gửi một trang (file ảnh), trả nội dung và lý do dừng (length = bị cắt vì hết max_tokens)."""
+        return self.run_bytes(image_path.read_bytes(), image_path.suffix)
+
+    def run_bytes(self, image: bytes, ext: str) -> dict:
+        """Gửi một trang cho sẵn byte ảnh, trả nội dung và lý do dừng (length = bị cắt vì hết max_tokens)."""
+        r = self.session.post(self.url, json=self.payload_bytes(image, ext), timeout=self.cfg.get("timeout", 900))
         r.raise_for_status()
         body = r.json()
         choice = body["choices"][0]
