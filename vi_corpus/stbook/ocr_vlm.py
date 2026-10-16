@@ -118,7 +118,7 @@ def _run_pages(cascade: CascadeOcr, doc, concurrency: int) -> list[dict]:
     return results  # type: ignore[return-value]
 
 
-def ocr_book_vlm(cascade: CascadeOcr, slug: str, book: dict, pdf: Path, data_root: Path, concurrency: int = 16) -> dict:
+def ocr_book_vlm(cascade: CascadeOcr, slug: str, book: dict, pdf: Path, data_root: Path, concurrency: int = 32) -> dict:
     """
     OCR một cuốn bằng chuỗi VLM và ghi kết quả nguyên tử (định dạng ở docstring module).
 
@@ -176,7 +176,7 @@ def _tier_info(tier: Tier) -> dict:
             "extra_body": cfg.get("extra_body"), "prompt": cfg.get("prompt")}
 
 
-def run_ocr_vlm(stbook_root: Path, data_root: Path, cascade: CascadeOcr, concurrency: int = 16,
+def run_ocr_vlm(stbook_root: Path, data_root: Path, cascade: CascadeOcr, concurrency: int = 32,
                 limit_books: int | None = None, redo: bool = False) -> int:
     """
     OCR mọi cuốn chưa làm bằng chuỗi VLM, ghi kết quả từng cuốn ngay khi xong (chạy lại để làm tiếp).

@@ -43,8 +43,8 @@ def main() -> int:
     p.add_argument("--port", type=int, default=None, help="Cổng server (mặc định theo cấu hình; mỗi GPU một cổng khác nhau).")
     p.add_argument("--gpu-mem", type=float, default=0.85,
                    help="--gpu-memory-utilization của server (mặc định 0,85, chừa chỗ cho engine baseline chạy cùng GPU).")
-    p.add_argument("--concurrency", type=int, default=16,
-                   help="Số trang gửi đồng thời (mặc định 16 = mức đã đo ở đợt so sánh; chỉnh sau khi chạy ocr_vlm_bench.py).")
+    p.add_argument("--concurrency", type=int, default=32,
+                   help="Số trang gửi đồng thời (mặc định 32 = mức chọn theo bộ thử 1.000 trang, O-22: gần nhanh bằng 64 nhưng độ trễ chỉ bằng nửa).")
     p.add_argument("--fallback-device", default="cuda", choices=["cuda", "cpu"], help="Thiết bị của engine baseline (mặc định cuda).")
     p.add_argument("--worker-name", default=None, help="Tên tiến trình, chống chạy trùng (mặc định gpu<N> hoặc main).")
     p.add_argument("--server-timeout", type=float, default=3600, help="Thời gian chờ server sẵn sàng (giây).")

@@ -330,7 +330,7 @@ dùng OCR cũ (PaddleOCR + VietOCR); engine cuối vẫn bị báo thì trang b�
 # chạy thử 1 cuốn trên GPU 0 (tự dựng server vLLM, chạy xong tự tắt)
 uv run --no-sync python scripts/stbook/ocr_vlm.py --data-root /duong/dan/data --gpu 0 --serve --vllm-bin $(which vllm) --limit-books 1
 # chạy thật trên 4 GPU (mỗi GPU một server vLLM + một tiến trình, tự chia cuốn), trong tmux
-DATA_ROOT=/duong/dan/data VLLM_BIN=$(which vllm) CONCURRENCY=16 ./scripts/stbook/run_ocr_vlm.sh
+DATA_ROOT=/duong/dan/data VLLM_BIN=$(which vllm) CONCURRENCY=32 ./scripts/stbook/run_ocr_vlm.sh
 # tiến độ + thống kê trang trắng / bị loại / chạy lại
 uv run --no-sync python scripts/stbook/ocr_vlm.py --data-root /duong/dan/data --status
 ```
@@ -341,7 +341,7 @@ uv run --no-sync python scripts/stbook/ocr_vlm.py --data-root /duong/dan/data --
 | `--gpu`, `--port` | không đặt | GPU và cổng của server (`run_ocr_vlm.sh` đặt cổng `8100 + số GPU`). |
 | `--serve`, `--vllm-bin` | tắt | Tự dựng / tắt server vLLM bằng lệnh `serve` của engine VLM đầu. |
 | `--gpu-mem` | `0,85` | `--gpu-memory-utilization` của server; chừa chỗ cho engine OCR cũ chạy cùng GPU (hết bộ nhớ thì thêm `--fallback-device cpu`). |
-| `--concurrency` | `16` | Số trang của một cuốn gửi đồng thời cho server. Chỉnh sau khi chạy bộ thử bên dưới. |
+| `--concurrency` | `32` | Số trang của một cuốn gửi đồng thời cho server. Chọn theo bộ thử bên dưới (O-22): từ 32 trở lên server đã bão hoà, 64 chỉ nhanh hơn ~3% nhưng độ trễ gấp đôi. |
 | `--redo` | tắt | OCR lại mọi cuốn, kể cả cuốn đã xong bằng chuỗi VLM. |
 
 - Kết quả ghi vào **cùng thư mục** `interim/stbook_ocr/<danh-mục>/<product_id>.json` nên `iter_records` đọc như cũ. Thêm `ocr.engine = "vlm_cascade"`,

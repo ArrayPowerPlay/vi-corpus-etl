@@ -3,14 +3,14 @@
 # (cổng 8100 + số GPU). Các tiến trình tự chia cuốn bằng khoá nên GPU nhanh làm nhiều hơn; chạy lại được (chỉ làm cuốn còn thiếu).
 # Dùng (từ gốc repo, sau `source /home/jovyan/dinh/env.sh`; trong tmux hoặc nohup):
 #   DATA_ROOT=/duong/dan/data VLLM_BIN=$(which vllm) CONCURRENCY=32 ./scripts/stbook/run_ocr_vlm.sh
-# Biến tuỳ chọn: GPUS (mặc định "0 1 2 3"), CONCURRENCY (mặc định 16), LIMIT_BOOKS (chạy thử), TIERS, GPU_MEM, STBOOK_ROOT.
+# Biến tuỳ chọn: GPUS (mặc định "0 1 2 3"), CONCURRENCY (mặc định 32, O-22), LIMIT_BOOKS (chạy thử), TIERS, GPU_MEM, STBOOK_ROOT.
 # Cần `uv sync --group ocr` (engine baseline); dùng `uv run --no-sync` như run_bakeoff.sh để các tiến trình không gỡ - cài thư viện của nhau.
 set -uo pipefail
 
 DATA_ROOT="${DATA_ROOT:-${SEA_DATA_ROOT:-data}}"
 VLLM_BIN="${VLLM_BIN:-vllm}"
 GPUS="${GPUS:-0 1 2 3}"
-CONCURRENCY="${CONCURRENCY:-16}"
+CONCURRENCY="${CONCURRENCY:-32}"
 PY=(uv run --no-sync python)
 EXTRA=()
 [ -n "${LIMIT_BOOKS:-}" ] && EXTRA+=(--limit-books "$LIMIT_BOOKS")
