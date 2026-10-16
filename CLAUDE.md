@@ -84,6 +84,7 @@ uv run python scripts/ocr_bakeoff/build_syllables.py --data-root <root>   # syll
 uv run python scripts/ocr_bakeoff/run_engine.py --data-root <root> --engine qwen3vl_8b --gpu 1 --serve --vllm-bin <vllm>  # engines in configs/ocr_bakeoff/engines.json; resumable
 uv run python scripts/ocr_bakeoff/score.py --data-root <root> --ppl [--hour-budget 60] [--hour-soft 30]   # report/{summary.json,per_page.csv,hours.csv,report.html}; hours.csv = run hours + whole-corpus estimate per engine; soft hours only warn, budget is the ceiling
 uv run python scripts/ocr_bakeoff/diagnose_gt.py --data-root <root>       # CPU: is high CER the engine or the set-A ground truth (landscape pages, stray page numbers, header/footer)? -> report/gt_diag.{json,csv}
+uv run python scripts/ocr_bakeoff/eval_guard.py --data-root <root>        # O-18: CPU, how many failed VLM pages (loop/length/empty/English meta/base64) the per-page guard catches, and false alarms
 DATA_ROOT=<root> VLLM_BIN=<vllm> ./scripts/ocr_bakeoff/run_qwen_variants.sh  # O-16/O-17: qwen3vl_8b variants (default: stop strings <img/data:image/![ + repetition_penalty none/1.05/1.10) on GPUs 1-3, then rescore; VARIANTS="a b c" picks others
 DATA_ROOT=<root> VLLM_BIN=<vllm> ./scripts/ocr_bakeoff/run_bakeoff.sh     # all steps, one engine per GPU (baseline, qwen3vl_4b, dots_ocr, qwen3vl_8b; paddleocr_vl dropped, O-10/O-11)
 ```

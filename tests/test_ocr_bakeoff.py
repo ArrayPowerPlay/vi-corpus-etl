@@ -650,3 +650,56 @@ def test_bien_the_co_chuoi_dung(tmp_path):
         body = eng.OpenAIEngine(cfgs[n]).payload(img)
         assert body["stop"] == ["<img", "data:image", "!["] and body.get("repetition_penalty") == pen
         assert body["max_tokens"] == 4096 and cfgs[n]["prompt"] == base["prompt"]
+
+
+def test_bo_kiem_trang_bat_loi_hong_han_khong_bao_nham_trang_tot():
+    """O-18: mỗi kiểu hỏng hẳn có mã lý do; trang thường, mục lục dấu chấm dẫn, bảng số lặp hợp lệ không bị báo."""
+    from vi_corpus.ocr_bakeoff.guard import guard_page, repeat_stats
+
+    good = ("Người dân miền núi trồng chè trên những sườn đồi thoai thoải quanh năm. " * 30).strip()
+    assert guard_page({"raw": good, "text": good, "finish_reason": "stop"}, 4096) == []
+    assert guard_page({"raw": good, "text": good, "finish_reason": "length"}) == ["length"]
+    assert guard_page({"raw": good, "text": good, "finish_reason": "stop", "completion_tokens": 4096}, 4096) == ["length"]
+    assert guard_page({"raw": "", "text": "", "finish_reason": "stop"}) == ["empty"]
+    assert guard_page({"error": "timeout"}) == ["error"]
+    img = good + ' <img src="data:image/png;base64,' + "iVBOR" * 50
+    assert guard_page({"raw": img, "text": good, "finish_reason": "stop"}) == ["embedded_image"]
+    meta = "The user wants me to transcribe the text on the image exactly as printed. " + good
+    assert guard_page({"raw": meta, "text": meta, "finish_reason": "stop"}) == ["english_meta"]
+    assert guard_page({"raw": good, "text": "I need to read the page. " + good}) == ["english_meta"]
+    # sách tiếng Anh thật không bị báo chỉ vì mở đầu bằng "The user ..." thông thường
+    en = "The user interface of the system is described in Chapter 2. " + good
+    assert guard_page({"raw": en, "text": en, "finish_reason": "stop"}) == []
+    dots = "Đọc đúng phần đầu\n" + " . " * 400
+    assert guard_page({"raw": dots, "text": dots, "finish_reason": "stop"}) == ["loop"]
+    run = "Đồng bộ ký tự\n" + "." * 5000
+    assert guard_page({"raw": run, "text": run, "finish_reason": "stop"}) == ["loop"]
+    long_text = ("Câu thường không lặp số " + "x".join(str(i) for i in range(2500))) * 2
+    assert "too_long" in guard_page({"raw": long_text, "text": long_text, "finish_reason": "stop"})
+    # mục lục: nhiều dòng dấu chấm dẫn, mỗi dòng ngắn, chỉ phủ phần nhỏ trang
+    toc = "\n".join(f"Chương {i}. Nội dung thứ {i} của sách " + "." * 40 + f" {i * 7}" for i in range(1, 25)) + "\n" + good
+    assert guard_page({"raw": toc, "text": toc, "finish_reason": "stop"}) == []
+    # bảng số lặp hợp lệ
+    table = "\n".join(["Hệ số\n0.25\n0.25\n0.25\n0.25\n0.25"] * 6) + "\n" + good
+    assert guard_page({"raw": table, "text": table, "finish_reason": "stop"}) == []
+    assert repeat_stats("") == (0.0, 0) and repeat_stats(good)[0] < 0.05
+
+
+def test_do_bo_kiem_tren_dau_ra_gia(tmp_path):
+    """O-18: eval_guard đếm trang hỏng bắt được / bỏ sót và trang tốt báo nhầm trên bộ trang dựng sẵn."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("eval_guard", Path(__file__).parents[1] / "scripts/ocr_bakeoff/eval_guard.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    refs = _fake_bakeoff(tmp_path)
+    ids = [f"A{i}" for i in range(len(refs))] + ["B0", "B1"]
+    full = refs + ["Sách quét trang một", "Sách quét trang hai"]
+    texts = dict(zip(ids, full))
+    texts["A2"] = refs[2][:60] + " . " * 300          # lặp: hỏng và bị báo
+    texts["A3"] = "chữ khác hẳn " * 40                  # hỏng nhưng không dấu hiệu (đọc sai): bị bỏ sót
+    texts["A4"] = refs[4] + " ."                        # tốt
+    _write_run(tmp_path, "qwen3vl_8b_x", texts)
+    r = mod.evaluate(tmp_path, ["qwen3vl_8b_x"], 0.5, 0.3)["qwen3vl_8b_x"]
+    assert r["bad_pages"] == 2 and r["caught"] == 1 and [m["page_id"] for m in r["missed"]] == ["A3"]
+    assert r["good_pages"] == 28 and r["false_alarms"] == 0 and r["set_b_flagged"] == 0
