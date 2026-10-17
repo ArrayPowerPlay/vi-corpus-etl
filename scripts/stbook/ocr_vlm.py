@@ -23,7 +23,7 @@ sys.path[0] = str(Path(__file__).resolve().parents[2])  # để import được 
 
 from vi_corpus.common.registry import SOURCES  # noqa: E402
 from vi_corpus.common.state import acquire_run_lock, setup_logging  # noqa: E402
-from vi_corpus.ocr_bakeoff.cascade import DEFAULT_TIERS, CascadeOcr, ServerDown, build_tiers  # noqa: E402
+from vi_corpus.ocr_bakeoff.cascade import DEFAULT_TIERS, CascadeOcr, EngineUnavailable, ServerDown, build_tiers  # noqa: E402
 from vi_corpus.ocr_bakeoff.engines import DEFAULT_ENGINES, load_engines, start_server, stop_server, wait_ready  # noqa: E402
 from vi_corpus.stbook.ocr_vlm import dump_report, run_ocr_vlm, vlm_status  # noqa: E402
 
@@ -82,7 +82,7 @@ def main() -> int:
                 proc = start_server(vlm.cfg, state, args.gpu, args.vllm_bin)
             wait_ready(vlm.cfg["base_url"], vlm.cfg.get("health", "/models"), args.server_timeout, proc)
         return 1 if run_ocr_vlm(stbook_root, args.data_root, CascadeOcr(tiers), args.concurrency, args.limit_books, args.redo) else 0
-    except ServerDown:
+    except (ServerDown, EngineUnavailable):
         return 1
     finally:
         if proc is not None:

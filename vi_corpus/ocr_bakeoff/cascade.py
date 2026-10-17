@@ -33,6 +33,13 @@ class ServerDown(RuntimeError):
     """Server VLM không trả lời liên tiếp quá nhiều lần: dừng cả lượt thay vì lặng lẽ đẩy mọi trang xuống engine dự phòng."""
 
 
+class EngineUnavailable(RuntimeError):
+    """
+    Engine không dựng / nạp được (thiếu thư viện hệ thống như libGL, ImportError, hỏng khi nạp mô hình): lỗi này không thuộc về
+    một trang nào, nên dừng cả lượt thay vì lặng lẽ loại mọi trang rơi xuống engine đó (O-24).
+    """
+
+
 def pick_tier(tiers: list[str], get_rec: Callable[[str], dict | None],
               max_tokens: dict[str, int | None]) -> tuple[str, dict | None, list[str]]:
     """
@@ -233,10 +240,15 @@ class CascadeOcr:
     def _call(self, tier: Tier, image: bytes, ext: str) -> dict:
         """
         Gọi một engine trên một ảnh, thử lại lỗi tạm thời. Lỗi cuối cùng trả về dưới dạng bản ghi có "error" (bộ kiểm báo "error"
-        và trang rơi xuống engine sau). Không kết nối được server nhiều lần liên tiếp thì ném ServerDown.
+        và trang rơi xuống engine sau). Không kết nối được server nhiều lần liên tiếp thì ném ServerDown; engine không dựng được
+        hoặc thiếu thư viện thì ném EngineUnavailable.
         """
         import requests
 
+        try:
+            tier.engine()  # dựng engine trước: lỗi nạp là lỗi hệ thống, không được tính như lỗi của một trang
+        except Exception as exc:  # noqa: BLE001
+            raise EngineUnavailable(f"Không dựng được engine {tier.name}: {type(exc).__name__}: {exc}") from exc
         delay = self.backoff_s
         server = tier.cfg.get("base_url") or tier.name
         for attempt in range(self.retries + 1):
@@ -261,6 +273,8 @@ class CascadeOcr:
             except requests.HTTPError as exc:
                 status = exc.response.status_code if exc.response is not None else None
                 err, retry = f"{type(exc).__name__}: {exc}", status in RETRY_STATUS
+            except ImportError as exc:  # thiếu thư viện nạp muộn (vd libGL khi chạy lần đầu) không bao giờ là lỗi của một trang
+                raise EngineUnavailable(f"Engine {tier.name} thiếu thư viện: {type(exc).__name__}: {exc}") from exc
             except Exception as exc:  # noqa: BLE001 - trang lạ làm engine lỗi (ảnh hỏng, OOM...) không được dừng cả sách
                 err, retry = f"{type(exc).__name__}: {exc}", False
             if not retry or attempt == self.retries:

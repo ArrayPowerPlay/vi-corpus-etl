@@ -157,6 +157,35 @@ def test_cascade_ocr_loi_server_va_thu_lai():
         c.page(b"x")
 
 
+def test_engine_khong_nap_duoc_thi_dung_ca_luot_chu_khong_loai_trang():
+    """Engine dự phòng thiếu thư viện (lúc dựng hoặc lúc chạy) ném EngineUnavailable; lỗi riêng của một trang vẫn chỉ rơi trang đó (O-24)."""
+    def broken_factory():
+        """Giả lập ImportError libGL khi nạp engine."""
+        raise ImportError("libGL.so.1: cannot open shared object file")
+
+    c = make_cascade(lambda im: ok(LOOP), lambda im: ok())
+    c.tiers[1] = cas.Tier("baseline", {"type": "baseline", "output": "plain"}, factory=broken_factory, serial=True)
+    with pytest.raises(cas.EngineUnavailable, match="libGL"):
+        c.page(b"x")  # engine đầu bị báo lặp, rơi xuống baseline, baseline không nạp được
+
+    c = make_cascade(lambda im: ok(LOOP), lambda im: ImportError("cv2 thiếu libGL"), serial_last=True)
+    with pytest.raises(cas.EngineUnavailable, match="thiếu thư viện"):
+        c.page(b"x")  # nạp được nhưng lỗi import khi chạy
+
+    c = make_cascade(lambda im: ok(LOOP), lambda im: RuntimeError("ảnh lạ"), serial_last=True)
+    r = c.page(b"x")  # lỗi riêng của một trang: chỉ trang đó bị loại
+    assert r["status"] == "flagged" and r["attempts"][-1]["error"].startswith("RuntimeError")
+
+
+def test_ocr_sach_engine_khong_nap_duoc_dung_luot_va_khong_ghi_ket_qua(tmp_path):
+    """EngineUnavailable dừng cả lượt, không ghi cuốn đang làm (không để trang bị loại âm thầm vào checkpoint)."""
+    stbook = _stbook_root(tmp_path)
+    c = make_cascade(lambda im: ok(LOOP), lambda im: ImportError("libGL"), serial_last=True)
+    with pytest.raises(cas.EngineUnavailable):
+        ocr_vlm.run_ocr_vlm(stbook, tmp_path, c, concurrency=2)
+    assert not list((tmp_path / "interim/stbook_ocr").glob("*/*.json"))
+
+
 def test_build_tiers_chung_server_va_doi_cong():
     """Các engine VLM dùng chung server của engine VLM đầu (cổng đổi được); khác mô hình thì lỗi; baseline nạp lười."""
     engines = {"a": {"type": "openai", "model": "M", "base_url": "http://127.0.0.1:8012/v1", "max_tokens": 4096,

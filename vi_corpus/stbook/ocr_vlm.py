@@ -94,7 +94,7 @@ def _run_pages(cascade: CascadeOcr, doc, concurrency: int) -> list[dict]:
     """
     OCR mọi trang của PDF `doc` (pymupdf.Document), tối đa `concurrency` trang gửi đồng thời; trả kết quả theo thứ tự trang.
 
-    Chỉ giữ khoảng 2 x concurrency ảnh trong bộ nhớ (sách 900 trang không nạp hết một lúc). Một luồng ném lỗi (ServerDown) thì dừng
+    Chỉ giữ khoảng 2 x concurrency ảnh trong bộ nhớ (sách 900 trang không nạp hết một lúc). Một luồng ném lỗi (ServerDown, EngineUnavailable) thì dừng
     cả cuốn và ném lên.
     """
     from vi_corpus.ocr_bakeoff.pages import page_image_bytes
@@ -132,6 +132,7 @@ def ocr_book_vlm(cascade: CascadeOcr, slug: str, book: dict, pdf: Path, data_roo
     Raises:
         ValueError: PDF hỏng / bị cắt cụt (PyMuPDF phải sửa khi mở), giống bộ OCR cũ.
         ServerDown: server VLM không trả lời (cuốn không được ghi; chạy lại sau khi server sống lại).
+        EngineUnavailable: engine dự phòng không nạp được, vd thiếu libGL (cuốn không được ghi).
     """
     import pymupdf
 
@@ -181,13 +182,13 @@ def run_ocr_vlm(stbook_root: Path, data_root: Path, cascade: CascadeOcr, concurr
     """
     OCR mọi cuốn chưa làm bằng chuỗi VLM, ghi kết quả từng cuốn ngay khi xong (chạy lại để làm tiếp).
 
-    Lỗi ở một cuốn (PDF hỏng, ...) chỉ ghi log rồi làm cuốn khác. ServerDown thì dừng cả lượt (server chết thì mọi cuốn sau cũng
+    Lỗi ở một cuốn (PDF hỏng, ...) chỉ ghi log rồi làm cuốn khác. ServerDown và EngineUnavailable thì dừng cả lượt (server chết thì mọi cuốn sau cũng
     hỏng). Chạy được nhiều tiến trình cùng lúc (xem claim_book).
 
     Returns:
         Số cuốn bị lỗi.
     """
-    from vi_corpus.ocr_bakeoff.cascade import ServerDown
+    from vi_corpus.ocr_bakeoff.cascade import EngineUnavailable, ServerDown
 
     todo = books_to_ocr_vlm(stbook_root, data_root, limit_books, redo)
     logger.info("Cần OCR %d cuốn bằng chuỗi VLM (%s), %d trang đồng thời", len(todo),
@@ -206,6 +207,9 @@ def run_ocr_vlm(stbook_root: Path, data_root: Path, cascade: CascadeOcr, concurr
                 st = ocr_book_vlm(cascade, slug, book, pdf, data_root, concurrency)
             except ServerDown:
                 logger.error("Server VLM không trả lời, dừng. Dựng lại server rồi chạy lại đúng lệnh cũ.")
+                raise
+            except EngineUnavailable as exc:
+                logger.error("%s. Dừng cả lượt (không loại trang âm thầm); sửa môi trường rồi chạy lại đúng lệnh cũ.", exc)
                 raise
             except Exception as exc:  # noqa: BLE001 — một cuốn lỗi không được dừng cả lượt
                 failed += 1
