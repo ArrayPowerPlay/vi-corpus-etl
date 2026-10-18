@@ -19,7 +19,7 @@ Checkpoint có dạng:
 import fcntl
 import hashlib
 import logging
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Collection, Iterator
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -130,14 +130,14 @@ def _always() -> Iterator[bool]:
 
 
 def _needs_redo(done: dict | None, ocr_enabled: bool, retry_skipped: bool = False,
-                extract_version: str | None = None) -> bool:
+                extract_versions: Collection[str] | None = None) -> bool:
     """
     Checkpoint cần làm lại: chưa có, lần trước lỗi, lần trước bị bỏ qua mà retry_skipped, được ghi bởi bản trích text cũ
-    (extract_version khác), hoặc còn trang needs_ocr mà lần này có OCR.
+    (extract_version không nằm trong extract_versions), hoặc còn trang needs_ocr mà lần này có OCR.
     """
     if done is None or done.get("error") or (retry_skipped and done.get("skipped")):
         return True
-    if extract_version is not None and done.get("extract_version") != extract_version:
+    if extract_versions is not None and done.get("extract_version") not in extract_versions:
         return True
     return ocr_enabled and any(p["method"] == "needs_ocr" for p in done["pages"])
 
@@ -147,7 +147,8 @@ def run_batch(root: Path, data_root: Path, text_dir: str,
               path_meta: Callable[[Path], dict],
               get_ocr: Callable[[], object | None], ocr_enabled: bool = True,
               limit_files: int | None = None, desc: str = "Trích text", retry_skipped: bool = False,
-              files: list[Path] | None = None, claim_dir: str | None = None, extract_version: str | None = None) -> int:
+              files: list[Path] | None = None, claim_dir: str | None = None,
+              extract_versions: Collection[str] | None = None) -> int:
     """
     Kiểm kê rồi trích text mọi file chưa làm, ghi checkpoint từng file ngay khi xong.
 
@@ -168,9 +169,9 @@ def run_batch(root: Path, data_root: Path, text_dir: str,
         files:        Chỉ xử lý các file này thay vì mọi file trong `root` (vd mẫu của VJOL, tránh băm cả kho).
         claim_dir:    Thư mục khoá (tương đối so với data_root) để nhiều tiến trình cùng chạy mà không làm trùng file;
                       None = một tiến trình. File mà tiến trình khác vừa làm xong trong lần chạy này được tính là đã có.
-        extract_version: Phiên bản cách trích text của nguồn (extract_file phải trả đúng giá trị này trong kết quả); checkpoint
-                      ghi bởi phiên bản khác (hoặc không có trường này) bị làm lại, vd khi thêm bước dò chữ hỏng (J-10). None = không
-                      kiểm.
+        extract_versions: Các phiên bản cách trích text của nguồn mà lần chạy này coi là đã xong (extract_file phải ghi extract_version
+                      trong kết quả); checkpoint ghi bởi phiên bản khác (hoặc không có trường này) bị làm lại, vd khi thêm bước dò chữ hỏng
+                      (J-10). None = không kiểm.
 
     Returns:
         Số file bị lỗi trong lần chạy này.
@@ -187,7 +188,7 @@ def run_batch(root: Path, data_root: Path, text_dir: str,
         rels = [str(p.relative_to(data_root)) if p.is_relative_to(data_root) else str(p) for p in paths]
         ckpt = checkpoint_path(data_root, text_dir, sha)
         done = read_json(ckpt)
-        if not _needs_redo(done, ocr_enabled, retry_skipped, extract_version):
+        if not _needs_redo(done, ocr_enabled, retry_skipped, extract_versions):
             done_count += 1
             if done["paths"] != rels:
                 write_json_atomic(ckpt, {**done, "paths": rels})

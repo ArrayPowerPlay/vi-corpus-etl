@@ -1,9 +1,10 @@
 """
 Đo chữ hỏng do font PDF trên checkpoint VJOL đã có (J-10 (5)); chỉ CPU, logic ở vi_corpus/vjol/garbled_check.py.
 
-Ghi <data-root>/processed/vjol_garbled_check/ (summary.json, docs.csv, pages.csv, examples.txt, blind_spots.txt). Chạy trước khi tốn GPU chạy lại mẫu để
-chốt ngưỡng: summary.json có số trang / bài bị nghi, quét ngưỡng, phân bố theo năm, ước số phút OCR lại và tín hiệu thứ hai (chữ bị mất
-kiểu "đ u") và blind_spots.txt (trang không bị nghi nhưng đáng xem, J-13). Âm tiết lạ cần processed/ocr_bakeoff/syllables.json. Chỉ cần tải thư mục kết quả về.
+Ghi <data-root>/processed/vjol_garbled_check/ (summary.json, docs.csv, pages.csv, examples.txt, new_signals.txt, blind_spots.txt). Chạy trước khi tốn GPU chạy lại mẫu để
+chốt ngưỡng: summary.json có số trang / bài bị nghi (tổng và theo bốn tín hiệu tone / case / foreign / unknown), quét ngưỡng từng tín hiệu,
+phân bố theo năm, ước số phút OCR lại; new_signals.txt và blind_spots.txt để xem bằng mắt trang bị bắt và trang bị sót (J-13, J-16). Tín hiệu
+unknown cần processed/ocr_bakeoff/syllables.json (thiếu thì bỏ). Chỉ cần tải thư mục kết quả về.
 Ví dụ:
     uv run python scripts/vjol/check_garbled.py --data-root data
     tar czf vjol_garbled_check.tar.gz -C data/processed vjol_garbled_check

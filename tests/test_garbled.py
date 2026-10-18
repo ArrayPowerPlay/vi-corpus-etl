@@ -31,7 +31,26 @@ from vi_corpus.vjol.records import iter_records
 GARBLED = ("Baỷng hieọu ủoọ ngửụứi lửợi naõy Giuỏp hoồc sinh traỏnh nửụực tửứ ngửụừng ủửụùc hoaùt ủoọng nghieọp vuù "
            "Chuực Mửứng Naờm Mụựi")
 GOOD_VI = "Phân tích kinh tế vĩ mô cho thấy lạm phát chịu tác động của nhiều yếu tố khác nhau trong nước và quốc tế."
+VNI = ("Thöïc traïng xuaát khaåu thuûy saûn cuûa Vieät Nam ñeán thò tröôøng baéc myõ trong boái caûnh hieäp ñònh nguyeãn "
+       "quoác dung ñaàu tö vaøo noâng nghieäp coâng ngheä cao ")  # họ VNI: nhiều ñ ö ï ø å, ít dấu thanh
+CASEMIX = "TRoNg Boái cAûNh xuAáT khAåu Thuûy sAûN cuûA VieäT NAm ñeáN Thò TRöôøNg BAéc myõ hieäp ñòNh "
+SHIFTED = "7K{QJWLQYjJLảLSKiSNKRDKọFF{QJQJKệ 7ạSFKt9ậWOLệXYj;k\\GựQJ7ậSVố +uQKLưu đồFủDP{KuQKGựa trên đạLOमGjLKạQ "
+# Họ sai dấu kiểu Windows-1258: ỏ ờ õ thay cho á ê â, mỗi âm tiết vẫn chỉ một dấu thanh nên tín hiệu tone không thấy.
+WIN1258 = "Phỏt triển sõn xuỗt cam trờn bàn Sõu bệnh trờn lỏ cam nhỏ "
+WIN1258_OK = "Phát triển sản xuất cam trên bàn Sâu bệnh trên lá cam nhỏ"
 ENGLISH = "This paper studies the effect of inflation on household consumption across several developing economies in Asia."
+
+
+def base_vocab() -> frozenset[str]:
+    """Tập âm tiết giả đủ để các trang tiếng Việt thường trong test không bị tín hiệu unknown bắt."""
+    return make_vocab(GOOD_VI, vi_text(40, 1), vi_text(40, 2), WIN1258_OK)
+
+
+def make_vocab(*texts: str) -> frozenset[str]:
+    """Tập âm tiết giả: mọi từ chữ cái (chữ thường) của các văn bản đưa vào."""
+    import re
+
+    return frozenset(w.lower() for t in texts for w in re.findall(r"[^\W\d_]+", t))
 
 
 def png(data: bytes) -> bool:
@@ -92,6 +111,50 @@ def test_nguong_trang_5_phan_tram_nhung_nguong_cung_quality_van_8():
     assert "garbled_font" not in score_metrics(m, "vi", make_cfg().profile("vjol"), 0.99, "{}")[1]
 
 
+def test_tin_hieu_chu_hoa_chen_giua_tu():
+    """Họ chữ lệch mã ASCII và chữ hoa lộn xộn ("xuAáT", "TRoNg") bị tín hiệu case bắt; tiếng Việt, tiếng Anh, tên riêng thường không."""
+    assert g.case_mix_ratio(CASEMIX)[0] > 0.2 and g.case_mix_ratio(SHIFTED * 3)[0] > 0.2
+    for ok_text in (GOOD_VI, ENGLISH, vi_text(8, 3), GOOD_VI * 12 + " Công ty McDonald bán iPhone và dung dịch NaCl."):  # vài tên riêng lẫn chữ hoa trong trang bình thường
+        assert g.case_mix_ratio(ok_text)[0] < 0.05, ok_text
+    assert g.case_mix_ratio("") == (0.0, 0) and g.case_mix_ratio("a b c") == (0.0, 0)  # từ < 4 chữ cái không tính
+
+
+def test_tin_hieu_chu_cai_latin_1_la():
+    """Họ VNI (ñ ö ï ø å thay cho đ ư ị ờ ả) bị tín hiệu foreign bắt; tiếng Việt đúng thì không; trang quá ít chữ cái không kết luận."""
+    assert g.foreign_letter_ratio(VNI)[0] > 0.05
+    assert g.foreign_letter_ratio(GOOD_VI * 3)[0] == 0.0
+    assert g.page_signals("Thöïc ñeáN") == [] and "foreign" in g.page_signals(VNI)  # dưới 100 chữ cái thì không xét
+
+
+def test_tin_hieu_am_tiet_la_chi_tinh_tu_latinh_va_can_vocab():
+    """Họ Windows-1258 có nhiều âm tiết lạ nên bị bắt; trang chữ Hán không bị phạt; không có vocab thì bỏ tín hiệu; load_vocab đọc đúng file."""
+    vocab = base_vocab()
+    assert g.unknown_syllable_rate(WIN1258 * 3, vocab)[0] > 0.4
+    assert g.unknown_syllable_rate(GOOD_VI * 2, vocab)[0] < 0.1
+    chinese = "越语 这是一个关于称谓语的研究 " * 20 + GOOD_VI * 2
+    assert g.unknown_syllable_rate(chinese, vocab)[0] < 0.1  # chữ Hán bị bỏ khỏi mẫu số
+    assert g.page_signals(WIN1258 * 3, vocab=vocab) == ["unknown"] and g.page_signals(WIN1258 * 3) == []
+    assert g.unknown_syllable_rate("12 3", vocab) == (0.0, 0)
+
+
+def test_load_vocab(tmp_path):
+    """load_vocab đọc khoá "syllables" của syllables.json; thiếu file thì None."""
+    f = tmp_path / "s.json"
+    f.write_text(json.dumps({"syllables": ["phân", "tích"]}, ensure_ascii=False), encoding="utf-8")
+    assert g.load_vocab(f) == frozenset({"phân", "tích"}) and g.load_vocab(tmp_path / "khong_co.json") is None
+
+
+def test_ke_hoach_dung_ca_ba_tin_hieu():
+    """plan_garbled: trang chỉ có một tín hiệu mới cũng bị nghi (1/10 trang thì chỉ trang đó); tắt vocab thì họ Windows-1258 lọt."""
+    vocab = base_vocab()
+    pages = [GOOD_VI * 3] * 9
+    for text, sig in ((VNI * 2, "foreign"), (CASEMIX * 3, "case"), (WIN1258 * 3, "unknown")):
+        plan = g.plan_garbled([text, *pages], vocab=vocab)
+        assert plan == [g.REASON_PAGE] + [None] * 9, sig
+        assert sig in g.page_signals(text, vocab=vocab)
+    assert g.plan_garbled([WIN1258 * 3, *pages]) == [None] * 10  # thiếu vocab: không thấy
+
+
 def test_trang_tcvn3_da_doi_sang_unicode_khong_bi_nghi():
     """Chữ TCVN3 đã đổi sang Unicode là tiếng Việt đúng nên không bị coi là chữ hỏng."""
     text = tcvn3_to_unicode("Phè Ngôy Nh− Kon Tum " * 6)
@@ -144,6 +207,16 @@ def test_trang_loi_font_ocr_ve_lai_ca_trang_va_giu_chu_hong(tmp_path):
     assert bad["reason"] == g.REASON_PAGE and "Baỷng" in bad["garbled_text"] and "Baỷng" not in bad["text"]
     assert bad["status"] == "ok" and bad["text"].startswith("Bảng số liệu")
     assert all("reason" not in p for i, p in enumerate(pages) if i != 1)
+
+
+def test_trang_ho_vni_di_ocr_va_ghi_tin_hieu(tmp_path):
+    """Trang chữ họ VNI (ít dấu thanh) bị tín hiệu foreign bắt và đi OCR; mục trang ghi signals; trang tiếng Việt thường thì không."""
+    pdf = tmp_path / "v.pdf"
+    mixed_pdf(pdf, [VNI * 2] + [vi_text(5, k) for k in range(1, 8)])
+    seen: list = []
+    pages = extract_pdf(pdf, ocr_engine(seen), detect_garbled=True)
+    assert pages[0]["method"] == "ocr_vlm" and pages[0]["reason"] == g.REASON_PAGE and "foreign" in pages[0]["signals"]
+    assert "garbled_text" in pages[0] and all(p["method"] == "text" for p in pages[1:]) and len(seen) == 1
 
 
 def test_bai_co_nhieu_trang_hong_ca_bai_di_ocr(tmp_path):
@@ -244,6 +317,45 @@ def test_checkpoint_cu_khong_co_extract_version_bi_lam_lai_mot_lan(tmp_path):
     assert vx.run_extract(raw, tmp_path, lambda: ocr) == 0 and ckpt.stat().st_mtime_ns == stamp
 
 
+def test_phien_ban_co_vocab_checkpoint_thieu_vocab_duoc_lam_lai_khi_co_file(tmp_path):
+    """Chạy khi thiếu syllables.json: checkpoint không có +vocab, report cảnh báo; thêm file thì làm lại; sau đó mất file cũng không làm lại."""
+    raw = tmp_path / "raw/vjol"
+    text_pdf(raw / "2019/7_1.pdf", [vi_text(6, 1)])
+    syl = tmp_path / vx.SYLLABLES_REL
+    assert vx.run_extract(raw, tmp_path, lambda: None) == 0
+    ckpt = next((tmp_path / vx.TEXT_DIR).glob("*.json"))
+    assert json.loads(ckpt.read_text(encoding="utf-8"))["extract_version"] == vx.EXTRACT_VERSION
+    rep = vx.report(raw, tmp_path)
+    assert rep["without_vocab"] == 1 and rep["old_version"] == 0
+    syl.parent.mkdir(parents=True)
+    syl.write_text(json.dumps({"syllables": sorted(make_vocab(vi_text(6, 1)))}, ensure_ascii=False), encoding="utf-8")
+    assert vx.run_extract(raw, tmp_path, lambda: None) == 0
+    assert json.loads(ckpt.read_text(encoding="utf-8"))["extract_version"] == vx.EXTRACT_VERSION + vx.VOCAB_TAG
+    assert vx.report(raw, tmp_path)["without_vocab"] == 0
+    stamp = ckpt.stat().st_mtime_ns
+    syl.unlink()
+    assert vx.run_extract(raw, tmp_path, lambda: None) == 0 and ckpt.stat().st_mtime_ns == stamp
+    assert vx.accepted_versions(None) == {"2", "2+vocab"} and vx.accepted_versions(frozenset({"a"})) == {"2+vocab"}
+
+
+def test_dung_vocab_trong_trich_text_bat_ho_windows_1258(tmp_path):
+    """E2E trích text: có syllables.json thì trang họ Windows-1258 đi OCR (signals có unknown); thiếu file thì trang đó vẫn là text."""
+    raw = tmp_path / "raw/vjol"
+    mixed_pdf(raw / "2019/7_1.pdf", [WIN1258 * 4] + [vi_text(5, k) for k in range(1, 8)])
+    vocab = sorted(base_vocab())
+    ocr = ocr_engine([])
+    assert vx.run_extract(raw, tmp_path, ocr) == 0
+    ckpt = next((tmp_path / vx.TEXT_DIR).glob("*.json"))
+    assert json.loads(ckpt.read_text(encoding="utf-8"))["pages"][0]["method"] == "text"
+    (tmp_path / vx.SYLLABLES_REL).parent.mkdir(parents=True)
+    (tmp_path / vx.SYLLABLES_REL).write_text(json.dumps({"syllables": vocab}, ensure_ascii=False), encoding="utf-8")
+    assert vx.run_extract(raw, tmp_path, ocr) == 0
+    page = json.loads(ckpt.read_text(encoding="utf-8"))["pages"][0]
+    assert page["method"] == "ocr_vlm" and "unknown" in page["signals"]
+    rep = vx.report(raw, tmp_path)
+    assert rep["garbled_signals"].get("unknown") == 1 and rep["garbled_pages"] == {g.REASON_PAGE: 1}
+
+
 # --------------------------------------------------------------------------------------------------------------------
 # Luật chất lượng
 # --------------------------------------------------------------------------------------------------------------------
@@ -279,41 +391,53 @@ def make_ckpts(root: Path) -> None:
 
 
 def test_do_chu_hong_tren_checkpoint_co_san(tmp_path):
-    """check() đếm đúng trang / bài bị nghi, bài bị nâng lên cấp bài, phân bố theo năm, quét ngưỡng, và ghi đủ file kết quả."""
+    """check() đếm đúng trang / bài bị nghi, bài bị nâng lên cấp bài, phân bố theo năm, quét ngưỡng, và ghi đủ file kết quả (thiếu vocab)."""
     make_ckpts(tmp_path)
     out = gc.check(tmp_path)
     s = json.loads((out / "summary.json").read_text(encoding="utf-8"))
-    assert s["docs"] == 2 and s["text_layer_pages"] == 20 and s["suspect_pages"] == 5
+    assert s["docs"] == 2 and s["text_layer_pages"] == 20 and s["suspect_pages"] == 5 and s["vocab"] is False
+    assert s["suspect_pages_by_signal"]["tone"] == 5 and "unknown" not in s["suspect_pages_by_signal"]
     assert s["docs_with_suspect_pages"] == 2 and s["docs_whole_upgraded"] == 1 and s["docs_to_ocr"] == 2
     assert s["pages_to_ocr_again"] == 1 + 10 and s["ocr_minutes_estimate"] > 0
     assert s["by_year"]["2018"]["suspect_pages"] == 1 and s["by_year"]["2019"]["docs_whole"] == 1
-    assert sum(s["ratio_histogram_pages"].values()) == 20
-    assert s["single_letter_ratio_vi_pages"]["suspect"]["n"] == 5 and s["single_letter_ratio_vi_pages"]["normal"]["n"] == 15
-    hit = next(r for r in s["sweep"] if r["ratio"] == 0.08 and r["doc_share"] == 0.30)
+    assert sum(s["tone_histogram_pages"].values()) == 20
+    grid = s["sweep"]["tone_x_doc_share"]
+    hit = next(r for r in grid if r["tone"] == 0.08 and r["doc_share"] == 0.30)
     assert hit["pages_to_ocr"] == 11 and hit["docs_whole"] == 1
-    strict = next(r for r in s["sweep"] if r["ratio"] == 0.08 and r["doc_share"] == 0.50)
+    strict = next(r for r in grid if r["tone"] == 0.08 and r["doc_share"] == 0.50)
     assert strict["docs_whole"] == 0 and strict["pages_to_ocr"] == 5
+    tone = {r["threshold"]: r for r in s["sweep"]["by_signal"]["tone"]}
+    assert tone[0.05]["pages_flagged"] == 5 and tone[0.05]["pages_only_this_signal"] == 5
     pages = list(csv.DictReader(open(out / "pages.csv", encoding="utf-8")))
-    assert len(pages) == 5 and {r["year"] for r in pages} == {"2018", "2019"}
+    assert len(pages) == 5 and {r["year"] for r in pages} == {"2018", "2019"} and pages[0]["signals"] == "tone"
     docs = {r["sha256"][0]: r for r in csv.DictReader(open(out / "docs.csv", encoding="utf-8"))}
     assert docs["b"]["whole_doc"] == "True" and docs["a"]["whole_doc"] == "False"
     assert "Baỷng" in (out / "examples.txt").read_text(encoding="utf-8")
-    assert s["short_text_pages"] == 0 and s["unknown_syllable_rate_vi_pages_not_suspect"] == "thiếu syllables.json"
-    blind = (out / "blind_spots.txt").read_text(encoding="utf-8")
-    assert "Nhiều cụm chữ một ký tự nhất" in blind and "Nhiều âm tiết lạ nhất" not in blind
+    assert "unknown: thiếu syllables.json" in (out / "new_signals.txt").read_text(encoding="utf-8")
 
 
-def test_do_chu_hong_them_trang_can_xem_khi_co_tap_am_tiet(tmp_path):
-    """Có syllables.json: summary có phân bố âm tiết lạ, blind_spots.txt liệt kê trang không bị nghi có nhiều âm tiết lạ nhất và trang quá ngắn."""
-    vocab = sorted({w.lower() for w in GOOD_VI.replace(".", "").split()})
+def test_do_chu_hong_ba_tin_hieu_moi_va_trang_can_xem(tmp_path):
+    """
+    Có syllables.json và ba họ chữ hỏng ít dấu thanh: mỗi tín hiệu mới bắt đúng trang của nó (và chỉ nó), new_signals.txt liệt kê trang chỉ
+    tín hiệu đó bắt, blind_spots.txt liệt kê trang quá ngắn và trang không bị nghi nhiều âm tiết lạ nhất.
+    """
+    vocab = base_vocab()
     (tmp_path / "processed/ocr_bakeoff").mkdir(parents=True)
-    (tmp_path / gc.SYLLABLES_REL).write_text(json.dumps({"syllables": vocab}, ensure_ascii=False), encoding="utf-8")
-    odd = "Xkcd zqwx plmn vrtk " * 10 + "ấ ở ừ " * 5  # nhiều âm tiết lạ, có dấu để được coi là trang tiếng Việt
-    write_ckpt(tmp_path, "d" * 64, "raw/vjol/2020/9_9.pdf", [GOOD_VI * 3, odd, "Ngắn quá"])
-    s = json.loads((gc.check(tmp_path) / "summary.json").read_text(encoding="utf-8"))
-    assert s["short_text_pages"] == 1 and s["unknown_syllable_rate_vi_pages_not_suspect"]["n"] >= 1
-    blind = (tmp_path / gc.CHECK_DIR / "blind_spots.txt").read_text(encoding="utf-8")
-    assert "Nhiều âm tiết lạ nhất" in blind and "Xkcd" in blind and "Ngắn quá" in blind
+    (tmp_path / gc.SYLLABLES_REL).write_text(json.dumps({"syllables": sorted(vocab)}, ensure_ascii=False), encoding="utf-8")
+    odd = "Xkcd zqwx plmn vrtk " * 3 + GOOD_VI * 2  # nhiều âm tiết lạ nhưng dưới ngưỡng: không bị nghi
+    write_ckpt(tmp_path, "d" * 64, "raw/vjol/2020/9_9.pdf",
+               [VNI * 2, SHIFTED * 3, WIN1258 * 3, *[GOOD_VI * 3] * 5, odd, "Ngắn quá"])
+    out = gc.check(tmp_path)
+    s = json.loads((out / "summary.json").read_text(encoding="utf-8"))
+    assert s["vocab"] is True and s["suspect_pages"] == 3 and s["short_text_pages"] == 1
+    assert s["suspect_pages_by_signal"]["foreign"] >= 1 and s["suspect_pages_by_signal"]["case"] >= 1
+    assert s["suspect_pages_by_signal"]["unknown"] >= 1
+    by = {r["threshold"]: r for r in s["sweep"]["by_signal"]["unknown"]}
+    assert by[0.4]["pages_flagged"] >= 1 and by[0.25]["pages_flagged"] >= by[0.6]["pages_flagged"]
+    new = (out / "new_signals.txt").read_text(encoding="utf-8")
+    assert all(f"=== {sig}:" in new for sig in ("case", "foreign", "unknown")) and "sát dưới ngưỡng" in new
+    blind = (out / "blind_spots.txt").read_text(encoding="utf-8")
+    assert "Xkcd" in blind and "Ngắn quá" in blind
 
 
 def test_do_chu_hong_chay_duoc_sau_khi_da_ocr_lai(tmp_path):

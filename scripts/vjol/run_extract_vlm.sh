@@ -4,7 +4,7 @@
 # tiến trình gặp trang scan đầu tiên. Xong thì xuất Parquet một lần và in thống kê.
 # Dùng (từ gốc repo, sau `source env.sh` nếu server có; trong tmux hoặc nohup):
 #   DATA_ROOT=/duong/dan/data VLLM_BIN=$(which vllm) SAMPLE_DOCS=3000 ./scripts/vjol/run_extract_vlm.sh
-# Biến tuỳ chọn: GPUS (mặc định "0 1 2 3"), SAMPLE_DOCS (bỏ trống = mọi PDF), SEED (mặc định 0), CONCURRENCY (mặc định 32), LIMIT_FILES, TIERS, GPU_MEM.
+# Biến tuỳ chọn: GPUS (mặc định "0 1 2 3"), SAMPLE_DOCS (bỏ trống = mọi PDF), SEED (mặc định 0), CONCURRENCY (mặc định 32), LIMIT_FILES, TIERS, GPU_MEM, SYLLABLES (tập âm tiết cho bộ dò chữ hỏng, mặc định $DATA_ROOT/processed/ocr_bakeoff/syllables.json).
 # Cần `uv sync --group ocr` (engine baseline); dùng `uv run --no-sync` như run_ocr_vlm.sh để các tiến trình không gỡ - cài thư viện của nhau.
 set -uo pipefail
 
@@ -19,6 +19,7 @@ EXTRA=()
 [ -n "${LIMIT_FILES:-}" ] && EXTRA+=(--limit-files "$LIMIT_FILES")
 [ -n "${TIERS:-}" ] && EXTRA+=(--tiers "$TIERS")
 [ -n "${GPU_MEM:-}" ] && EXTRA+=(--gpu-mem "$GPU_MEM")
+[ -n "${SYLLABLES:-}" ] && EXTRA+=(--syllables "$SYLLABLES")
 command -v "$VLLM_BIN" > /dev/null || { echo "Không tìm thấy lệnh vLLM '$VLLM_BIN' (source env.sh?)"; exit 1; }
 uv sync --group ocr || exit 1
 LOG_DIR="$DATA_ROOT/logs"; STATUS_DIR="$LOG_DIR/status_vjol_extract"

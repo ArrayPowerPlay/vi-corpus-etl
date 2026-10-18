@@ -26,10 +26,12 @@ import re
 import time
 from collections import Counter
 from collections.abc import Callable
+from functools import partial
 from pathlib import Path
 
 from vi_corpus.common.batch_extract import checkpoint_path as _checkpoint_path
 from vi_corpus.common.batch_extract import run_batch
+from vi_corpus.common.garbled import DEFAULT_THRESHOLDS, Thresholds, load_vocab
 from vi_corpus.common.parsers import PARSER_VERSION, detect_format
 from vi_corpus.common.pdf_text import extract_pdf
 from vi_corpus.common.state import read_json
@@ -41,10 +43,25 @@ TEXT_DIR = "interim/vjol_text"
 # Phiên bản cách trích text VJOL, ghi vào checkpoint; đổi số này thì lần chạy sau làm lại mọi checkpoint cũ hơn. 1 = bản đầu (chưa có
 # trường extract_version); 2 = J-10: trang lỗi font cũng đi OCR. Không dùng PARSER_VERSION vì nó dùng chung với giáo trình.
 EXTRACT_VERSION = "2"
+VOCAB_TAG = "+vocab"  # hậu tố extract_version khi bộ dò có tín hiệu âm tiết lạ (J-16)
 CLAIM_DIR = "state/vjol_extract/claims"
+SYLLABLES_REL = "processed/ocr_bakeoff/syllables.json"  # tập âm tiết cho tín hiệu "unknown" của bộ dò chữ hỏng (J-16)
 YEAR_DIR = re.compile(r"^\d{4}$")
 PDF_STEM = re.compile(r"^(\d+)_(\d+)$")  # <article_id>_<galley_id>
 SKIP_DIRS = frozenset({"metadata"})  # thư mục không chứa PDF bài báo
+
+
+def version_for(vocab) -> str:
+    """extract_version ghi vào checkpoint: EXTRACT_VERSION, thêm "+vocab" nếu bộ dò chữ hỏng có tín hiệu âm tiết lạ (J-16)."""
+    return EXTRACT_VERSION + (VOCAB_TAG if vocab is not None else "")
+
+
+def accepted_versions(vocab) -> frozenset[str]:
+    """
+    Các extract_version mà lần chạy này coi là đã xong: có tập âm tiết thì chỉ "+vocab" (checkpoint dò thiếu tín hiệu bị làm lại); không có
+    thì cả hai (không làm lại checkpoint đã dò đủ chỉ vì lần này thiếu file).
+    """
+    return frozenset({version_for(vocab)} | ({EXTRACT_VERSION + VOCAB_TAG} if vocab is None else set()))
 
 
 def checkpoint_path(data_root: Path, sha256: str) -> Path:
@@ -127,9 +144,14 @@ def path_meta(path: Path) -> dict:
             "article_id": m.group(1) if m else None, "galley_id": m.group(2) if m else None}
 
 
-def extract_file(path: Path, get_ocr: Callable[[], object | None]) -> dict:
+def extract_file(path: Path, get_ocr: Callable[[], object | None], vocab: frozenset[str] | None = None,
+                 th: Thresholds = DEFAULT_THRESHOLDS) -> dict:
     """
     Trích text một PDF VJOL; không ném lỗi của file.
+
+    Args:
+        vocab: Tập âm tiết cho tín hiệu "unknown" của bộ dò chữ hỏng (None = bỏ tín hiệu này; checkpoint ghi extract_version không có "+vocab").
+        th:    Ngưỡng của bộ dò chữ hỏng.
 
     Returns:
         {"format", "pages", "error", "skipped", "parser_version", "extract_version", "seconds"}: không phải PDF thì skipped="unsupported_format";
@@ -141,12 +163,12 @@ def extract_file(path: Path, get_ocr: Callable[[], object | None]) -> dict:
     t0 = time.time()
     fmt = detect_format(path)
     out = {"format": fmt, "pages": [], "error": None, "skipped": None, "parser_version": PARSER_VERSION,
-           "extract_version": EXTRACT_VERSION}
+           "extract_version": version_for(vocab)}
     if fmt != "pdf":
         out["skipped"] = "unsupported_format"
     else:
         try:
-            out["pages"] = extract_pdf(path, get_ocr, detect_garbled=True)
+            out["pages"] = extract_pdf(path, get_ocr, detect_garbled=True, garbled_vocab=vocab, garbled_th=th)
         except (ServerDown, EngineUnavailable):
             raise
         except Exception as exc:  # noqa: BLE001 — một PDF lỗi không được dừng cả lô
@@ -157,11 +179,14 @@ def extract_file(path: Path, get_ocr: Callable[[], object | None]) -> dict:
 
 def run_extract(root: Path, data_root: Path, get_ocr: Callable[[], object | None], ocr_enabled: bool = True,
                 limit_files: int | None = None, retry_skipped: bool = False, sample_docs: int | None = None,
-                seed: int = 0) -> int:
+                seed: int = 0, syllables: Path | None = None, th: Thresholds = DEFAULT_THRESHOLDS) -> int:
     """
     Chọn PDF (select_files) rồi trích text mọi file chưa làm (xem vi_corpus.common.batch_extract.run_batch).
 
     Chạy được nhiều tiến trình cùng lúc (khoá theo file ở CLAIM_DIR). Cùng sample_docs + seed ở mọi tiến trình.
+
+    `syllables`: file tập âm tiết (mặc định <data_root>/processed/ocr_bakeoff/syllables.json). Thiếu file thì bộ dò chữ hỏng bỏ tín hiệu
+    "unknown" (ghi cảnh báo; checkpoint ghi extract_version không có +vocab, report() đếm các checkpoint đó và lần chạy sau có file sẽ làm lại chúng).
 
     Returns:
         Số PDF bị lỗi trong lần chạy này.
@@ -169,11 +194,15 @@ def run_extract(root: Path, data_root: Path, get_ocr: Callable[[], object | None
     Raises:
         ServerDown, EngineUnavailable: chuỗi OCR hỏng; PDF đã xong trước đó vẫn nằm trong checkpoint.
     """
+    vocab = load_vocab(syllables or data_root / SYLLABLES_REL)
+    if vocab is None:
+        logger.warning("Không thấy tập âm tiết %s: bộ dò chữ hỏng bỏ tín hiệu âm tiết lạ (họ chữ sai dấu kiểu Windows-1258 có thể lọt)",
+                       syllables or data_root / SYLLABLES_REL)
     files = select_files(root, sample_docs, seed, limit_files)
     logger.info("VJOL: %d PDF được chọn (sample_docs=%s, seed=%s)", len(files), sample_docs, seed)
-    return run_batch(root, data_root, TEXT_DIR, extract_file, path_meta, get_ocr, ocr_enabled=ocr_enabled,
+    return run_batch(root, data_root, TEXT_DIR, partial(extract_file, vocab=vocab, th=th), path_meta, get_ocr, ocr_enabled=ocr_enabled,
                      desc="Trích text VJOL", retry_skipped=retry_skipped, files=files, claim_dir=CLAIM_DIR,
-                     extract_version=EXTRACT_VERSION)
+                     extract_versions=accepted_versions(vocab))
 
 
 def report(root: Path | None, data_root: Path) -> dict:
@@ -187,12 +216,14 @@ def report(root: Path | None, data_root: Path) -> dict:
         {"pdfs_in_raw", "checkpoints", "errors", "skipped", "pages": {method: số trang}, "ocr_tier": {engine: số trang ok},
          "ocr_status": {ok | blank | flagged: số trang}, "flagged_rate": tỷ lệ trang flagged trên trang OCR VLM,
          "seconds": tổng giây trích text, "pages_per_doc": số trang trung bình mỗi bài, "old_version": số checkpoint ghi bởi bản
-         trích text cũ (sẽ bị làm lại), "garbled_pages": {lý do: số trang lỗi font}, "garbled_docs": số bài có trang lỗi font}.
+         trích text cũ (sẽ bị làm lại), "garbled_pages": {lý do: số trang lỗi font}, "garbled_docs": số bài có trang lỗi font, "garbled_signals": {tín hiệu: số trang}, "without_vocab": số checkpoint
+         dò chữ hỏng khi thiếu tập âm tiết (extract_version không có "+vocab")}.
     """
     info = {"pdfs_in_raw": sum(len(v) for v in list_pdfs_by_year(root).values()) if root and root.is_dir() else None,
             "checkpoints": 0, "errors": 0, "skipped": 0, "seconds": 0.0}
     methods, tiers, statuses, garbled = Counter(), Counter(), Counter(), Counter()
-    garbled_docs = old_version = 0
+    garbled_docs = old_version = without_vocab = 0
+    signals = Counter()
     for ckpt in sorted((data_root / TEXT_DIR).glob("*.json")):
         done = read_json(ckpt)
         if done is None:
@@ -201,10 +232,12 @@ def report(root: Path | None, data_root: Path) -> dict:
         info["errors"] += bool(done.get("error"))
         info["skipped"] += bool(done.get("skipped"))
         info["seconds"] += done.get("seconds") or 0.0
-        old_version += done.get("extract_version") != EXTRACT_VERSION
+        old_version += done.get("extract_version") not in (EXTRACT_VERSION, EXTRACT_VERSION + VOCAB_TAG)
         reasons = [p["reason"] for p in done["pages"] if p.get("reason")]
         garbled.update(reasons)
         garbled_docs += bool(reasons)
+        without_vocab += done.get("extract_version") == EXTRACT_VERSION
+        signals.update(sig for p in done["pages"] for sig in p.get("signals", []))
         for page in done["pages"]:
             methods[page["method"]] += 1
             if page["method"] == "ocr_vlm":
@@ -214,5 +247,6 @@ def report(root: Path | None, data_root: Path) -> dict:
     n_vlm = sum(statuses.values())
     return {**info, "seconds": round(info["seconds"], 1), "pages": dict(methods), "ocr_tier": dict(tiers),
             "ocr_status": dict(statuses), "old_version": old_version, "garbled_pages": dict(garbled),
-            "garbled_docs": garbled_docs, "flagged_rate": statuses["flagged"] / n_vlm if n_vlm else None,
+            "garbled_docs": garbled_docs, "garbled_signals": dict(signals), "without_vocab": without_vocab,
+            "flagged_rate": statuses["flagged"] / n_vlm if n_vlm else None,
             "pages_per_doc": sum(methods.values()) / info["checkpoints"] if info["checkpoints"] else None}

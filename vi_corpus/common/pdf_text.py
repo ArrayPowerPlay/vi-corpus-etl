@@ -13,7 +13,7 @@ Mỗi trang đi theo đường rẻ nhất còn cho ra text:
 
 Trang lỗi font (J-10, chỉ khi extract_pdf(detect_garbled=True), VJOL dùng): lớp chữ toàn chữ Latinh có dấu nhưng sai ("Baỷng, hieọu"),
 phát hiện bằng vi_corpus.common.garbled; trang đó (và cả bài nếu >= 30% trang có chữ bị nghi) được OCR lại như trang scan, vẽ lại cả
-trang. Mục trang có thêm "reason" ("garbled_text_layer" | "garbled_doc") và "garbled_text" (lớp chữ hỏng, giữ để kiểm tra, không dùng);
+trang. Mục trang có thêm "reason" ("garbled_text_layer" | "garbled_doc"), "signals" và "garbled_text" (lớp chữ hỏng, giữ để kiểm tra, không dùng);
 OCR bị flagged thì trang rỗng, không quay lại dùng chữ hỏng.
 
 Các lỗi thật đã gặp trên giáo trình và được xử lý ở đây:
@@ -33,7 +33,7 @@ from collections.abc import Callable
 
 import pymupdf
 
-from vi_corpus.common.garbled import plan_garbled
+from vi_corpus.common.garbled import DEFAULT_THRESHOLDS, Thresholds, page_signals, plan_garbled
 
 # Khoảng trống giữa 2 ký tự lớn hơn tỉ lệ này của cỡ chữ thì coi là có dấu cách.
 SPACE_GAP_RATIO = 0.15
@@ -110,7 +110,8 @@ def tcvn3_to_unicode(text: str) -> str:
     return "".join(_TCVN3.get(c, c) for c in text)
 
 
-def extract_pdf(path, get_ocr: Callable[[], object | None], detect_garbled: bool = False) -> list[dict]:
+def extract_pdf(path, get_ocr: Callable[[], object | None], detect_garbled: bool = False,
+                garbled_vocab: frozenset[str] | None = None, garbled_th: Thresholds = DEFAULT_THRESHOLDS) -> list[dict]:
     """
     Trích text từng trang của một PDF.
 
@@ -122,10 +123,12 @@ def extract_pdf(path, get_ocr: Callable[[], object | None], detect_garbled: bool
                  song cả lô; render=True là vẽ lại cả trang thay vì lấy ảnh nhúng).
         detect_garbled: True thì trang có lớp chữ hỏng do font (vi_corpus.common.garbled) cũng được OCR lại (J-10); mặc định tắt,
                  nguồn khác (giáo trình) chạy y như trước.
+        garbled_vocab: Tập âm tiết cho tín hiệu "unknown" của bộ dò (None = bỏ tín hiệu này, J-16).
+        garbled_th: Ngưỡng các tín hiệu của bộ dò.
 
     Returns:
-        Danh sách {"text": ..., "method": ...} theo thứ tự trang (method xem đầu file). Trang lỗi font có thêm "reason" và
-        "garbled_text".
+        Danh sách {"text": ..., "method": ...} theo thứ tự trang (method xem đầu file). Trang lỗi font có thêm "reason",
+        "signals" (tín hiệu nào vượt ngưỡng; rỗng với trang chỉ bị kéo theo cả bài) và "garbled_text".
 
     Raises:
         ValueError: PDF bị cắt cụt / hỏng (PyMuPDF phải tự sửa khi mở) hoặc có mật khẩu.
@@ -158,7 +161,7 @@ def extract_pdf(path, get_ocr: Callable[[], object | None], detect_garbled: bool
             layer.append(None)
         reasons: dict[int, str] = {}  # trang chữ bị lỗi font -> lý do (J-10), cũng đi OCR như trang scan
         if detect_garbled:
-            reasons = {i: r for i, r in enumerate(plan_garbled(layer)) if r}
+            reasons = {i: r for i, r in enumerate(plan_garbled(layer, garbled_th, vocab=garbled_vocab)) if r}
             for i in reasons:
                 pages[i] = None
         todo = sorted([*scan_idx, *reasons])
@@ -174,7 +177,8 @@ def extract_pdf(path, get_ocr: Callable[[], object | None], detect_garbled: bool
                 else:
                     results = [{"text": ocr.page_text(page_image(doc[i], render=i in reasons)), "method": "ocr"} for i in todo]
                 for i, entry in zip(todo, results):
-                    pages[i] = {**entry, "reason": reasons[i], "garbled_text": texts[i]} if i in reasons else entry
+                    pages[i] = ({**entry, "reason": reasons[i], "signals": page_signals(texts[i], garbled_th, garbled_vocab),
+                                 "garbled_text": texts[i]} if i in reasons else entry)
         return pages
 
 

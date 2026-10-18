@@ -45,7 +45,9 @@ def format_report(rep: dict) -> str:
         lines.append(f"[vjol] OCR VLM: trạng thái {rep['ocr_status']}, engine được chọn {rep['ocr_tier']}, "
                      f"tỷ lệ flagged {rep['flagged_rate']:.2%}, trang baseline {rep['ocr_tier'].get('baseline', 0)}")
     if rep["garbled_pages"]:
-        lines.append(f"[vjol] Lỗi font (J-10): {rep['garbled_docs']} bài, trang theo lý do {rep['garbled_pages']}")
+        lines.append(f"[vjol] Lỗi font (J-10): {rep['garbled_docs']} bài, trang theo lý do {rep['garbled_pages']}, tín hiệu {rep['garbled_signals']}")
+    if rep["without_vocab"]:
+        lines.append(f"[vjol] CẢNH BÁO: {rep['without_vocab']} checkpoint dò chữ hỏng khi thiếu tập âm tiết (syllables.json); thêm file rồi chạy lại đúng lệnh cũ (các checkpoint này tự bị làm lại)")
     if rep["old_version"]:
         lines.append(f"[vjol] {rep['old_version']} checkpoint do bản trích text cũ ghi: chạy lại sẽ làm lại các file này (J-10)")
     if rep["checkpoints"]:
@@ -73,6 +75,8 @@ def main() -> int:
     p.add_argument("--limit-files", type=int, default=None, help="Chỉ xử lý N file đầu của danh sách đã chọn (chạy thử).")
     p.add_argument("--retry-skipped", action="store_true", help="Làm lại cả file từng bị bỏ qua.")
     p.add_argument("--no-ocr", action="store_true", help="Không OCR: trang scan để needs_ocr (không cần GPU).")
+    p.add_argument("--syllables", type=Path, default=None,
+                   help="Tập âm tiết cho tín hiệu âm tiết lạ của bộ dò chữ hỏng (mặc định <data-root>/processed/ocr_bakeoff/syllables.json).")
     p.add_argument("--no-export", action="store_true", help="Không xuất Parquet ở cuối (dùng khi nhiều tiến trình chạy cùng lúc).")
     p.add_argument("--export-only", action="store_true", help="Chỉ xuất Parquet từ checkpoint hiện có rồi thoát.")
     p.add_argument("--status", action="store_true", help="Chỉ in tiến độ rồi thoát.")
@@ -120,7 +124,8 @@ def main() -> int:
                               vllm_bin=args.vllm_bin, state_dir=state, server_timeout=args.server_timeout)
     try:
         failed = run_extract(root, args.data_root, getter, ocr_enabled=not args.no_ocr, limit_files=args.limit_files,
-                             retry_skipped=args.retry_skipped, sample_docs=args.sample_docs, seed=args.seed)
+                             retry_skipped=args.retry_skipped, sample_docs=args.sample_docs, seed=args.seed,
+                             syllables=args.syllables)
     except (ServerDown, EngineUnavailable) as exc:
         log.error("%s. Dừng cả lượt (không loại trang âm thầm); sửa server / môi trường rồi chạy lại đúng lệnh cũ.", exc)
         return 1
