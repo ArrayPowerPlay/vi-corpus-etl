@@ -46,8 +46,8 @@ CHECK_DIR = "processed/vjol_garbled_check"
 SWEEPS = {  # ngưỡng thử cho từng tín hiệu
     "tone": (0.03, 0.05, 0.08, 0.10, 0.15, 0.20),
     "case": (0.02, 0.05, 0.10, 0.20),
-    "foreign": (0.003, 0.01, 0.02, 0.05),
-    "unknown": (0.25, 0.30, 0.40, 0.50, 0.60),
+    "foreign": (0.002, 0.003, 0.005, 0.01),
+    "unknown": (0.25, 0.30, 0.35, 0.40, 0.50),
 }
 SHARE_SWEEP = (0.10, 0.20, 0.30, 0.50)  # ngưỡng cấp bài thử
 HIST_BINS = (0.0, 0.01, 0.02, 0.04, 0.06, 0.08, 0.10, 0.15, 0.20, 0.30, 0.50, 1.01)  # cột phân bố tỷ lệ tone theo trang
@@ -141,9 +141,10 @@ def sweep(docs: list[dict]) -> dict:
 
 
 def fmt(row: dict) -> str:
-    """Một dòng ví dụ: năm, đường dẫn, trang, số đo của bốn tín hiệu và đoạn đầu."""
+    """Một dòng ví dụ: năm, đường dẫn, trang, số đo của bốn tín hiệu (foreign kèm số chữ cái lạ) và đoạn đầu."""
     ms = " ".join(f"{s}={'-' if row['m'][s] is None else format(row['m'][s][0], '.3f')}" for s in SIGNALS)
-    return f"[{row['year']}] {row['path']} trang {row['page']} {ms} ({row['m']['tone'][1]} từ): {row['snippet']}\n"
+    return (f"[{row['year']}] {row['path']} trang {row['page']} {ms} (chữ lạ={row['m']['foreign'][2]}, "
+            f"{row['m']['tone'][1]} từ): {row['snippet']}\n")
 
 
 def check(data_root: Path, seed: int = 0, syllables: Path | None = None) -> Path:

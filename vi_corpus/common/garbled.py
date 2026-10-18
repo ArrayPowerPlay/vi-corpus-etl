@@ -12,7 +12,7 @@ tối đa MỘT dấu thanh (huyền, sắc, ngã, hỏi, nặng) trên mỗi â
   ngắn như chú thích hình dễ lọt).
 - Ba tín hiệu bổ sung (J-15, J-16) cho các họ chữ hỏng ít dấu thanh mà tín hiệu dấu thanh bỏ sót: case_mix_ratio (chữ hoa chen
   giữa từ viết thường: "xuAáT", "TRoNg", "7K{QJWLQYjJLảLSKiSNKRDKọFF" của chữ lệch mã ASCII), foreign_letter_ratio (chữ cái Latin-1 không có
-  trong tiếng Việt: ñ ö ï ø å, họ VNI "Thöïc TRAïNg"), unknown_syllable_rate (tỷ lệ âm tiết không có trong tập âm tiết tham chiếu
+  trong tiếng Việt: ñ ö ï ø å, họ VNI "Thöïc TRAïNg"; ngưỡng 0,3% và phải có ít nhất 5 chữ cái lạ để tên riêng không kích hoạt, J-18), unknown_syllable_rate (tỷ lệ âm tiết không có trong tập âm tiết tham chiếu
   processed/ocr_bakeoff/syllables.json: bắt thêm họ sai dấu kiểu Windows-1258 "Phỏt triển trờn"; chỉ tính từ Latinh nên trang chữ Hán không
   bị phạt; thiếu file thì bỏ tín hiệu này). page_signals trả tên các tín hiệu vượt ngưỡng của một trang; ngưỡng nằm trong Thresholds.
 - single_letter_ratio: tín hiệu thứ hai (chữ bị mất kiểu "đ u"), chỉ để đo (scripts/vjol/check_garbled.py), chưa dùng để quyết.
@@ -41,12 +41,13 @@ class Thresholds(NamedTuple):
     """Ngưỡng của các tín hiệu chữ hỏng theo trang (điểm khởi đầu, chỉnh bằng scripts/vjol/check_garbled.py)."""
 
     tone: float = GARBLED_RATIO  # tỷ lệ từ >= 2 dấu thanh
-    case: float = 0.05  # tỷ lệ từ >= 4 chữ cái có chữ hoa đứng sau chữ thường (J-16, chưa đo)
-    foreign: float = 0.01  # tỷ lệ chữ cái thuộc FOREIGN_LETTERS (J-16, chưa đo)
-    unknown: float = 0.40  # tỷ lệ từ Latinh không có trong tập âm tiết (J-16, chưa đo; p99 trang thường = 0,27)
+    case: float = 0.05  # tỷ lệ từ >= 4 chữ cái có chữ hoa đứng sau chữ thường (J-16)
+    foreign: float = 0.003  # tỷ lệ chữ cái thuộc FOREIGN_LETTERS (J-18: hạ từ 0,01 để bắt tiêu đề / đầu trang VNI)
+    unknown: float = 0.30  # tỷ lệ từ Latinh không có trong tập âm tiết (J-18: hạ từ 0,40; trang tiếng Anh thường 0,20-0,27, trang hỏng đo được >= 0,30)
     min_words: int = GARBLED_MIN_WORDS  # số từ tối thiểu để xét tín hiệu tone và case
     unknown_min_words: int = 30  # số từ Latinh tối thiểu để xét tín hiệu unknown
     foreign_min_letters: int = 100  # số chữ cái tối thiểu để xét tín hiệu foreign
+    foreign_min_count: int = 5  # số chữ cái thuộc FOREIGN_LETTERS tối thiểu (J-18: tên riêng có 1-2 chữ ñ / ö không kích hoạt)
 
 
 DEFAULT_THRESHOLDS = Thresholds()
@@ -116,17 +117,18 @@ def case_mix_ratio(text: str) -> tuple[float, int]:
     return sum(any(a.islower() and b.isupper() for a, b in zip(w, w[1:])) for w in words) / len(words), len(words)
 
 
-def foreign_letter_ratio(text: str) -> tuple[float, int]:
+def foreign_letter_ratio(text: str) -> tuple[float, int, int]:
     """
     Tỷ lệ chữ cái thuộc FOREIGN_LETTERS (ñ ö ï ø å ...) trên mọi chữ cái.
 
     Returns:
-        (tỷ lệ, số chữ cái); tỷ lệ là 0.0 khi không có chữ cái nào.
+        (tỷ lệ, số chữ cái, số chữ cái lạ); tỷ lệ là 0.0 khi không có chữ cái nào.
     """
     letters = [c for c in unicodedata.normalize("NFC", text) if c.isalpha()]
     if not letters:
-        return 0.0, 0
-    return sum(c in FOREIGN_LETTERS for c in letters) / len(letters), len(letters)
+        return 0.0, 0, 0
+    n_foreign = sum(c in FOREIGN_LETTERS for c in letters)
+    return n_foreign / len(letters), len(letters), n_foreign
 
 
 def load_vocab(path: Path) -> frozenset[str] | None:
@@ -152,9 +154,9 @@ def unknown_syllable_rate(text: str, vocab: frozenset[str]) -> tuple[float, int]
 
 def page_measures(text: str, vocab: frozenset[str] | None = None) -> dict:
     """
-    Số đo thô của bốn tín hiệu cho một trang: {"tone" | "case" | "foreign" | "unknown": (tỷ lệ, số mẫu)}; "unknown" là None khi không có vocab.
+    Số đo thô của bốn tín hiệu cho một trang: {"tone" | "case" | "foreign" | "unknown": (tỷ lệ, số mẫu[, số chữ cái lạ])}; "unknown" là None khi không có vocab.
 
-    Số mẫu là số từ (tone), số từ >= 4 chữ cái (case), số chữ cái (foreign), số từ Latinh (unknown). Tách khỏi page_signals để script đo
+    Số mẫu là số từ (tone), số từ >= 4 chữ cái (case), số chữ cái (foreign, kèm số chữ cái lạ ở phần tử thứ ba), số từ Latinh (unknown). Tách khỏi page_signals để script đo
     tính một lần rồi thử nhiều ngưỡng.
     """
     return {"tone": garbled_ratio(text), "case": case_mix_ratio(text), "foreign": foreign_letter_ratio(text),
@@ -168,7 +170,7 @@ def signals_from_measures(m: dict, th: Thresholds = DEFAULT_THRESHOLDS) -> list[
         out.append("tone")
     if m["case"][1] >= th.min_words and m["case"][0] >= th.case:
         out.append("case")
-    if m["foreign"][1] >= th.foreign_min_letters and m["foreign"][0] >= th.foreign:
+    if m["foreign"][1] >= th.foreign_min_letters and m["foreign"][2] >= th.foreign_min_count and m["foreign"][0] >= th.foreign:
         out.append("foreign")
     if m["unknown"] is not None and m["unknown"][1] >= th.unknown_min_words and m["unknown"][0] >= th.unknown:
         out.append("unknown")

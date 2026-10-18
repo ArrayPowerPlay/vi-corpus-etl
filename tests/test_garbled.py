@@ -126,6 +126,38 @@ def test_tin_hieu_chu_cai_latin_1_la():
     assert g.page_signals("Thöïc ñeáN") == [] and "foreign" in g.page_signals(VNI)  # dưới 100 chữ cái thì không xét
 
 
+def test_nguong_foreign_j18_tieu_de_vni_bi_bat_ten_rieng_thi_khong():
+    """J-18: ngưỡng foreign 0,3% + ít nhất 5 chữ cái lạ: trang dài chỉ tiêu đề VNI bị bắt (tỷ lệ ~0,5%, dưới 1% của J-16); tên riêng 1-3 chữ lạ thì không."""
+    th = g.DEFAULT_THRESHOLDS
+    assert th.foreign == 0.003 and th.foreign_min_count == 5 and th.foreign_min_letters == 100
+    title_only = "THÖÏC TRAïNG HOAïT ÑOÄNG " + GOOD_VI * 12  # 5 chữ cái lạ trên ~1.000 chữ cái, thân bài bình thường
+    ratio, letters, n_foreign = g.foreign_letter_ratio(title_only)
+    assert n_foreign == 5 and letters >= 900 and th.foreign <= ratio < 0.01
+    assert g.page_signals(title_only) == ["foreign"]
+    assert g.page_signals(title_only, th._replace(foreign=0.01)) == []  # ngưỡng cũ bỏ sót
+    names = GOOD_VI + GOOD_VI[:40] + " Ångström Møller"  # 3 chữ cái lạ (å, ö, ø) trên trang ngắn: tỷ lệ > 0,3% nhưng chưa đủ 5
+    ratio, letters, n_foreign = g.foreign_letter_ratio(names)
+    assert letters >= 100 and n_foreign == 3 and ratio > th.foreign
+    assert g.page_signals(names) == []
+    assert g.foreign_letter_ratio("") == (0.0, 0, 0) and g.foreign_letter_ratio(GOOD_VI * 3)[2] == 0
+
+
+def test_nguong_unknown_j18_030_trang_tieng_anh_thuong_khong_bi_bat():
+    """J-18: unknown 0,30: trang có 26% âm tiết lạ (cỡ trang tiếng Anh thường, 0,20-0,27) không bị bắt, trang 33% (cỡ trang hỏng đo được) bị bắt."""
+    vocab = make_vocab(GOOD_VI)
+    known = GOOD_VI.split()
+    assert g.DEFAULT_THRESHOLDS.unknown == 0.30
+
+    def page(n_unknown: int) -> str:
+        """Trang 100 từ Latinh, `n_unknown` từ vô nghĩa, còn lại là từ có trong vocab."""
+        return " ".join(["xkcd"] * n_unknown + [known[i % len(known)] for i in range(100 - n_unknown)])
+
+    assert g.unknown_syllable_rate(page(26), vocab)[0] == pytest.approx(0.26)
+    assert g.page_signals(page(26), vocab=vocab) == []
+    assert g.page_signals(page(33), vocab=vocab) == ["unknown"]
+    assert g.page_signals(page(33), g.DEFAULT_THRESHOLDS._replace(unknown=0.40), vocab=vocab) == []  # ngưỡng cũ bỏ sót
+
+
 def test_tin_hieu_am_tiet_la_chi_tinh_tu_latinh_va_can_vocab():
     """Họ Windows-1258 có nhiều âm tiết lạ nên bị bắt; trang chữ Hán không bị phạt; không có vocab thì bỏ tín hiệu; load_vocab đọc đúng file."""
     vocab = base_vocab()
@@ -433,7 +465,7 @@ def test_do_chu_hong_ba_tin_hieu_moi_va_trang_can_xem(tmp_path):
     assert s["suspect_pages_by_signal"]["foreign"] >= 1 and s["suspect_pages_by_signal"]["case"] >= 1
     assert s["suspect_pages_by_signal"]["unknown"] >= 1
     by = {r["threshold"]: r for r in s["sweep"]["by_signal"]["unknown"]}
-    assert by[0.4]["pages_flagged"] >= 1 and by[0.25]["pages_flagged"] >= by[0.6]["pages_flagged"]
+    assert by[0.4]["pages_flagged"] >= 1 and by[0.25]["pages_flagged"] >= by[0.5]["pages_flagged"]
     new = (out / "new_signals.txt").read_text(encoding="utf-8")
     assert all(f"=== {sig}:" in new for sig in ("case", "foreign", "unknown")) and "sát dưới ngưỡng" in new
     blind = (out / "blind_spots.txt").read_text(encoding="utf-8")

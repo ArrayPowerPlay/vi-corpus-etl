@@ -308,11 +308,11 @@ Sau lệnh 2, nếu log pipeline báo `chỉ lấy được X/10000 mẫu` thì 
 ```bash
 cd /home/jovyan/dinh/vi-corpus-etl && git fetch origin && git checkout worktree-vjol-pipeline && git pull
 source /home/jovyan/dinh/env.sh
-# 1) ĐO TRƯỚC (CPU, vài phút, trên checkpoint cũ): số trang / bài bị nghi, quét ngưỡng, ví dụ, blind_spots.txt -> gửi cho Claude để chốt ngưỡng
-#    (J-16: chạy lần 3 sau khi thêm 3 tín hiệu case / foreign / unknown; unknown cần data/processed/ocr_bakeoff/syllables.json, thiếu thì bỏ qua và cảnh báo)
+# 1) (J-18: ngưỡng đã chốt, bỏ lượt đo thêm; bước này chỉ để xem trước, có thể bỏ qua) đo CPU trên checkpoint cũ với ngưỡng mới
+#    unknown cần data/processed/ocr_bakeoff/syllables.json, thiếu thì bỏ qua và cảnh báo
+ls -la data/processed/ocr_bakeoff/syllables.json
 uv run python scripts/vjol/check_garbled.py --data-root data
-tar czf vjol_garbled_check.tar.gz -C data/processed vjol_garbled_check
-# 2) (sau khi chốt ngưỡng) chạy lại mẫu 3.000 bài trên 4 GPU, trong tmux: checkpoint cũ tự bị làm lại; ghi lại giờ thực bằng `date` trước và sau.
+# 2) chạy lại mẫu 3.000 bài trên 4 GPU, trong tmux: checkpoint cũ tự bị làm lại; ghi lại giờ thực bằng `date` trước và sau.
 #    Kiểm trước là có data/processed/ocr_bakeoff/syllables.json (nếu thiếu, log có dòng "Không thấy tập âm tiết" và tín hiệu unknown bị bỏ)
 date; DATA_ROOT=data VLLM_BIN=$(which vllm) SAMPLE_DOCS=3000 ./scripts/vjol/run_extract_vlm.sh; date
 # 3) đo lại: số trang lỗi font còn sót phải gần 0 (trang đã OCR giữ garbled_text nên script vẫn đếm được)
