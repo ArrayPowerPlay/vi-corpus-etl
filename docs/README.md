@@ -369,6 +369,18 @@ Nhận diện ngôn ngữ bằng `lid.176` (tải một lần vào `VI_CORPUS_MO
 (`--lang-model heuristic` để chọn chủ động). Tỷ lệ âm tiết thật dùng `processed/ocr_bakeoff/syllables.json` (từ `build_syllables.py`); thiếu thì bỏ phần này.
 Kết quả trong `processed/ocr_vlm_check/`: `summary.json` (số đo theo engine, loại chữ viết, ngôn ngữ, sách ngoại ngữ, trang lạ trong sách tiếng Việt, phân bố tỷ lệ âm tiết thật của baseline),
 `books.csv`, `suspect_pages.csv` (đủ mọi trang, không còn cắt 5.000 dòng), `foreign_books.csv`, `odd_pages_in_vi_books.csv`, `baseline_pages.csv`, `samples/` (ảnh + văn bản, gồm `odd_<engine>/` và `baseline_syllable_<từ>-<đến>/`), `logs/`.
+Từ O-30 (4), `summary.json` có thêm `shape_metrics`: số trang theo engine và cuốn nhiều trang nhất cho hai chỉ số hình dạng chữ, `glued_text` (chữ không dấu dính liền: độ dài trung bình một cụm chữ cái > 9) và `long_word`
+(có cụm chữ cái dài từ 18 chữ, vd "CONTRANSITIONALIZATION"); trang mẫu ở `samples/glued_text_<engine>/` và `samples/long_word_<engine>/`. Hai chỉ số này chỉ để chọn ngưỡng bằng mắt, **chưa** dùng lọc trang.
+
+**Lọc trang OCR sau khi chạy xong** (O-30 mục 2 và 3, CPU, không chạy lại GPU; không chạy lúc đang OCR):
+```bash
+uv run --no-sync python scripts/stbook/filter_ocr_pages.py --data-root /duong/dan/data --dry-run   # xem trước, không sửa file
+uv run --no-sync python scripts/stbook/filter_ocr_pages.py --data-root /duong/dan/data             # lọc thật, rồi chạy lại check_ocr_vlm.py để xem số mới
+```
+Hai loại trang chuyển sang `flagged` (văn bản giữ ở `page_info[i].rejected_text`, `pages[i] == ""`, thêm `page_info[i].post_filter` ghi lý do): (1) trang `baseline` có tỷ lệ âm tiết thật dưới `--min-real-rate`
+(mặc định 0,85, nằm ở thung lũng của phân bố hai đỉnh đo ở O-29; trang dưới 30 từ giữ nguyên); (2) trang `rp110` bị fastText gắn ngôn ngữ khác tiếng Việt trong sách có từ 80% trang tiếng Việt.
+Cần `processed/ocr_bakeoff/syllables.json` và fastText `lid.176` (không tự rơi về heuristic vì bộ lọc xoá dữ liệu). Chạy lại được và đổi ngưỡng được: mỗi lần chạy trả lại trang đã lọc trước rồi lọc lại,
+cuốn nào kết quả không đổi thì không ghi lại file. Báo cáo ở `processed/ocr_page_filter/` (`summary.json`, `flagged_pages.csv`).
 
 ---
 

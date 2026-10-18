@@ -6,7 +6,8 @@ Kiểm kết quả OCR stbook bằng chuỗi VLM sau khi chạy xong (chỉ dùn
     summary.json        : số liệu tổng (tính nhất quán, chữ/trang theo engine, tỷ lệ dấu tiếng Việt, tốc độ, cảnh báo trong log,
                           loại chữ viết và ngôn ngữ theo engine, sách ngoại ngữ, trang lạ trong sách tiếng Việt, phân bố tỷ lệ âm tiết thật).
     books.csv           : mỗi cuốn một dòng (số trang, số trang theo engine, chạy lại, giây, trang/giây, chữ/trang, dấu, tỷ lệ trang tiếng Việt).
-    suspect_pages.csv   : mọi trang đáng nghi (ít dấu tiếng Việt, lẫn chữ nước ngoài, lặp, ảnh nhúng, quá dài) kèm mã lý do.
+    suspect_pages.csv   : mọi trang đáng nghi (ít dấu tiếng Việt, lẫn chữ nước ngoài, lặp, ảnh nhúng, quá dài, chữ dính liền, từ bịa dài)
+                          kèm mã lý do (hai mã cuối là O-30 (4): chỉ để chọn ngưỡng, chưa dùng lọc trang).
     foreign_books.csv   : sách mà phần lớn trang không phải tiếng Việt (bảng sách ngoại ngữ, O-27 a).
     odd_pages_in_vi_books.csv : trang không phải tiếng Việt nằm trong sách mà các trang còn lại là tiếng Việt (nghi bịa chữ, O-27 b).
     baseline_pages.csv  : mọi trang baseline kèm tỷ lệ âm tiết thật để chọn ngưỡng lọc (O-27 c); cần syllables.json.
@@ -39,6 +40,7 @@ _LOWER_DIAC = "àáảãạăằắẳẵặâầấẩẫậèéẻẽẹêề�
 _DIAC = re.compile("[" + _LOWER_DIAC + _LOWER_DIAC.upper() + "]")
 _LETTER = re.compile(r"[^\W\d_]")
 _NON_LATIN = re.compile("[Ѐ-ӿ؀-ۿ฀-๿぀-ヿ㐀-鿿가-힯]")
+_LETTER_RUN = re.compile(r"[^\W\d_]+")
 _IMAGE_MARK = ("data:image", "base64,")
 _LOG_LINE = re.compile(r"\] (\d+) trang, ([\d.]+) trang/s")
 
@@ -46,6 +48,9 @@ LOW_DIAC_MAX = 0.10  # tiếng Việt thường có ~25-30% chữ cái mang dấ
 LOW_DIAC_MIN_LETTERS = 300  # trang quá ít chữ thì tỷ lệ dấu không đáng tin
 NON_LATIN_MAX = 0.02  # chữ Hán / Kirin / Thái ... quá 2% số chữ cái là dấu hiệu mô hình bịa chữ
 LOOP_COVER_MAX = 0.20  # dãy lặp phủ quá 20% trang
+GLUED_MEAN_WORD_LEN = 9.0  # độ dài trung bình một cụm chữ cái (tiếng Việt / Anh ~4-5) vượt mức này là chữ dính liền không dấu cách (O-30 4a)
+GLUED_MIN_LETTERS = 200  # trang ít chữ cái hơn mức này không xét chữ dính liền
+LONG_WORD_LETTERS = 18  # cụm chữ cái dài từ mức này là từ bịa (vd "CONTRANSITIONALIZATION", 22) hoặc địa chỉ web (O-30 4b)
 LOG_MESSAGES_CAP = 200  # tối đa số dòng cảnh báo / lỗi chép vào summary.json
 LANG_MIN_LETTERS = 100  # trang ít chữ cái hơn mức này không nhận diện ngôn ngữ (kết quả không đáng tin)
 VI_BOOK_MIN_SHARE = 0.8  # sách có từ tỷ lệ này số trang (đủ chữ) là tiếng Việt thì coi là sách tiếng Việt: trang lạ trong đó là nghi bịa
@@ -71,16 +76,22 @@ def page_metrics(text: str) -> dict:
     """
     Số đo rẻ của một trang để phát hiện trang đáng nghi.
 
+    Hai mã cuối ("glued_text", "long_word", O-30 4) chỉ xét trang chữ Latin (chữ Thái, Lào không có dấu cách theo cách viết) và chỉ dùng để
+    chọn ngưỡng sau, chưa dùng để loại trang.
+
     Returns:
         {"chars", "letters", "diac_ratio" (chữ cái mang dấu / chữ cái), "non_latin_ratio", "loop_cover" (tỷ lệ phủ của dãy lặp),
+        "script" (xem script_of), "mean_word_len" (chữ cái trung bình mỗi cụm chữ cái liền nhau), "long_words" (số cụm dài từ LONG_WORD_LETTERS),
         "reasons": [mã lý do đáng nghi]}.
     """
     letters = len(_LETTER.findall(text))
     diac = len(_DIAC.findall(text))
     non_latin = len(_NON_LATIN.findall(text))
     cover, _ = repeat_stats(text)
+    runs = [len(w) for w in _LETTER_RUN.findall(text)]
     m = {"chars": len(text), "letters": letters, "diac_ratio": diac / letters if letters else 0.0,
-         "non_latin_ratio": non_latin / letters if letters else 0.0, "loop_cover": cover}
+         "non_latin_ratio": non_latin / letters if letters else 0.0, "loop_cover": cover, "script": script_of(text),
+         "mean_word_len": letters / len(runs) if runs else 0.0, "long_words": sum(n >= LONG_WORD_LETTERS for n in runs)}
     reasons = []
     if letters >= LOW_DIAC_MIN_LETTERS and m["diac_ratio"] < LOW_DIAC_MAX:
         reasons.append("low_diacritic")
@@ -92,6 +103,11 @@ def page_metrics(text: str) -> dict:
         reasons.append("embedded_image")
     if len(text) > MAX_CHARS:
         reasons.append("too_long")
+    if m["script"] == "latin":
+        if letters >= GLUED_MIN_LETTERS and m["mean_word_len"] > GLUED_MEAN_WORD_LEN:
+            reasons.append("glued_text")
+        if m["long_words"]:
+            reasons.append("long_word")
     m["reasons"] = reasons
     return m
 
@@ -119,6 +135,23 @@ def _histogram(values: list[float]) -> dict:
     """Đếm số trang theo SYL_BINS cột đều nhau trên [0, 1] (giá trị 1.0 vào cột cuối)."""
     h = Counter(min(int(x * SYL_BINS), SYL_BINS - 1) for x in values)
     return {f"{b / SYL_BINS:.2f}-{(b + 1) / SYL_BINS:.2f}": h.get(b, 0) for b in range(SYL_BINS)}
+
+
+def detect_page_languages(texts: list[str], lid) -> list[tuple[str, float] | None]:
+    """
+    Ngôn ngữ từng trang trong một lượt gọi (fastText nhanh khi nhận theo lô); trang ít hơn LANG_MIN_LETTERS chữ cái trả None.
+
+    Dùng chung cho bộ kiểm (`_scan`) và bộ lọc trang (vi_corpus.stbook.ocr_filter) để hai nơi cùng một quy tắc.
+
+    Returns:
+        Danh sách cùng độ dài `texts`: (nhãn ngôn ngữ, độ tin cậy) hoặc None.
+    """
+    idx = [i for i, t in enumerate(texts) if len(_LETTER.findall(t)) >= LANG_MIN_LETTERS]
+    out: list[tuple[str, float] | None] = [None] * len(texts)
+    if idx:
+        for i, res in zip(idx, lid.predict([texts[i][:MAX_SEGMENT_CHARS] for i in idx])):
+            out[i] = res
+    return out
 
 
 def _reservoir(store: dict, seen: Counter, key: str, item: tuple, k: int, rng: random.Random) -> None:
@@ -167,7 +200,7 @@ def _scan(data_root: Path, per_tier: int, n_suspect_samples: int, rng: random.Ra
             if pi.get("status") == "ok" and not text.strip():
                 empty_ok += 1
             m = page_metrics(text)
-            m.update(i=i, tier=tier, script=script_of(text), text=text)
+            m.update(i=i, tier=tier, text=text)
             rows.append(m)
             for k in ("chars", "letters"):
                 tot[k] += m[k]
@@ -179,9 +212,9 @@ def _scan(data_root: Path, per_tier: int, n_suspect_samples: int, rng: random.Ra
             for r in m["reasons"]:
                 tiers[tier]["suspect_" + r] += 1
         # Ngôn ngữ cả cuốn trong một lượt gọi (fastText nhanh khi nhận theo lô).
-        idx = [r for r in rows if r["letters"] >= LANG_MIN_LETTERS]
-        for r, (lang, conf) in zip(idx, lid.predict([r["text"][:MAX_SEGMENT_CHARS] for r in idx]) if idx else []):
-            r["lang"], r["lang_conf"] = lang, round(conf, 3)
+        for r, res in zip(rows, detect_page_languages([r["text"] for r in rows], lid)):
+            if res:
+                r["lang"], r["lang_conf"] = res[0], round(res[1], 3)
         judged = [r for r in rows if "lang" in r]
         vi_share = sum(r["lang"] == "vi" for r in judged) / len(judged) if judged else None
         book_langs = Counter(r["lang"] for r in judged)
@@ -223,8 +256,13 @@ def _scan(data_root: Path, per_tier: int, n_suspect_samples: int, rng: random.Ra
                 n_susp += 1
                 suspects.append({"book": name, "page": r["i"] + 1, "tier": tier, "reasons": "|".join(r["reasons"]), "chars": r["chars"],
                                  "diac_ratio": round(r["diac_ratio"], 3), "non_latin_ratio": round(r["non_latin_ratio"], 3),
-                                 "loop_cover": round(r["loop_cover"], 3), "script": r["script"], "lang": r.get("lang", "")})
+                                 "loop_cover": round(r["loop_cover"], 3), "mean_word_len": round(r["mean_word_len"], 2),
+                                 "long_words": r["long_words"], "script": r["script"], "lang": r.get("lang", "")})
                 _reservoir(samples, seen, "suspect", (path, r["i"], "|".join(r["reasons"])), n_suspect_samples, rng)
+                for reason in ("glued_text", "long_word"):  # O-30 (4): mẫu riêng theo engine để chọn ngưỡng bằng mắt
+                    if reason in r["reasons"]:
+                        _reservoir(samples, seen, f"{reason}_{tier}", (path, r["i"], f"{reason}, từ trung bình {r['mean_word_len']:.1f} chữ, {r['long_words']} từ dài"),
+                                   n_suspect_samples, rng)
         if empty_ok:
             problems.append(f"{name}: {empty_ok} trang status ok nhưng văn bản rỗng")
         n = max(st["pages"], 1)
@@ -363,6 +401,12 @@ def check(data_root: Path, per_tier: int = 20, n_suspect_samples: int = 20, seed
     odd_books = Counter()
     for r in scan["odd_pages"]:
         odd_books[(r["tier"], r["book"])] += 1
+    shape = {}  # O-30 (4): hai chỉ số hình dạng chữ, số trang theo engine và cuốn nhiều trang nhất
+    for reason in ("glued_text", "long_word"):
+        hits = [r for r in scan["suspects"] if reason in r["reasons"].split("|")]
+        shape[reason] = {"total": len(hits), "by_tier": dict(Counter(r["tier"] for r in hits)),
+                         "top_books": [[t, b, n] for (t, b), n in Counter((r["tier"], r["book"]) for r in hits).most_common(40)]}
+    shape["thresholds"] = {"glued_mean_word_len": GLUED_MEAN_WORD_LEN, "glued_min_letters": GLUED_MIN_LETTERS, "long_word_letters": LONG_WORD_LETTERS}
     summary = {
         "books": len(scan["books"]), "pages": sum(b["pages"] for b in scan["books"]),
         "problems_consistency": scan["problems"][:LOG_MESSAGES_CAP], "n_problems": len(scan["problems"]),
@@ -372,6 +416,7 @@ def check(data_root: Path, per_tier: int = 20, n_suspect_samples: int = 20, seed
         "books_with_baseline_share_over_5pct": sorted([(b["book"], b["baseline_share"]) for b in scan["books"] if b["baseline_share"] > 0.05],
                                                       key=lambda x: -x[1])[:30],
         "lang_model": lid_spec,
+        "shape_metrics": shape,
         "scripts_by_tier": {t: dict(c.most_common()) for t, c in scan["scripts"].items()},
         "languages_by_tier": {t: dict(c.most_common(15)) for t, c in scan["langs"].items()},
         "foreign_books": {"n": len(scan["foreign_books"]), "vi_share_max": FOREIGN_BOOK_MAX_SHARE,

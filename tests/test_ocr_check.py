@@ -60,6 +60,28 @@ def test_check_writes_summary_samples_and_catches_inconsistency(tmp_path):
     assert list((out / "samples/tier_baseline").glob("*.txt")) and list((out / "samples/tier_baseline").glob("*.jpg"))
 
 
+def test_page_metrics_flags_glued_text_and_long_words():
+    """Chữ dính liền không dấu cách và từ bịa dài bị gắn mã (O-30 4); văn bản thường và trang chữ Lào thì không."""
+    glued = "khuvucchauAThaiBinhDuongnamtrongnhungnamgandaydangphattrienmanhme" * 6
+    assert "glued_text" in page_metrics(glued)["reasons"]
+    toc = GOOD + "\nCONTRANSITIONALIZATION 12\n"
+    m = page_metrics(toc)
+    assert m["long_words"] == 1 and "long_word" in m["reasons"] and "glued_text" not in m["reasons"]
+    assert not {"glued_text", "long_word"} & set(page_metrics(GOOD)["reasons"])
+    assert not {"glued_text", "long_word"} & set(page_metrics(LAO)["reasons"])
+
+
+def test_check_counts_shape_metrics_by_tier(tmp_path):
+    """summary.json đếm trang chữ dính liền / từ bịa dài theo engine, kèm cuốn nhiều nhất và mẫu riêng."""
+    glued = "khuvucchauAThaiBinhDuongnamtrongnhungnamgandaydangphattrienmanhme" * 6
+    _write_book(tmp_path, "a", "1", [GOOD, glued, GOOD + " CONTRANSITIONALIZATION"], ["qwen3vl_8b_mt4k", "qwen3vl_8b_mt4k", "baseline"])
+    out = check(tmp_path, lang_model="heuristic")
+    s = json.loads((out / "summary.json").read_text(encoding="utf-8"))["shape_metrics"]
+    assert s["glued_text"]["by_tier"] == {"qwen3vl_8b_mt4k": 1} and s["long_word"]["by_tier"] == {"qwen3vl_8b_mt4k": 1, "baseline": 1}  # trang dính liền cũng có cụm dài
+    assert ["baseline", "a/1", 1] in s["long_word"]["top_books"]
+    assert (out / "samples/long_word_baseline").exists() and (out / "samples/glued_text_qwen3vl_8b_mt4k").exists()
+
+
 def test_script_of_picks_dominant_script():
     """Loại chữ viết theo nhóm có nhiều chữ cái nhất; không có chữ cái thì "none"."""
     assert script_of(GOOD) == "latin"
