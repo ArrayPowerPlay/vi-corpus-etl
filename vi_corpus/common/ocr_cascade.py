@@ -2,7 +2,8 @@
 Nối chuỗi engine OCR VLM (vi_corpus.ocr_bakeoff.cascade, O-20) vào các nguồn PDF: phần dùng chung giữa stbook, VJOL
 và (sau này) giáo trình.
 
-- run_pages: OCR nhiều trang PDF song song (tối đa `concurrency` trang gửi đồng thời), trả kết quả theo thứ tự trang.
+- run_pages: OCR nhiều trang PDF song song (tối đa `concurrency` trang gửi đồng thời), trả kết quả theo thứ tự trang; trang lỗi font
+  (J-10) được vẽ lại cả trang thay vì lấy ảnh nhúng.
 - CascadePageOcr: bộ OCR có đúng giao diện mà vi_corpus.common.pdf_text.extract_pdf cần (.ocr_pages): extract_pdf gom các
   trang scan của một PDF rồi gửi một lượt, thay vì OCR tuần tự từng trang (J-04).
 - CascadeOcrGetter: hàm `get_ocr` nạp lười. Chỉ khi gặp trang scan đầu tiên mới dựng server vLLM (nếu --serve), chờ server
@@ -23,24 +24,33 @@ logger = logging.getLogger("vi_corpus")
 SAFE_IMAGE_EXT = frozenset({"jpg", "png", "webp", "jp2"})
 
 
-def page_image_for_vlm(page) -> tuple[bytes, str]:
+def page_image_for_vlm(page, render: bool = False) -> tuple[bytes, str]:
     """
-    Ảnh của một trang PDF quét để gửi cho VLM: ảnh nhúng gốc (như stbook) nếu định dạng đọc được, không thì render 200 dpi PNG.
+    Ảnh của một trang PDF để gửi cho VLM: ảnh nhúng gốc (như stbook) nếu định dạng đọc được, không thì render 200 dpi PNG.
+
+    Args:
+        page:   Trang pymupdf.
+        render: True thì luôn vẽ lại cả trang (200 dpi PNG), không lấy ảnh nhúng. Dùng cho trang có lớp chữ hỏng (J-10): trang chữ
+                có hình minh hoạ sẽ bị lấy nhầm hình thay vì cả trang.
 
     Returns:
         (byte ảnh, phần mở rộng).
     """
     from vi_corpus.ocr_bakeoff.pages import page_image_bytes
 
+    if render:
+        return page.get_pixmap(dpi=200).tobytes("png"), "png"
     data, ext = page_image_bytes(page)
     if ext not in SAFE_IMAGE_EXT:
         return page.get_pixmap(dpi=200).tobytes("png"), "png"
     return data, ext
 
 
-def run_pages(cascade: CascadeOcr, pages: Iterable, concurrency: int = 32) -> list[dict]:
+def run_pages(cascade: CascadeOcr, pages: Iterable, concurrency: int = 32, render: Iterable[bool] | None = None) -> list[dict]:
     """
     OCR các trang PDF (pymupdf.Page) bằng chuỗi engine, tối đa `concurrency` trang gửi đồng thời; trả kết quả theo thứ tự trang.
+
+    `render` (cùng thứ tự với `pages`) cho biết trang nào phải vẽ lại cả trang thay vì lấy ảnh nhúng (xem page_image_for_vlm); None = không trang nào.
 
     Chỉ giữ khoảng 2 x concurrency ảnh trong bộ nhớ (sách 900 trang không nạp hết một lúc). Một luồng ném lỗi (ServerDown,
     EngineUnavailable) thì dừng cả lô và ném lên. `pages` phải còn sống (tài liệu chưa đóng) trong suốt lúc gọi.
@@ -48,13 +58,14 @@ def run_pages(cascade: CascadeOcr, pages: Iterable, concurrency: int = 32) -> li
     Returns:
         Danh sách kết quả CascadeOcr.page ({"text", "status", "tier", ...}), cùng thứ tự với `pages`.
     """
+    flags = None if render is None else list(render)
     results: dict[int, dict] = {}
     pending: dict = {}
     count = 0
     with ThreadPoolExecutor(concurrency) as pool:
         try:
             for i, page in enumerate(pages):
-                data, ext = page_image_for_vlm(page)
+                data, ext = page_image_for_vlm(page, bool(flags and flags[i]))
                 pending[pool.submit(cascade.page, data, ext)] = i
                 count = i + 1
                 while len(pending) >= 2 * concurrency:
@@ -81,16 +92,18 @@ class CascadePageOcr:
         self.cascade = cascade
         self.concurrency = concurrency
 
-    def ocr_pages(self, pages: Iterable) -> list[dict]:
+    def ocr_pages(self, pages: Iterable, render: Iterable[bool] | None = None) -> list[dict]:
         """
-        OCR các trang scan (pymupdf.Page) rồi đổi mỗi kết quả thành một mục trang của extract_pdf.
+        OCR các trang (pymupdf.Page) rồi đổi mỗi kết quả thành một mục trang của extract_pdf.
+
+        `render`: cờ từng trang, True = vẽ lại cả trang thay vì lấy ảnh nhúng (trang lỗi font, J-10).
 
         Returns:
             Danh sách {"text", "method": "ocr_vlm", "tier", "status"} (+ "rejected_text" nếu trang bị loại), theo thứ tự trang.
             Trang flagged / blank có text rỗng.
         """
         out = []
-        for r in run_pages(self.cascade, pages, self.concurrency):
+        for r in run_pages(self.cascade, pages, self.concurrency, render):
             entry = {"text": r["text"], "method": "ocr_vlm", "tier": r["tier"], "status": r["status"]}
             if "rejected_text" in r:
                 entry["rejected_text"] = r["rejected_text"]

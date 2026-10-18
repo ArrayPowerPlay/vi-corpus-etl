@@ -3,12 +3,14 @@ Stage quality: đo các chỉ số chất lượng văn bản, chấm điểm 0-
 
 Chất lượng kỹ thuật và quyền sử dụng là hai trục tách biệt (docs/PIPELINE.md): stage này chỉ quyết định chất lượng.
 - Lỗi cứng (hard): bản ghi tự động band D (too_short, too_long, empty, lang_not_allowed, low_alpha, replacement_chars,
-  repeated_ngrams, duplicate_lines).
+  repeated_ngrams, duplicate_lines, garbled_font).
 - Lỗi mềm (soft): trừ điểm, band theo điểm: A >= 85, B >= 70, C >= 55, còn lại D.
 - Ngôn ngữ (từ stage language, D-02): low_lang_score (lang_score dưới SourceProfile.min_lang_score, trừ nhẹ),
   mixed_language (ngôn ngữ thứ hai >= 20%, chỉ gắn nhãn, không trừ điểm: đoạn song ngữ được giữ theo R-33),
   low_diacritic (văn bản nhận là tiếng Việt nhưng gần như không có dấu, số đo vi_diacritic).
   lang_unknown: không còn chữ cái để nhận diện (language "und", F-07), chỉ gắn nhãn, không trừ điểm.
+  garbled_font (J-10): chữ hỏng do font PDF (từ có >= 2 dấu thanh chiếm tỷ lệ cao, vi_corpus.common.garbled); lưới an toàn khi
+  trang lỗi font lọt qua bước trích text, vì chữ hỏng vẫn toàn chữ Latinh có dấu nên fastText nhận là tiếng Việt.
 Công thức / code (F-03): các số đo hình dạng (rep_trigram, symbol, digit, upper, mean_word_len, alpha, vi_diacritic)
 tính trên phần văn xuôi còn lại sau vi_corpus.pipeline.spans.strip_math_code; words, lines, dup_line, end_punct... giữ
 trên văn bản gốc; math_share = tỷ lệ ký tự bị bỏ. Văn bản gần như toàn công thức / code (văn xuôi < MATH_PROSE_WORDS từ
@@ -21,12 +23,14 @@ Ngưỡng là điểm khởi đầu, cần chỉnh sau khi xem báo cáo (report
 import json
 import re
 
+from vi_corpus.common.garbled import GARBLED_MIN_WORDS, GARBLED_RATIO, garbled_ratio
 from vi_corpus.pipeline.config import RunConfig, SourceProfile
 from vi_corpus.pipeline.language import UNDETERMINED, is_mixed, vi_diacritic_ratio
 from vi_corpus.pipeline.spans import math_share, strip_math_code
 
-QUALITY_VERSION = "3"  # 2 = thêm low_lang_score, mixed_language, low_diacritic; 3 = dup_line bỏ dòng không có chữ
-# cái (F-01), số đo hình dạng trên văn xuôi, miễn cho văn bản toàn công thức / code (F-03), lang_unknown (F-07)
+QUALITY_VERSION = "4"  # 2 = thêm low_lang_score, mixed_language, low_diacritic; 3 = dup_line bỏ dòng không có chữ
+# cái (F-01), số đo hình dạng trên văn xuôi, miễn cho văn bản toàn công thức / code (F-03), lang_unknown (F-07);
+# 4 = thêm số đo garbled và mã cứng garbled_font (J-10)
 MIN_VI_DIACRITIC = 0.05  # tiếng Việt có dấu bình thường ~0,2-0,3 chữ có dấu / chữ cái
 # F-03, ngưỡng khởi điểm chưa đo: văn xuôi < MATH_PROSE_WORDS từ và math_share >= MATH_SHARE_MIN thì miễn MATH_EXEMPT
 MATH_PROSE_WORDS = 20
@@ -55,7 +59,8 @@ def compute_metrics(text: str) -> dict:
     Tính các số đo thô của một văn bản (không phụ thuộc nguồn).
 
     Các tỷ lệ tính trên số ký tự không phải khoảng trắng (alpha / digit / symbol / upper / replacement), số dòng
-    (dup_line / short_line / bullet / end_punct / boilerplate_line) hoặc số trigram từ (rep_trigram). alpha, digit,
+    (dup_line / short_line / bullet / end_punct / boilerplate_line) hoặc số trigram từ (rep_trigram); garbled là tỷ lệ từ có
+    >= 2 dấu thanh trên các từ >= 2 chữ cái, tính trên văn bản gốc, 0 nếu dưới GARBLED_MIN_WORDS từ. alpha, digit,
     symbol, upper, mean_word_len, rep_trigram, vi_diacritic đo trên văn xuôi (đã bỏ công thức / code, F-03); dup_line chỉ
     xét dòng có chữ cái (dòng "$$", "}", "---" lặp là cú pháp, F-01).
     """
@@ -67,6 +72,8 @@ def compute_metrics(text: str) -> dict:
     alpha = sum(c.isalpha() for c in nonspace)
     lines = [ln.strip() for ln in text.split("\n") if ln.strip()]
     n_lines = max(len(lines), 1)
+    garbled_share, garbled_words = garbled_ratio(text)
+    garbled = garbled_share if garbled_words >= GARBLED_MIN_WORDS else 0.0
     worded = [ln for ln in lines if any(c.isalpha() for c in ln)]
     lowered = [ln.lower() for ln in lines]
     return {
@@ -88,6 +95,7 @@ def compute_metrics(text: str) -> dict:
         "rep_trigram": _rep_trigram(pwords),
         "rep_trigram_raw": _rep_trigram(words),
         "vi_diacritic": vi_diacritic_ratio(prose),
+        "garbled": garbled,
         "lines": len(lines),
     }
 
@@ -125,6 +133,8 @@ def score_metrics(m: dict, lang: str | None, profile: SourceProfile, lang_score:
         reasons.append("repeated_ngrams")
     if m["dup_line"] > 0.5:
         reasons.append("duplicate_lines")
+    if m.get("garbled", 0.0) >= GARBLED_RATIO:
+        reasons.append("garbled_font")
 
     soft = [  # (điều kiện, mã, điểm trừ)
         (m["rep_trigram"] > 0.3, "repetitive", 20),
@@ -161,7 +171,7 @@ def score_metrics(m: dict, lang: str | None, profile: SourceProfile, lang_score:
 
 
 HARD_REASONS = frozenset({"empty", "too_short", "too_long", "lang_not_allowed", "low_alpha", "replacement_chars",
-                          "repeated_ngrams", "duplicate_lines"})
+                          "repeated_ngrams", "duplicate_lines", "garbled_font"})
 
 
 def band_of(score: float) -> str:

@@ -86,7 +86,7 @@ def iter_records(spec: SourceSpec, data_root: Path, limit_files: int | None = No
         data_root:     Thư mục gốc dữ liệu.
         limit_files:   Chỉ đọc N checkpoint đầu (chạy thử).
         with_meta:     Thêm khoá "meta" (JSON): article_id, galley_id, journal_slug, journal_title, year, language, doi, title, keywords,
-                       có/không metadata, số trang / dòng bị bỏ (bìa, mục lục, tài liệu tham khảo, tiêu đề chạy).
+                       có/không metadata, số trang lỗi font phải OCR lại (J-10), số trang / dòng bị bỏ (bìa, mục lục, tài liệu tham khảo, tiêu đề chạy).
         metadata_path: File metadata (mặc định <data-root>/<spec.path>/metadata/vjol_merged.jsonl); chỉ đọc khi with_meta.
     """
     checkpoints = []
@@ -129,6 +129,7 @@ def iter_records(spec: SourceSpec, data_root: Path, limit_files: int | None = No
                 **({k: md[k] for k in META_FIELDS if k != "year"} if md else {k: None for k in META_FIELDS if k != "year"}),
                 "year": year, "year_dir": done.get("year_dir"), "metadata_found": md is not None,
                 "galley_match": bool(md and md["galley_match"]), "pages": len(done["pages"]),
+                "garbled_pages": sum(bool(p.get("reason")) for p in done["pages"]),
                 "page_lines_removed": page_stats.get("lines_removed", 0), **clean_stats,
             }, ensure_ascii=False)
         yield rec

@@ -44,6 +44,10 @@ def format_report(rep: dict) -> str:
     if rep["ocr_status"]:
         lines.append(f"[vjol] OCR VLM: trạng thái {rep['ocr_status']}, engine được chọn {rep['ocr_tier']}, "
                      f"tỷ lệ flagged {rep['flagged_rate']:.2%}, trang baseline {rep['ocr_tier'].get('baseline', 0)}")
+    if rep["garbled_pages"]:
+        lines.append(f"[vjol] Lỗi font (J-10): {rep['garbled_docs']} bài, trang theo lý do {rep['garbled_pages']}")
+    if rep["old_version"]:
+        lines.append(f"[vjol] {rep['old_version']} checkpoint do bản trích text cũ ghi: chạy lại sẽ làm lại các file này (J-10)")
     if rep["checkpoints"]:
         lines.append(f"[vjol] {rep['pages_per_doc']:.1f} trang/bài; tổng {rep['seconds'] / 3600:.2f} giờ trích text (cộng dồn mọi tiến trình)")
     return "\n".join(lines)

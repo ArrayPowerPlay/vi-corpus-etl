@@ -676,10 +676,10 @@ Muốn thêm một bộ dữ liệu HF mới: thêm một `DatasetSpec` vào `vi
 
 ---
 
-# Phần G — Trích text VJOL (bài báo khoa học, J-01 ... J-06)
+# Phần G — Trích text VJOL (bài báo khoa học, J-01 ... J-06, J-10)
 
 Dữ liệu: `<data-root>/raw/vjol/<năm>/<article_id>_<galley_id>.pdf` + `raw/vjol/metadata/vjol_merged.jsonl` (mỗi dòng một bài: tiêu đề, tạp chí, năm, ngôn ngữ, DOI, ...).
-Chỉ **xử lý**, không crawl. Mỗi trang đọc tối đa 2 lần (R-26): lần 1 PyMuPDF cho mọi trang (lớp chữ Unicode, đổi font TCVN3), lần 2 chỉ cho **trang scan**, bằng chuỗi
+Chỉ **xử lý**, không crawl. Mỗi trang đọc tối đa 2 lần (R-26): lần 1 PyMuPDF cho mọi trang (lớp chữ Unicode, đổi font TCVN3), lần 2 chỉ cho **trang scan** và **trang lỗi font** (J-10, xem dưới), bằng chuỗi
 engine VLM của stbook (O-20: `qwen3vl_8b_mt4k` → `qwen3vl_8b_rp110` → Paddle + VietOCR → bỏ trang). Các trang scan của một PDF được gửi song song (`--concurrency`, mặc định 32).
 
 ```bash
@@ -689,7 +689,9 @@ uv run python scripts/vjol/extract.py --data-root /duong/dan/data --sample-docs 
 uv run --no-sync python scripts/vjol/extract.py --data-root /duong/dan/data --sample-docs 3000 --seed 0 --gpu 0 --serve --vllm-bin $(which vllm)
 # 4 GPU (mỗi GPU một server + một tiến trình, PDF chia nhau bằng khoá); xong tự xuất Parquet và in thống kê
 DATA_ROOT=/duong/dan/data VLLM_BIN=$(which vllm) SAMPLE_DOCS=3000 ./scripts/vjol/run_extract_vlm.sh
-uv run python scripts/vjol/extract.py --data-root /duong/dan/data --status        # tiến độ, trang theo method / engine / trạng thái
+uv run python scripts/vjol/extract.py --data-root /duong/dan/data --status        # tiến độ, trang theo method / engine / trạng thái, trang lỗi font, checkpoint cũ
+# đo chữ hỏng do font trên checkpoint có sẵn (CPU, J-10): số trang / bài bị nghi, quét ngưỡng, phân bố theo năm, ví dụ
+uv run python scripts/vjol/check_garbled.py --data-root /duong/dan/data      # -> processed/vjol_garbled_check/
 # pipeline chung trên mẫu 10.000 đoạn VJOL
 uv run python scripts/run_pipeline.py --data-root /duong/dan/data --mix vjol=10000 --total 10000 --run-name vjol_10k
 ```
@@ -697,10 +699,11 @@ uv run python scripts/run_pipeline.py --data-root /duong/dan/data --mix vjol=100
 - **Mẫu** (`--sample-docs N --seed S`): N bài chia đều theo thư mục năm (năm ít bài nhường chỗ cho năm khác). Mẫu nhỏ luôn nằm trong mẫu lớn (cùng seed), nên tăng N rồi chạy lại chỉ làm phần mới. Không có cờ này thì xử lý mọi PDF.
 - **Kết quả**: `interim/vjol_text/<sha256>.json` (text từng trang, `method` = `text` / `tcvn3` / `ocr_vlm` / `empty` / `needs_ocr`; trang `ocr_vlm` có `tier` và `status` = `ok` / `blank` / `flagged`, trang `flagged` có text rỗng và `rejected_text`).
   Checkpoint theo PDF (sha256), bị ngắt thì chạy lại đúng lệnh cũ. `processed/vjol/vjol.parquet` để xem; pipeline đọc thẳng checkpoint.
+- **Trang lỗi font (J-10)**: lớp chữ toàn chữ Latinh có dấu nhưng sai ("Baỷng, hieọu, ngửụứi"; không phải TCVN3, ~12% đoạn ở mẫu 3.000 bài đầu tiên). Dò theo từng trang, không phụ thuộc ngôn ngữ (`vi_corpus/common/garbled.py`): trang có >= 10 từ mà >= 8% từ (>= 2 chữ cái) mang từ hai dấu thanh trở lên thì bị nghi (tiếng Việt đúng chỉ có tối đa một dấu thanh mỗi âm tiết). Trang bị nghi đi OCR như trang scan, nhưng **vẽ lại cả trang** (200 dpi PNG) thay vì lấy ảnh nhúng; bài có >= 30% số trang có chữ bị nghi thì **cả bài** đi OCR. Mục trang ghi `reason` (`garbled_text_layer` | `garbled_doc`) và `garbled_text` (chữ hỏng, giữ để kiểm tra, không dùng); OCR bị `flagged` thì trang rỗng, không quay lại dùng chữ hỏng; `--no-ocr` thì trang thành `needs_ocr`. Checkpoint ghi `extract_version`; checkpoint do bản cũ ghi (thiếu hoặc khác `EXTRACT_VERSION`) bị **làm lại** ở lần chạy sau. Lưới an toàn ở stage quality: mã cứng `garbled_font` (band D). Ngưỡng là điểm khởi đầu: chạy `check_garbled.py` trước khi tốn GPU để chỉnh (`GARBLED_RATIO`, `GARBLED_MIN_WORDS`, `GARBLED_DOC_SHARE` trong `garbled.py`).
 - **Làm sạch lúc sinh bản ghi** (`vi_corpus/vjol/clean.py`, không lưu vào interim): bỏ trang bìa (trang đầu < 40 từ, bài >= 3 trang), trang mục lục, phần Tài liệu tham khảo / References (từ tiêu đề đến Abstract / Phụ lục / Lời cảm ơn kế tiếp hoặc hết bài), rồi tiêu đề chạy và số trang như giáo trình. Ngưỡng là điểm khởi đầu.
-- **Metadata**: `vjol_merged.jsonl` đọc theo luồng một lượt, chỉ giữ bài có trong mẫu, nối qua `article_id`; PDF không có dòng metadata vẫn thành bản ghi (thiếu trường). Có trong cột `meta` của pipeline: `journal_slug`, `journal_title`, `year`, `language`, `doi`, `title`, `keywords`, `article_id`, `galley_id`, và số trang / dòng bị bỏ.
+- **Metadata**: `vjol_merged.jsonl` đọc theo luồng một lượt, chỉ giữ bài có trong mẫu, nối qua `article_id`; PDF không có dòng metadata vẫn thành bản ghi (thiếu trường). Có trong cột `meta` của pipeline: `journal_slug`, `journal_title`, `year`, `language`, `doi`, `title`, `keywords`, `article_id`, `galley_id`, và số trang lỗi font phải OCR lại, số trang / dòng bị bỏ.
 - **Lỗi hệ thống** (`ServerDown`, `EngineUnavailable`) dừng cả lượt, không loại trang âm thầm (O-24); PDF đã xong vẫn nằm trong checkpoint. PDF hỏng chỉ tính một lỗi. Quyền `rights_status = unknown` (chỉ gắn nhãn, R-01).
-- **Chưa làm ở bản đầu**: `cmap_healer` và phát hiện font hỏng (V-10), parser bố cục (GROBID / Marker / Docling), dedup VJOL với nguồn khác (chạy `scripts/dedup_global.py` sau), bộ lọc trang `baseline` theo tỷ lệ âm tiết (O-27 c, chưa có ngưỡng).
+- **Chưa làm ở bản đầu**: `cmap_healer` (V-10; chữ hỏng do font được xử lý bằng OCR, J-10), parser bố cục (GROBID / Marker / Docling), dedup VJOL với nguồn khác (chạy `scripts/dedup_global.py` sau), bộ lọc trang `baseline` theo tỷ lệ âm tiết (O-27 c, chưa có ngưỡng).
 
 ## Giấy phép dữ liệu
 Các bộ SEA dùng giấy phép [ODC-By 1.0](https://opendatacommons.org/licenses/by/1-0/), và người dùng cần tuân thủ [CommonCrawl ToU](https://commoncrawl.org/terms-of-use/).

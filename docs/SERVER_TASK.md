@@ -301,6 +301,30 @@ Sau lệnh 2, nếu log pipeline báo `chỉ lấy được X/10000 mẫu` thì 
 
 ---
 
+## S-13. VJOL: chạy lại mẫu 3.000 bài sau khi sửa chữ hỏng do font (J-10)  [CHẠY SAU S-12]
+
+**Mục đích**: ~12% đoạn của lần chạy S-12 là chữ hỏng do font PDF. Bản code mới dò trang lỗi font và đưa qua OCR VLM (vẽ lại cả trang). Phải đo trước khi tốn GPU để chốt ngưỡng, rồi chạy lại mẫu và so với J-09.
+
+```bash
+cd /home/jovyan/dinh/vi-corpus-etl && git fetch origin && git checkout worktree-vjol-pipeline && git pull
+source /home/jovyan/dinh/env.sh
+# 1) ĐO TRƯỚC (CPU, vài phút, trên checkpoint cũ): số trang / bài bị nghi, quét ngưỡng, ví dụ -> gửi cho Claude để chốt ngưỡng
+uv run python scripts/vjol/check_garbled.py --data-root data
+tar czf vjol_garbled_check.tar.gz -C data/processed vjol_garbled_check
+# 2) (sau khi chốt ngưỡng) chạy lại mẫu 3.000 bài trên 4 GPU, trong tmux: checkpoint cũ tự bị làm lại; ghi lại giờ thực bằng `date` trước và sau
+date; DATA_ROOT=data VLLM_BIN=$(which vllm) SAMPLE_DOCS=3000 ./scripts/vjol/run_extract_vlm.sh; date
+# 3) đo lại: số trang lỗi font còn sót phải gần 0 (trang đã OCR giữ garbled_text nên script vẫn đếm được)
+uv run python scripts/vjol/check_garbled.py --data-root data
+# 4) pipeline mới, tên run mới để so với vjol_10k
+uv run --group curator --group viz python scripts/run_pipeline.py --data-root data --mix vjol=10000 --total 10000 --run-name vjol_10k_v2
+```
+
+**Lưu ý**: lệnh 2 làm lại **cả** 3.000 bài, kể cả OCR lại trang scan (khoảng 1,6 giờ theo ước, chưa đo). Nếu không chờ được, báo Claude để thêm cờ chỉ làm lại các bài bị nghi.
+
+**Báo lại cho Claude**: `tar` ở lệnh 1 (hoặc nội dung `summary.json` + `examples.txt`), `extract.py --status` sau lệnh 2 (dòng "Lỗi font", số trang `ocr_vlm`, `flagged`), giờ thực của lệnh 2 (hai dòng `date`), `summary.json` của lần đo ở lệnh 3, `manifest.json` + `report.html` của `vjol_10k_v2` (số đoạn band D lý do `garbled_font`).
+
+---
+
 ## Bảng ghi kết quả
 
 (Điền sau khi chạy. Ghi ngày, người chạy, lệnh đã chạy nếu khác hướng dẫn.)

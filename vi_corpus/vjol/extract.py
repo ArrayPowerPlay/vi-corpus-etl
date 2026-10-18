@@ -6,10 +6,11 @@ interim/vjol_text/<sha256>.json cho mỗi PDF duy nhất (định dạng checkpo
 vi_corpus.common.batch_extract, dùng chung với giáo trình):
 
     {"sha256", "size", "paths", "year_dir", "article_id", "galley_id", "format", "pages": [{"text", "method", ...}],
-     "error", "skipped", "parser_version", "seconds", "created_at"}
+     "error", "skipped", "parser_version", "extract_version", "seconds", "created_at"}
 
 Chiến lược (R-26, J-03, J-04): mỗi trang đọc tối đa 2 lần. Lần 1 là PyMuPDF cho mọi trang (text / tcvn3, vi_corpus.common.pdf_text);
-lần 2 chỉ cho trang scan, bằng chuỗi engine VLM (vi_corpus.common.ocr_cascade), method "ocr_vlm" kèm tier và status.
+lần 2 chỉ cho trang scan và trang lỗi font (J-10: lớp chữ toàn chữ có dấu nhưng sai, vi_corpus.common.garbled), bằng chuỗi engine
+VLM (vi_corpus.common.ocr_cascade), method "ocr_vlm" kèm tier và status; trang lỗi font còn có reason và garbled_text.
 - list_pdfs_by_year / sample_pdfs: kiểm kê PDF theo thư mục năm và chọn mẫu N bài chia đều theo năm. Mẫu là TIỀN TỐ của một
   thứ tự cố định theo seed, nên tăng N rồi chạy lại thì mẫu cũ nằm trong mẫu mới và chỉ phần mới được làm.
 - extract_file: trích một PDF, không ném lỗi của file (PDF hỏng -> error); ServerDown / EngineUnavailable (lỗi hệ thống) thì
@@ -37,6 +38,9 @@ from vi_corpus.ocr_bakeoff.cascade import EngineUnavailable, ServerDown
 logger = logging.getLogger("vi_corpus")
 
 TEXT_DIR = "interim/vjol_text"
+# Phiên bản cách trích text VJOL, ghi vào checkpoint; đổi số này thì lần chạy sau làm lại mọi checkpoint cũ hơn. 1 = bản đầu (chưa có
+# trường extract_version); 2 = J-10: trang lỗi font cũng đi OCR. Không dùng PARSER_VERSION vì nó dùng chung với giáo trình.
+EXTRACT_VERSION = "2"
 CLAIM_DIR = "state/vjol_extract/claims"
 YEAR_DIR = re.compile(r"^\d{4}$")
 PDF_STEM = re.compile(r"^(\d+)_(\d+)$")  # <article_id>_<galley_id>
@@ -128,7 +132,7 @@ def extract_file(path: Path, get_ocr: Callable[[], object | None]) -> dict:
     Trích text một PDF VJOL; không ném lỗi của file.
 
     Returns:
-        {"format", "pages", "error", "skipped", "parser_version", "seconds"}: không phải PDF thì skipped="unsupported_format";
+        {"format", "pages", "error", "skipped", "parser_version", "extract_version", "seconds"}: không phải PDF thì skipped="unsupported_format";
         PDF hỏng / có mật khẩu thì error là thông báo lỗi.
 
     Raises:
@@ -136,12 +140,13 @@ def extract_file(path: Path, get_ocr: Callable[[], object | None]) -> dict:
     """
     t0 = time.time()
     fmt = detect_format(path)
-    out = {"format": fmt, "pages": [], "error": None, "skipped": None, "parser_version": PARSER_VERSION}
+    out = {"format": fmt, "pages": [], "error": None, "skipped": None, "parser_version": PARSER_VERSION,
+           "extract_version": EXTRACT_VERSION}
     if fmt != "pdf":
         out["skipped"] = "unsupported_format"
     else:
         try:
-            out["pages"] = extract_pdf(path, get_ocr)
+            out["pages"] = extract_pdf(path, get_ocr, detect_garbled=True)
         except (ServerDown, EngineUnavailable):
             raise
         except Exception as exc:  # noqa: BLE001 — một PDF lỗi không được dừng cả lô
@@ -167,7 +172,8 @@ def run_extract(root: Path, data_root: Path, get_ocr: Callable[[], object | None
     files = select_files(root, sample_docs, seed, limit_files)
     logger.info("VJOL: %d PDF được chọn (sample_docs=%s, seed=%s)", len(files), sample_docs, seed)
     return run_batch(root, data_root, TEXT_DIR, extract_file, path_meta, get_ocr, ocr_enabled=ocr_enabled,
-                     desc="Trích text VJOL", retry_skipped=retry_skipped, files=files, claim_dir=CLAIM_DIR)
+                     desc="Trích text VJOL", retry_skipped=retry_skipped, files=files, claim_dir=CLAIM_DIR,
+                     extract_version=EXTRACT_VERSION)
 
 
 def report(root: Path | None, data_root: Path) -> dict:
@@ -180,11 +186,13 @@ def report(root: Path | None, data_root: Path) -> dict:
     Returns:
         {"pdfs_in_raw", "checkpoints", "errors", "skipped", "pages": {method: số trang}, "ocr_tier": {engine: số trang ok},
          "ocr_status": {ok | blank | flagged: số trang}, "flagged_rate": tỷ lệ trang flagged trên trang OCR VLM,
-         "seconds": tổng giây trích text, "pages_per_doc": số trang trung bình mỗi bài}.
+         "seconds": tổng giây trích text, "pages_per_doc": số trang trung bình mỗi bài, "old_version": số checkpoint ghi bởi bản
+         trích text cũ (sẽ bị làm lại), "garbled_pages": {lý do: số trang lỗi font}, "garbled_docs": số bài có trang lỗi font}.
     """
     info = {"pdfs_in_raw": sum(len(v) for v in list_pdfs_by_year(root).values()) if root and root.is_dir() else None,
             "checkpoints": 0, "errors": 0, "skipped": 0, "seconds": 0.0}
-    methods, tiers, statuses = Counter(), Counter(), Counter()
+    methods, tiers, statuses, garbled = Counter(), Counter(), Counter(), Counter()
+    garbled_docs = old_version = 0
     for ckpt in sorted((data_root / TEXT_DIR).glob("*.json")):
         done = read_json(ckpt)
         if done is None:
@@ -193,6 +201,10 @@ def report(root: Path | None, data_root: Path) -> dict:
         info["errors"] += bool(done.get("error"))
         info["skipped"] += bool(done.get("skipped"))
         info["seconds"] += done.get("seconds") or 0.0
+        old_version += done.get("extract_version") != EXTRACT_VERSION
+        reasons = [p["reason"] for p in done["pages"] if p.get("reason")]
+        garbled.update(reasons)
+        garbled_docs += bool(reasons)
         for page in done["pages"]:
             methods[page["method"]] += 1
             if page["method"] == "ocr_vlm":
@@ -201,5 +213,6 @@ def report(root: Path | None, data_root: Path) -> dict:
                     tiers[page["tier"]] += 1
     n_vlm = sum(statuses.values())
     return {**info, "seconds": round(info["seconds"], 1), "pages": dict(methods), "ocr_tier": dict(tiers),
-            "ocr_status": dict(statuses), "flagged_rate": statuses["flagged"] / n_vlm if n_vlm else None,
+            "ocr_status": dict(statuses), "old_version": old_version, "garbled_pages": dict(garbled),
+            "garbled_docs": garbled_docs, "flagged_rate": statuses["flagged"] / n_vlm if n_vlm else None,
             "pages_per_doc": sum(methods.values()) / info["checkpoints"] if info["checkpoints"] else None}

@@ -8,8 +8,13 @@ Mỗi trang đi theo đường rẻ nhất còn cho ra text:
     "ocr"       : trang scan (gần như không có chữ nhưng có ảnh), OCR bằng vi_corpus.common.ocr.
     "ocr_vlm"   : trang scan OCR bằng chuỗi engine VLM (vi_corpus.common.ocr_cascade): thêm "tier" (engine được chọn) và
                   "status" ("ok" | "blank" | "flagged"); trang flagged có text rỗng, văn bản bị loại nằm ở "rejected_text".
-    "needs_ocr" : trang scan nhưng lần chạy này không OCR được (tắt OCR / chưa cài nhóm ocr).
+    "needs_ocr" : trang scan (hoặc trang lỗi font, xem dưới) nhưng lần chạy này không OCR được (tắt OCR / chưa cài nhóm ocr).
     "empty"     : trang trắng.
+
+Trang lỗi font (J-10, chỉ khi extract_pdf(detect_garbled=True), VJOL dùng): lớp chữ toàn chữ Latinh có dấu nhưng sai ("Baỷng, hieọu"),
+phát hiện bằng vi_corpus.common.garbled; trang đó (và cả bài nếu >= 30% trang có chữ bị nghi) được OCR lại như trang scan, vẽ lại cả
+trang. Mục trang có thêm "reason" ("garbled_text_layer" | "garbled_doc") và "garbled_text" (lớp chữ hỏng, giữ để kiểm tra, không dùng);
+OCR bị flagged thì trang rỗng, không quay lại dùng chữ hỏng.
 
 Các lỗi thật đã gặp trên giáo trình và được xử lý ở đây:
 - Slide xuất từ PowerPoint hay mất dấu cách sau chữ có dấu ("cụthểmà"): lớp chữ không có ký tự
@@ -27,6 +32,8 @@ import re
 from collections.abc import Callable
 
 import pymupdf
+
+from vi_corpus.common.garbled import plan_garbled
 
 # Khoảng trống giữa 2 ký tự lớn hơn tỉ lệ này của cỡ chữ thì coi là có dấu cách.
 SPACE_GAP_RATIO = 0.15
@@ -103,18 +110,22 @@ def tcvn3_to_unicode(text: str) -> str:
     return "".join(_TCVN3.get(c, c) for c in text)
 
 
-def extract_pdf(path, get_ocr: Callable[[], object | None]) -> list[dict]:
+def extract_pdf(path, get_ocr: Callable[[], object | None], detect_garbled: bool = False) -> list[dict]:
     """
     Trích text từng trang của một PDF.
 
     Args:
         path:    Đường dẫn PDF.
-        get_ocr: Hàm trả về bộ OCR hoặc None nếu không OCR được; chỉ được gọi khi gặp trang scan, để tài liệu có sẵn
-                 chữ không phải nạp mô hình OCR. Bộ OCR có .page_text(ảnh PIL) -> str (OCR tuần tự từng trang), hoặc
-                 .ocr_pages(các trang pymupdf) -> danh sách {"text", "method", ...} theo thứ tự (OCR song song cả lô).
+        get_ocr: Hàm trả về bộ OCR hoặc None nếu không OCR được; chỉ được gọi khi gặp trang cần OCR (scan hoặc lỗi font), để tài
+                 liệu có sẵn chữ không phải nạp mô hình OCR. Bộ OCR có .page_text(ảnh PIL) -> str (OCR tuần tự từng trang), hoặc
+                 .ocr_pages(các trang pymupdf, render=cờ từng trang) -> danh sách {"text", "method", ...} theo thứ tự (OCR song
+                 song cả lô; render=True là vẽ lại cả trang thay vì lấy ảnh nhúng).
+        detect_garbled: True thì trang có lớp chữ hỏng do font (vi_corpus.common.garbled) cũng được OCR lại (J-10); mặc định tắt,
+                 nguồn khác (giáo trình) chạy y như trước.
 
     Returns:
-        Danh sách {"text": ..., "method": ...} theo thứ tự trang (method xem đầu file).
+        Danh sách {"text": ..., "method": ...} theo thứ tự trang (method xem đầu file). Trang lỗi font có thêm "reason" và
+        "garbled_text".
 
     Raises:
         ValueError: PDF bị cắt cụt / hỏng (PyMuPDF phải tự sửa khi mở) hoặc có mật khẩu.
@@ -132,28 +143,38 @@ def extract_pdf(path, get_ocr: Callable[[], object | None]) -> list[dict]:
             texts = [page_text(page, tcvn3_all=True) for page in doc]
         pages: list[dict | None] = []
         scan_idx: list[int] = []
+        layer: list[str | None] = []  # text lớp chữ của trang chữ (None cho trang scan / trang trắng), để dò chữ hỏng
         for i, (page, text) in enumerate(zip(doc, texts)):
             if len("".join(text.split())) >= MIN_TEXT_CHARS or not page.get_images():
                 if not text.strip():
                     pages.append({"text": "", "method": "empty"})
-                elif tcvn3:
-                    pages.append({"text": text, "method": "tcvn3"})
+                    layer.append(None)
                 else:
-                    pages.append({"text": text, "method": "text"})
+                    pages.append({"text": text, "method": "tcvn3" if tcvn3 else "text"})
+                    layer.append(text)
                 continue
             pages.append(None)  # trang scan: điền sau khi OCR
             scan_idx.append(i)
-        if scan_idx:
+            layer.append(None)
+        reasons: dict[int, str] = {}  # trang chữ bị lỗi font -> lý do (J-10), cũng đi OCR như trang scan
+        if detect_garbled:
+            reasons = {i: r for i, r in enumerate(plan_garbled(layer)) if r}
+            for i in reasons:
+                pages[i] = None
+        todo = sorted([*scan_idx, *reasons])
+        if todo:
             ocr = get_ocr()
             if ocr is None:
-                for i in scan_idx:
-                    pages[i] = {"text": texts[i], "method": "needs_ocr"}
-            elif hasattr(ocr, "ocr_pages"):  # OCR nhận cả lô trang để gửi song song (CascadePageOcr)
-                for i, entry in zip(scan_idx, ocr.ocr_pages(doc[i] for i in scan_idx)):
-                    pages[i] = entry
+                for i in todo:
+                    pages[i] = {"text": texts[i], "method": "needs_ocr", **({"reason": reasons[i]} if i in reasons else {})}
             else:
-                for i in scan_idx:
-                    pages[i] = {"text": ocr.page_text(page_image(doc[i])), "method": "ocr"}
+                if hasattr(ocr, "ocr_pages"):  # OCR nhận cả lô trang để gửi song song (CascadePageOcr)
+                    kwargs = {"render": [i in reasons for i in todo]} if reasons else {}
+                    results = ocr.ocr_pages([doc[i] for i in todo], **kwargs)
+                else:
+                    results = [{"text": ocr.page_text(page_image(doc[i], render=i in reasons)), "method": "ocr"} for i in todo]
+                for i, entry in zip(todo, results):
+                    pages[i] = {**entry, "reason": reasons[i], "garbled_text": texts[i]} if i in reasons else entry
         return pages
 
 
