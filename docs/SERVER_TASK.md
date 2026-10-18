@@ -308,7 +308,8 @@ Sau lệnh 2, nếu log pipeline báo `chỉ lấy được X/10000 mẫu` thì 
 ```bash
 cd /home/jovyan/dinh/vi-corpus-etl && git fetch origin && git checkout worktree-vjol-pipeline && git pull
 source /home/jovyan/dinh/env.sh
-# 1) ĐO TRƯỚC (CPU, vài phút, trên checkpoint cũ): số trang / bài bị nghi, quét ngưỡng, ví dụ -> gửi cho Claude để chốt ngưỡng
+# 1) ĐO TRƯỚC (CPU, vài phút, trên checkpoint cũ): số trang / bài bị nghi, quét ngưỡng, ví dụ, blind_spots.txt -> gửi cho Claude để chốt ngưỡng
+#    (J-13: chạy lần 2 sau khi hạ ngưỡng xuống 5% và thêm blind_spots.txt; âm tiết lạ cần data/processed/ocr_bakeoff/syllables.json, thiếu thì bỏ qua)
 uv run python scripts/vjol/check_garbled.py --data-root data
 tar czf vjol_garbled_check.tar.gz -C data/processed vjol_garbled_check
 # 2) (sau khi chốt ngưỡng) chạy lại mẫu 3.000 bài trên 4 GPU, trong tmux: checkpoint cũ tự bị làm lại; ghi lại giờ thực bằng `date` trước và sau

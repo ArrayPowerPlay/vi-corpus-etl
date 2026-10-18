@@ -9,6 +9,8 @@ TRƯỚC khi tốn GPU chạy lại mẫu.
     docs.csv       : mỗi bài một dòng (năm, số trang chữ, số trang bị nghi, tỷ lệ, bài có bị nâng lên cấp bài không).
     pages.csv      : mọi trang bị nghi kèm tỷ lệ, lý do và đoạn đầu của lớp chữ.
     examples.txt   : vài trang bị nghi nặng nhất và vài trang ngẫu nhiên, để mắt người xem có đúng là chữ hỏng không.
+    blind_spots.txt: các trang KHÔNG bị nghi nhưng đáng xem (J-13): sát dưới ngưỡng, nhiều cụm chữ một ký tự nhất, nhiều âm tiết lạ nhất
+                     (cần syllables.json của O-27), và trang có lớp chữ nhưng quá ít từ; để biết bộ dò có bỏ sót kiểu chữ hỏng nào không.
 Lớp chữ của một trang là text của trang "text" / "tcvn3", hoặc "garbled_text" nếu trang đã được OCR lại vì lỗi font (nên chạy được cả
 trước lẫn sau khi chạy lại mẫu). Trang scan, trang trắng không có lớp chữ.
 """
@@ -31,6 +33,7 @@ from vi_corpus.common.garbled import (
     single_letter_ratio,
 )
 from vi_corpus.common.state import read_json, write_json_atomic
+from vi_corpus.ocr_bakeoff.syllables import load_syllables, unknown_rate
 from vi_corpus.pipeline.language import vi_diacritic_ratio
 from vi_corpus.vjol.extract import TEXT_DIR
 
@@ -45,6 +48,9 @@ PAGES_PER_SEC_PER_GPU = 1.55  # O-22, để ước giờ OCR lại
 GPUS = 4
 SNIPPET = 160
 N_EXAMPLES = 15
+SYL_MIN_WORDS = 30  # trang ít từ hơn mức này không tính tỷ lệ âm tiết lạ
+SYLLABLES_REL = "processed/ocr_bakeoff/syllables.json"
+NEAR_BAND = (0.02, GARBLED_RATIO)  # "sát dưới ngưỡng": tỷ lệ trong khoảng này mà chưa bị nghi
 
 
 def layer_text(page: dict) -> str | None:
@@ -109,13 +115,14 @@ def sweep(docs: list[dict]) -> list[dict]:
     return out
 
 
-def check(data_root: Path, seed: int = 0) -> Path:
+def check(data_root: Path, seed: int = 0, syllables: Path | None = None) -> Path:
     """
     Chạy toàn bộ phần đo trên checkpoint VJOL hiện có và ghi kết quả vào <data_root>/processed/vjol_garbled_check/.
 
     Args:
         data_root: Thư mục gốc dữ liệu.
         seed:      Hạt giống chọn trang ngẫu nhiên cho examples.txt.
+        syllables: File tập âm tiết (mặc định <data_root>/processed/ocr_bakeoff/syllables.json); thiếu thì bỏ số đo âm tiết lạ.
 
     Returns:
         Đường dẫn thư mục kết quả.
@@ -129,6 +136,11 @@ def check(data_root: Path, seed: int = 0) -> Path:
     doc_rows: list[dict] = []
     single: dict[str, list[float]] = {"suspect": [], "normal": []}
     n_text_pages = 0
+    syl_path = syllables or data_root / SYLLABLES_REL
+    vocab = load_syllables(syl_path) if syl_path.exists() else None
+    normal: list[dict] = []  # trang không bị nghi, cho blind_spots.txt
+    short: list[dict] = []
+    unknown: list[float] = []
     for d in docs:
         plan = plan_garbled(d["layers"])
         text_pages = [(i, t) for i, t in enumerate(d["layers"]) if t is not None and t.strip()]
@@ -148,8 +160,19 @@ def check(data_root: Path, seed: int = 0) -> Path:
             ratio, n_words = garbled_ratio(t)
             if n_words >= GARBLED_MIN_WORDS:
                 hist[hist_bin(ratio)] += 1
-            if vi_diacritic_ratio(t) >= VI_MIN_DIACRITIC:
+            is_vi = vi_diacritic_ratio(t) >= VI_MIN_DIACRITIC
+            if is_vi:
                 single["suspect" if plan[i] == REASON_PAGE else "normal"].append(single_letter_ratio(t))
+            if plan[i] is None:
+                row = {"year": d["year"], "path": d["path"], "page": i + 1, "ratio": ratio, "words": n_words,
+                       "single": single_letter_ratio(t) if is_vi else 0.0, "unknown": None,
+                       "snippet": " ".join(t.split())[:SNIPPET]}
+                if vocab is not None and is_vi:
+                    unk, n_w = unknown_rate(t, vocab)
+                    if n_w >= SYL_MIN_WORDS:
+                        row["unknown"] = unk / n_w
+                        unknown.append(row["unknown"])
+                (normal if n_words >= GARBLED_MIN_WORDS else short).append(row)
             if plan[i] == REASON_PAGE:
                 pages_rows.append({"sha256": d["sha256"], "path": d["path"], "year": d["year"], "page": i + 1,
                                    "ratio": round(ratio, 4), "words": n_words, "reason": plan[i],
@@ -169,6 +192,8 @@ def check(data_root: Path, seed: int = 0) -> Path:
         "ratio_histogram_pages": dict(sorted(hist.items())),
         "by_year": {str(y): dict(c) for y, c in sorted(years.items(), key=lambda kv: (kv[0] is None, kv[0]))},
         "single_letter_ratio_vi_pages": {k: quantiles(v) for k, v in single.items()},
+        "unknown_syllable_rate_vi_pages_not_suspect": quantiles(unknown) if vocab is not None else "thiếu syllables.json",
+        "short_text_pages": len(short),
         "sweep": sweep(docs),
     }
     write_json_atomic(out_dir / "summary.json", summary)
@@ -188,6 +213,22 @@ def check(data_root: Path, seed: int = 0) -> Path:
             f.write(f"=== {title}\n")
             for r in rows:
                 f.write(f"[{r['year']}] {r['path']} trang {r['page']} tỷ lệ {r['ratio']:.3f}: {r['snippet']}\n")
+    with open(out_dir / "blind_spots.txt", "w", encoding="utf-8") as f:
+        def dump(title: str, rows: list[dict]) -> None:
+            """Ghi một nhóm trang: năm, đường dẫn, trang, các số đo và đoạn đầu."""
+            f.write(f"=== {title}\n")
+            for r in rows:
+                unk = "-" if r["unknown"] is None else f"{r['unknown']:.2f}"
+                f.write(f"[{r['year']}] {r['path']} trang {r['page']} garbled {r['ratio']:.3f} một-ký-tự {r['single']:.2f} "
+                        f"âm-tiết-lạ {unk} ({r['words']} từ): {r['snippet']}\n")
+
+        near = [r for r in normal if NEAR_BAND[0] <= r["ratio"] < NEAR_BAND[1]]
+        dump(f"Sát dưới ngưỡng ({NEAR_BAND[0]}-{NEAR_BAND[1]}): {len(near)} trang, lấy ngẫu nhiên", rng.sample(near, min(N_EXAMPLES, len(near))))
+        dump("Nhiều cụm chữ một ký tự nhất (trang tiếng Việt, không bị nghi)", sorted(normal, key=lambda r: -r["single"])[:N_EXAMPLES])
+        if vocab is not None:
+            dump("Nhiều âm tiết lạ nhất (trang tiếng Việt, không bị nghi)",
+                 sorted((r for r in normal if r["unknown"] is not None), key=lambda r: -r["unknown"])[:N_EXAMPLES])
+        dump(f"Có lớp chữ nhưng dưới {GARBLED_MIN_WORDS} từ: {len(short)} trang, lấy ngẫu nhiên", rng.sample(short, min(N_EXAMPLES, len(short))))
     logger.info("Đo chữ hỏng: %s", json.dumps({k: summary[k] for k in ("docs", "text_layer_pages", "suspect_pages", "docs_to_ocr",
                                                                          "pages_to_ocr_again")}, ensure_ascii=False))
     return out_dir

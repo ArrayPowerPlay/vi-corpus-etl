@@ -82,6 +82,16 @@ def test_bo_do_phan_biet_chu_hong_voi_tieng_viet_dung_va_tieng_anh():
     assert g.garbled_ratio("") == (0.0, 0) and g.garbled_ratio("12 3 4") == (0.0, 0)
 
 
+def test_nguong_trang_5_phan_tram_nhung_nguong_cung_quality_van_8():
+    """J-13: trang có 1/20 từ nhiều dấu thanh (5%) bị nghi để OCR lại, nhưng đoạn văn đó chưa bị mã cứng garbled_font (ngưỡng 8%)."""
+    text = " ".join(["kinh"] * 19 + ["ngửụứi"])
+    assert g.GARBLED_RATIO == 0.05 and g.GARBLED_HARD_RATIO == 0.08
+    assert g.is_garbled(text) and g.plan_garbled([text]) == [g.REASON_PAGE]
+    m = compute_metrics(text)
+    assert m["garbled"] == pytest.approx(0.05)
+    assert "garbled_font" not in score_metrics(m, "vi", make_cfg().profile("vjol"), 0.99, "{}")[1]
+
+
 def test_trang_tcvn3_da_doi_sang_unicode_khong_bi_nghi():
     """Chữ TCVN3 đã đổi sang Unicode là tiếng Việt đúng nên không bị coi là chữ hỏng."""
     text = tcvn3_to_unicode("Phè Ngôy Nh− Kon Tum " * 6)
@@ -288,6 +298,22 @@ def test_do_chu_hong_tren_checkpoint_co_san(tmp_path):
     docs = {r["sha256"][0]: r for r in csv.DictReader(open(out / "docs.csv", encoding="utf-8"))}
     assert docs["b"]["whole_doc"] == "True" and docs["a"]["whole_doc"] == "False"
     assert "Baỷng" in (out / "examples.txt").read_text(encoding="utf-8")
+    assert s["short_text_pages"] == 0 and s["unknown_syllable_rate_vi_pages_not_suspect"] == "thiếu syllables.json"
+    blind = (out / "blind_spots.txt").read_text(encoding="utf-8")
+    assert "Nhiều cụm chữ một ký tự nhất" in blind and "Nhiều âm tiết lạ nhất" not in blind
+
+
+def test_do_chu_hong_them_trang_can_xem_khi_co_tap_am_tiet(tmp_path):
+    """Có syllables.json: summary có phân bố âm tiết lạ, blind_spots.txt liệt kê trang không bị nghi có nhiều âm tiết lạ nhất và trang quá ngắn."""
+    vocab = sorted({w.lower() for w in GOOD_VI.replace(".", "").split()})
+    (tmp_path / "processed/ocr_bakeoff").mkdir(parents=True)
+    (tmp_path / gc.SYLLABLES_REL).write_text(json.dumps({"syllables": vocab}, ensure_ascii=False), encoding="utf-8")
+    odd = "Xkcd zqwx plmn vrtk " * 10 + "ấ ở ừ " * 5  # nhiều âm tiết lạ, có dấu để được coi là trang tiếng Việt
+    write_ckpt(tmp_path, "d" * 64, "raw/vjol/2020/9_9.pdf", [GOOD_VI * 3, odd, "Ngắn quá"])
+    s = json.loads((gc.check(tmp_path) / "summary.json").read_text(encoding="utf-8"))
+    assert s["short_text_pages"] == 1 and s["unknown_syllable_rate_vi_pages_not_suspect"]["n"] >= 1
+    blind = (tmp_path / gc.CHECK_DIR / "blind_spots.txt").read_text(encoding="utf-8")
+    assert "Nhiều âm tiết lạ nhất" in blind and "Xkcd" in blind and "Ngắn quá" in blind
 
 
 def test_do_chu_hong_chay_duoc_sau_khi_da_ocr_lai(tmp_path):

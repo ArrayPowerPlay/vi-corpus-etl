@@ -11,15 +11,18 @@ tối đa MỘT dấu thanh (huyền, sắc, ngã, hỏi, nặng) trên mỗi â
   nếu >= GARBLED_DOC_SHARE số trang có chữ của bài bị nghi thì CẢ BÀI đi OCR (lỗi font thường theo font nên theo cả bài, trang
   ngắn như chú thích hình dễ lọt).
 - single_letter_ratio: tín hiệu thứ hai (chữ bị mất kiểu "đ u"), chỉ để đo (scripts/vjol/check_garbled.py), chưa dùng để quyết.
-Ngưỡng là điểm khởi đầu (đo trên 10.000 đoạn VJOL), chỉnh bằng số liệu của scripts/vjol/check_garbled.py.
+Ngưỡng chỉnh bằng số liệu của scripts/vjol/check_garbled.py (J-13: trang 5%, cấp bài 30%, cứng ở quality 8%).
 """
 
 import re
 import unicodedata
 from collections.abc import Sequence
 
-# Ngưỡng khởi điểm (J-10 (1), (2)).
-GARBLED_RATIO = 0.08
+# Ngưỡng theo trang (J-10 (1), (2)); J-13: đo trên 2.937 bài thấy 5% bắt thêm kiểu chữ hỏng sát ngưỡng ("Trữớng Ôi hồc" ở 8,1%) với giá
+# 39 trang OCR thêm; OCR một trang sạch gần như vô hại, bỏ sót trang hỏng thì chữ rác vào kho.
+GARBLED_RATIO = 0.05
+# Ngưỡng cứng của stage quality (mã garbled_font, band D) trên đoạn văn: giữ 8% vì loại bỏ nặng tay hơn là OCR lại.
+GARBLED_HARD_RATIO = 0.08
 GARBLED_MIN_WORDS = 10
 GARBLED_DOC_SHARE = 0.30
 # Mã lý do ghi trên trang bị đưa đi OCR vì lỗi font.

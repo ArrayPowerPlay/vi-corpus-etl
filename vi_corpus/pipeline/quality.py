@@ -23,7 +23,7 @@ Ngưỡng là điểm khởi đầu, cần chỉnh sau khi xem báo cáo (report
 import json
 import re
 
-from vi_corpus.common.garbled import GARBLED_MIN_WORDS, GARBLED_RATIO, garbled_ratio
+from vi_corpus.common.garbled import GARBLED_HARD_RATIO, GARBLED_MIN_WORDS, garbled_ratio
 from vi_corpus.pipeline.config import RunConfig, SourceProfile
 from vi_corpus.pipeline.language import UNDETERMINED, is_mixed, vi_diacritic_ratio
 from vi_corpus.pipeline.spans import math_share, strip_math_code
@@ -133,7 +133,7 @@ def score_metrics(m: dict, lang: str | None, profile: SourceProfile, lang_score:
         reasons.append("repeated_ngrams")
     if m["dup_line"] > 0.5:
         reasons.append("duplicate_lines")
-    if m.get("garbled", 0.0) >= GARBLED_RATIO:
+    if m.get("garbled", 0.0) >= GARBLED_HARD_RATIO:
         reasons.append("garbled_font")
 
     soft = [  # (điều kiện, mã, điểm trừ)
