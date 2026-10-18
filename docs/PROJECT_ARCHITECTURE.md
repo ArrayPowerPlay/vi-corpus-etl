@@ -21,7 +21,7 @@ vi-corpus-etl/
 ├── scripts/
 │   ├── run_all.py                   # script tổng: chạy các script con bên dưới
 │   ├── sea/                         # download_all.py, download_sea_*.py (3 bộ), count_rows.py
-│   ├── stbook/                      # crawl.py (tải sách), ocr.py (OCR Paddle + VietOCR), ocr_vlm.py + run_ocr_vlm.sh (OCR bằng chuỗi VLM, O-20), ocr_vlm_bench.py + run_ocr_vlm_bench.sh (thử concurrency)
+│   ├── stbook/                      # crawl.py (tải sách), ocr.py (OCR Paddle + VietOCR), ocr_vlm.py + run_ocr_vlm.sh (OCR bằng chuỗi VLM, O-20), ocr_vlm_bench.py + run_ocr_vlm_bench.sh (thử concurrency), check_ocr_vlm.py (kiểm kết quả OCR)
 │   ├── giao_trinh/                  # extract.py (xử lý thô giáo trình), profile.py (khảo sát)
 │   ├── ocr_bakeoff/                 # so sánh engine OCR (F-11): select_pages, build_syllables, run_engine, score, diagnose_gt, run_bakeoff.sh
 │   ├── gpu_keepalive.py             # giữ GPU trên Run:ai không bị tự dừng khi job chỉ dùng CPU

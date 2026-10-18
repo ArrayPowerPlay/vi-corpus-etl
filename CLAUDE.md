@@ -83,6 +83,7 @@ uv run python scripts/make_judge_sample.py --run-dir <run> --n 50000 --out <root
 uv run --no-sync python scripts/stbook/ocr_vlm.py --data-root <root> --gpu 0 --serve --vllm-bin <vllm> [--limit-books N] [--concurrency 32] [--status]
 DATA_ROOT=<root> VLLM_BIN=<vllm> [CONCURRENCY=32] ./scripts/stbook/run_ocr_vlm.sh                  # 4 GPUs, one server + process per GPU
 DATA_ROOT=<root> VLLM_BIN=<vllm> ./scripts/stbook/run_ocr_vlm_bench.sh                             # ~1,000 real stbook pages at concurrency 16/32/64/128 (one GPU per level): throughput, guard flag rate, whole-corpus hours -> <root>/processed/ocr_vlm_bench/
+uv run --no-sync python scripts/stbook/check_ocr_vlm.py --data-root <root> [--lang-model heuristic] [--syllables <json>]   # O-25/O-28: CPU, check the finished cascade OCR: per-engine numbers, script + language per page (fastText lid.176), foreign-language books, odd pages inside Vietnamese books, real-syllable-rate distribution of baseline pages -> <root>/processed/ocr_vlm_check/
 uv run python scripts/ocr_bakeoff/score.py --data-root <root> --cascade qwen3vl_8b_mt4k,qwen3vl_8b_rp110,baseline   # virtual engine "cascade": truncation gate and hours computed after the guard
 
 # OCR engine bakeoff (F-11, vi_corpus/ocr_bakeoff/, docs/README.md Part F); output in <root>/processed/ocr_bakeoff/

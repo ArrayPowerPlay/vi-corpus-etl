@@ -360,6 +360,16 @@ Kết quả trong `<data-root>/processed/ocr_vlm_bench/`: `pages/` + `pages.json
 gồm trang/giây ổn định, độ trễ p50 / p95, token sinh ra, tỷ lệ trang bị báo theo lý do, giờ chạy cả kho (366.089 trang, 4 GPU, giả định tuyến tính theo GPU) và số trang còn bị báo sau khi chạy lại bằng `rp110`
 (phần rơi xuống OCR cũ). Chọn mức concurrency nhanh nhất mà không có trang lỗi, rồi đặt `CONCURRENCY` cho `run_ocr_vlm.sh`.
 
+**Bộ kiểm kết quả OCR sau khi chạy xong** (O-25 / O-28, CPU, không cần GPU hay vLLM):
+```bash
+uv run --no-sync python scripts/stbook/check_ocr_vlm.py --data-root /duong/dan/data      # fasttext và pymupdf có sẵn trong nhóm mặc định (`uv sync`)
+tar czf ocr_vlm_check.tar.gz -C /duong/dan/data/processed ocr_vlm_check                  # chỉ cần tải gói này về
+```
+Nhận diện ngôn ngữ bằng `lid.176` (tải một lần vào `VI_CORPUS_MODEL_DIR`, cần mạng lần đầu); không nạp được thì tự dùng heuristic và ghi `lang_model` trong `summary.json`
+(`--lang-model heuristic` để chọn chủ động). Tỷ lệ âm tiết thật dùng `processed/ocr_bakeoff/syllables.json` (từ `build_syllables.py`); thiếu thì bỏ phần này.
+Kết quả trong `processed/ocr_vlm_check/`: `summary.json` (số đo theo engine, loại chữ viết, ngôn ngữ, sách ngoại ngữ, trang lạ trong sách tiếng Việt, phân bố tỷ lệ âm tiết thật của baseline),
+`books.csv`, `suspect_pages.csv` (đủ mọi trang, không còn cắt 5.000 dòng), `foreign_books.csv`, `odd_pages_in_vi_books.csv`, `baseline_pages.csv`, `samples/` (ảnh + văn bản, gồm `odd_<engine>/` và `baseline_syllable_<từ>-<đến>/`), `logs/`.
+
 ---
 
 # Phần C — Chạy tất cả bằng `scripts/run_all.py`
