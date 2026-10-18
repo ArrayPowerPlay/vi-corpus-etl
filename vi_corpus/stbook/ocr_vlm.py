@@ -21,11 +21,11 @@ import shutil
 import time
 from collections import Counter
 from collections.abc import Iterator
-from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
+from vi_corpus.common.ocr_cascade import run_pages
 from vi_corpus.common.state import read_json, write_json_atomic
 from vi_corpus.ocr_bakeoff.cascade import CascadeOcr, Tier
 from vi_corpus.stbook.ocr_books import OCR_DIR, _ocr_path, find_books
@@ -91,31 +91,8 @@ def claim_book(data_root: Path, slug: str, product_id: str) -> Iterator[bool]:
 
 
 def _run_pages(cascade: CascadeOcr, doc, concurrency: int) -> list[dict]:
-    """
-    OCR mọi trang của PDF `doc` (pymupdf.Document), tối đa `concurrency` trang gửi đồng thời; trả kết quả theo thứ tự trang.
-
-    Chỉ giữ khoảng 2 x concurrency ảnh trong bộ nhớ (sách 900 trang không nạp hết một lúc). Một luồng ném lỗi (ServerDown, EngineUnavailable) thì dừng
-    cả cuốn và ném lên.
-    """
-    from vi_corpus.ocr_bakeoff.pages import page_image_bytes
-
-    results: list[dict | None] = [None] * doc.page_count
-    pending: dict = {}
-    with ThreadPoolExecutor(concurrency) as pool:
-        try:
-            for i, page in enumerate(doc):
-                data, ext = page_image_bytes(page)
-                pending[pool.submit(cascade.page, data, ext)] = i
-                while len(pending) >= 2 * concurrency:
-                    finished, _ = wait(pending, return_when=FIRST_COMPLETED)
-                    for fut in finished:
-                        results[pending.pop(fut)] = fut.result()
-            for fut in list(pending):
-                results[pending.pop(fut)] = fut.result()
-        except BaseException:
-            pool.shutdown(wait=False, cancel_futures=True)
-            raise
-    return results  # type: ignore[return-value]
+    """OCR mọi trang của PDF `doc` (pymupdf.Document) song song, kết quả theo thứ tự trang (xem vi_corpus.common.ocr_cascade.run_pages)."""
+    return run_pages(cascade, doc, concurrency)
 
 
 def ocr_book_vlm(cascade: CascadeOcr, slug: str, book: dict, pdf: Path, data_root: Path, concurrency: int = 32) -> dict:

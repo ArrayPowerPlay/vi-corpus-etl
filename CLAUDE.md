@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 `vi-corpus-etl` (renamed from `sea-vi-crawler`) builds a Vietnamese LLM corpus from several sources (see "Data sources"). Target metrics come from the weekly goals table: >=300M clean tokens, >=95% source lineage, exact+fuzzy dedup, knowledge units for CPT/SFT/Hybrid.
 
-**Current state**: code exists per source: SEA download (`vi_corpus/sea/`), stbook crawl + OCR (`vi_corpus/stbook/`), giáo trình raw processing (`vi_corpus/giao_trinh/`, implemented: inventory, extract, page clean, records; strategy in `docs/GIAO_TRINH.md`). The shared pipeline lives in `vi_corpus/pipeline/` (ingest -> prepare [normalize, repeated-line removal, token chunking] -> language -> quality -> dedup -> embed -> reduce -> finalize [knowledge units, CPT blocks, contamination scan, audit, report.html]; each stage carries a fingerprint and reruns itself and later stages when params/inputs change), run by `scripts/run_pipeline.py` on a sample of N records (first version; thresholds untuned). Design: `docs/PIPELINE.md`, `docs/SOURCES.md`, `docs/ROADMAP.md`. Repo layout and data layout: `docs/PROJECT_ARCHITECTURE.md` (Vietnamese). User guide: `docs/README.md`. Diagrams (main flow + one sub-flow per module): `docs/diagrams/`. User decisions across sessions: `docs/DECISION_LOG.md`. Decisions already made with the user: hybrid architecture (own disk-chained Parquet stages plus optional NeMo Curator adapters), **no train/val/test split at the corpus level** (split later at knowledge-unit level, by dedup family), repo/package name `vi-corpus-etl` / `vi_corpus`, one folder of scripts per data source plus one orchestrator (`scripts/run_all.py`).
+**Current state**: code exists per source: SEA download (`vi_corpus/sea/`), stbook crawl + OCR (`vi_corpus/stbook/`), giáo trình raw processing (`vi_corpus/giao_trinh/`, implemented: inventory, extract, page clean, records; strategy in `docs/GIAO_TRINH.md`), VJOL raw processing (`vi_corpus/vjol/`, implemented: year-stratified sample, extract with VLM-cascade OCR for scan pages, clean, metadata join; not yet run on real data). The shared pipeline lives in `vi_corpus/pipeline/` (ingest -> prepare [normalize, repeated-line removal, token chunking] -> language -> quality -> dedup -> embed -> reduce -> finalize [knowledge units, CPT blocks, contamination scan, audit, report.html]; each stage carries a fingerprint and reruns itself and later stages when params/inputs change), run by `scripts/run_pipeline.py` on a sample of N records (first version; thresholds untuned). Design: `docs/PIPELINE.md`, `docs/SOURCES.md`, `docs/ROADMAP.md`. Repo layout and data layout: `docs/PROJECT_ARCHITECTURE.md` (Vietnamese). User guide: `docs/README.md`. Diagrams (main flow + one sub-flow per module): `docs/diagrams/`. User decisions across sessions: `docs/DECISION_LOG.md`. Decisions already made with the user: hybrid architecture (own disk-chained Parquet stages plus optional NeMo Curator adapters), **no train/val/test split at the corpus level** (split later at knowledge-unit level, by dedup family), repo/package name `vi-corpus-etl` / `vi_corpus`, one folder of scripts per data source plus one orchestrator (`scripts/run_all.py`).
 
 ## Repo tham khảo: ViLA
 
@@ -21,7 +21,7 @@ data/raw/
 ├── sea_vi/{sea_instruct_2602, sea_pile_v2, sea_lion_pile_v1}/   # SEA, mirrors the HF path layout
 ├── stbook/<slug>/{books.json, content/<product_id>.pdf}         # stbook-crawler layout
 ├── giao_trinh/<ngành>/<môn>/<file>                              # rclone copy of the Drive folder
-└── VJOL/                                                        # structure TBD
+└── vjol/<year>/<article_id>_<galley_id>.pdf + vjol/metadata/*.jsonl  # lowercase `vjol` (J-02)
 ```
 
 | source | what | raw path | status |
@@ -29,7 +29,7 @@ data/raw/
 | SEA (AI Singapore, HF) | only the Vietnamese partition of 3 datasets, byte-for-byte | `raw/sea_vi/<key>/` | download done, processing = design |
 | stbook.vn | books as image-only PDFs, OCR'd here | `raw/stbook/` | crawl + OCR code exists |
 | giao_trinh | Google Drive university textbooks, PDF/pptx | `raw/giao_trinh/` | download by rclone; `scripts/giao_trinh/extract.py` |
-| VJOL | scientific papers (PDF), only **processed**, never crawled here | `raw/VJOL/` (registry key `vjol`) | placeholder, structure will be given later; no scripts yet |
+| VJOL | scientific papers (PDF), only **processed**, never crawled here | `raw/vjol/` (registry key `vjol`) | `scripts/vjol/extract.py`; data already on the server, code not yet run on it |
 | VISTA | scientific papers (PDF), same as VJOL | placeholder path in registry | placeholder |
 
 - **SEA**: AI Singapore datasets on Hugging Face.
@@ -46,7 +46,8 @@ data/raw/
 - **giao_trinh**: Google Drive folder "Tổng hợp giáo trình Đại học", id `1DRUL5cFHIusB3PoLXJ6tcpuSNJjfZUTt`, 16 ngành, >=1,498 files (mostly PDF, some pptx/ppt/docx/djvu). Nearly all entries are Drive **shortcuts** to other people's files, so download with:
   `rclone copy gdrive: data/raw/giao_trinh --drive-root-folder-id 1DRUL5cFHIusB3PoLXJ6tcpuSNJjfZUTt --transfers 4 --drive-acknowledge-abuse`
   `gdown` does not work (access denied, 50-files-per-folder cap). English books are **kept** (user decision). Rights status unknown. Strategy: `docs/GIAO_TRINH.md`. Processing command: `uv run --group ocr python scripts/giao_trinh/extract.py --data-root <root> [--device cuda|cpu] [--no-ocr] [--limit-files N] [--retry-skipped] [--status]` (`scripts/run_all.py` calls it with `--data-root` [`--status`]). Per-file checkpoint keyed by file sha256 in `interim/giao_trinh_text/<sha256>.json`; the parquet `processed/giao_trinh/giao_trinh.parquet` is exported automatically at the end of every run; exit code 1 if any file errored. Raw processing only (no language/quality/dedup yet); real OCR is untested locally (needs the GPU server).
-- **VJOL / VISTA**: scientific papers, PDFs that are only processed (paths are placeholders until the data arrives). Do not write VJOL/VISTA scripts before the structure is known.
+- **VJOL**: scientific papers (bucket `datacrawl`, `vjol.info.vn/`, copied to `raw/vjol/`). Flat PDFs in year folders `<year>/<article_id>_<galley_id>.pdf` plus `metadata/vjol_merged.jsonl` (one line per article: `article_id`, `title`, `journal_slug`, `journal_title`, `year`, `language`, `doi`, `keywords`, `galleys[].galley_id`). About a third of articles may have no PDF. Command: `uv run python scripts/vjol/extract.py --data-root <root> [--sample-docs N --seed S] [--no-ocr] [--gpu G --serve --vllm-bin <vllm>] [--status|--export-only]`, 4 GPUs: `DATA_ROOT=<root> VLLM_BIN=<vllm> SAMPLE_DOCS=3000 ./scripts/vjol/run_extract_vlm.sh`. `--sample-docs N` = N PDFs spread evenly over year folders; the sample for a smaller N is a prefix of a larger N (same seed), so raising N only does the new files. Each page is read at most twice (R-26): PyMuPDF for every page, then only scan pages go through the VLM cascade (`CascadePageOcr` in `vi_corpus/common/ocr_cascade.py`, pages of one PDF sent in parallel; the vLLM server is started lazily at the first scan page). Checkpoint `interim/vjol_text/<sha256>.json`, pages `method` = `text|tcvn3|ocr_vlm|empty|needs_ocr` (`ocr_vlm` pages carry `tier` and `status` ok|blank|flagged; flagged = empty text + `rejected_text`). Several processes (one per GPU) share work through per-file flock claims (`run_batch(claim_dir=...)`). `ServerDown`/`EngineUnavailable` stop the whole run (no silent page drop). Cleaning at record time (`vi_corpus/vjol/clean.py`: cover page, table of contents, References section) and metadata join (streamed once, by `article_id`) happen in `vjol/records.py`, not in the checkpoint. Pipeline: `PROFILES["vjol"]` (chunked, vi + en), `python scripts/run_pipeline.py --mix vjol=10000 --total 10000 --run-name vjol_10k` (10,000 = chunks). Not done in v1: `cmap_healer`/broken-font detection (V-10), layout parsers, `baseline`-tier page filter (O-27 c, no threshold yet).
+- **VISTA**: scientific papers, PDFs that are only processed (path is a placeholder until the data arrives). Do not write VISTA scripts before the structure is known.
 
 ## Infrastructure
 
@@ -61,11 +62,11 @@ uv run pytest tests/test_checkpoint.py::test_is_done_checks_size_and_sha   # sin
 uv add <pkg> / uv add --dev <pkg>         # add a dependency; commit pyproject.toml + uv.lock together
 
 # run every part in sequence (subprocess per part, --data-root passed through)
-uv run python scripts/run_all.py --data-root <root>                       # sea -> stbook -> giao_trinh
+uv run python scripts/run_all.py --data-root <root>                       # sea -> stbook -> giao_trinh -> vjol
 uv run python scripts/run_all.py --data-root <root> --only sea,giao_trinh # choose parts
 uv run python scripts/run_all.py --data-root <root> --status              # forwarded to each part
 ```
-`run_all.py` keeps going when a part fails and exits non-zero with a summary. It skips `stbook` / `giao_trinh` when their raw folder does not exist (log line says so); `sea` is a download step, so it is never skipped.
+`run_all.py` keeps going when a part fails and exits non-zero with a summary. It skips `stbook` / `giao_trinh` / `vjol` when their raw folder does not exist (log line says so); `sea` is a download step, so it is never skipped.
 
 ```bash
 # sample-based end-to-end check of the shared pipeline (stbook must be OCR'd first, or add --ocr-books N); output in <root>/processed/pipeline_runs/<name>/ (open report.html)
@@ -111,7 +112,7 @@ The four SEA scripts share the flags `--data-root`, `--workers` (8), `--limit-fi
 
 ## Architecture
 
-Packages: `vi_corpus/common/` (registry, schema, `state.py` = atomic JSON + run lock + logging, `ocr.py`, `pdf_text.py`), `vi_corpus/sea/`, `vi_corpus/stbook/` (`ocr_books.py`, `crawler/`), `vi_corpus/giao_trinh/`, `vi_corpus/ocr_bakeoff/` (OCR engine comparison, F-11). `vista/` and `vjol/` are empty placeholders.
+Packages: `vi_corpus/common/` (registry, schema, `state.py` = atomic JSON + run lock + logging, `ocr.py`, `pdf_text.py`), `vi_corpus/sea/`, `vi_corpus/stbook/` (`ocr_books.py`, `crawler/`), `vi_corpus/giao_trinh/`, `vi_corpus/vjol/` (`extract.py`, `clean.py`, `records.py`), `vi_corpus/ocr_bakeoff/` (OCR engine comparison, F-11). `vista/` is an empty placeholder.
 
 SEA flow: `scripts/sea/*.py` → `vi_corpus.sea.cli.main(keys)` → `vi_corpus.sea.downloader.run_dataset(key)` for each key, run sequentially. `download_all.py` iterates `DATASETS` in dict order, so the small dataset runs first.
 

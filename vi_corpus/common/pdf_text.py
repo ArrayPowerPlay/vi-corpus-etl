@@ -6,6 +6,8 @@ Mỗi trang đi theo đường rẻ nhất còn cho ra text:
     "tcvn3"     : PDF gõ bằng font cũ TCVN3 (.VnTime, ...), lớp chữ ra dạng "§iÖn tö";
                   đổi sang Unicode ("Điện tử"). Nhận diện theo cả tài liệu.
     "ocr"       : trang scan (gần như không có chữ nhưng có ảnh), OCR bằng vi_corpus.common.ocr.
+    "ocr_vlm"   : trang scan OCR bằng chuỗi engine VLM (vi_corpus.common.ocr_cascade): thêm "tier" (engine được chọn) và
+                  "status" ("ok" | "blank" | "flagged"); trang flagged có text rỗng, văn bản bị loại nằm ở "rejected_text".
     "needs_ocr" : trang scan nhưng lần chạy này không OCR được (tắt OCR / chưa cài nhóm ocr).
     "empty"     : trang trắng.
 
@@ -107,8 +109,9 @@ def extract_pdf(path, get_ocr: Callable[[], object | None]) -> list[dict]:
 
     Args:
         path:    Đường dẫn PDF.
-        get_ocr: Hàm trả về bộ OCR (có .page_text(ảnh)) hoặc None nếu không OCR được; chỉ được
-                 gọi khi gặp trang scan, để tài liệu có sẵn chữ không phải nạp mô hình OCR.
+        get_ocr: Hàm trả về bộ OCR hoặc None nếu không OCR được; chỉ được gọi khi gặp trang scan, để tài liệu có sẵn
+                 chữ không phải nạp mô hình OCR. Bộ OCR có .page_text(ảnh PIL) -> str (OCR tuần tự từng trang), hoặc
+                 .ocr_pages(các trang pymupdf) -> danh sách {"text", "method", ...} theo thứ tự (OCR song song cả lô).
 
     Returns:
         Danh sách {"text": ..., "method": ...} theo thứ tự trang (method xem đầu file).
@@ -127,8 +130,9 @@ def extract_pdf(path, get_ocr: Callable[[], object | None]) -> list[dict]:
         tcvn3 = is_tcvn3("".join(texts))
         if tcvn3:  # font TCVN3 không mang tên .Vn...: đổi mọi span (đọc lại, tránh đổi 2 lần)
             texts = [page_text(page, tcvn3_all=True) for page in doc]
-        pages = []
-        for page, text in zip(doc, texts):
+        pages: list[dict | None] = []
+        scan_idx: list[int] = []
+        for i, (page, text) in enumerate(zip(doc, texts)):
             if len("".join(text.split())) >= MIN_TEXT_CHARS or not page.get_images():
                 if not text.strip():
                     pages.append({"text": "", "method": "empty"})
@@ -137,11 +141,19 @@ def extract_pdf(path, get_ocr: Callable[[], object | None]) -> list[dict]:
                 else:
                     pages.append({"text": text, "method": "text"})
                 continue
+            pages.append(None)  # trang scan: điền sau khi OCR
+            scan_idx.append(i)
+        if scan_idx:
             ocr = get_ocr()
             if ocr is None:
-                pages.append({"text": text, "method": "needs_ocr"})
+                for i in scan_idx:
+                    pages[i] = {"text": texts[i], "method": "needs_ocr"}
+            elif hasattr(ocr, "ocr_pages"):  # OCR nhận cả lô trang để gửi song song (CascadePageOcr)
+                for i, entry in zip(scan_idx, ocr.ocr_pages(doc[i] for i in scan_idx)):
+                    pages[i] = entry
             else:
-                pages.append({"text": ocr.page_text(page_image(page)), "method": "ocr"})
+                for i in scan_idx:
+                    pages[i] = {"text": ocr.page_text(page_image(doc[i])), "method": "ocr"}
         return pages
 
 

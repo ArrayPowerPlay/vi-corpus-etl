@@ -7,13 +7,14 @@ ETL xây **corpus tiếng Việt cho LLM** từ nhiều nguồn, có truy vết 
 | SEA (3 bộ của AI Singapore) | Văn bản web + hội thoại instruct, phần tiếng Việt | Đã có bước **tải** (mục 1–7 bên dưới); bước xử lý: kế hoạch |
 | stbook.vn | Sách NXB Chính trị quốc gia Sự thật (PDF dạng ảnh, tải bằng repo `stbook-crawler`) | Đã có bước **OCR → text** (Phần B) |
 | Giáo trình (Google Drive) | Giáo trình đại học 16 ngành (PDF, pptx), tải bằng rclone | Đang viết bước xử lý (`docs/GIAO_TRINH.md`) |
-| VJOL, VISTA | Bài báo khoa học (PDF), **chỉ xử lý** dữ liệu có sẵn, không crawl | Kế hoạch: `raw/VJOL/`, cấu trúc sẽ bổ sung khi có dữ liệu |
+| VJOL | Bài báo khoa học (PDF theo thư mục năm + metadata tạp chí), **chỉ xử lý** dữ liệu có sẵn, không crawl | Đã có bước **trích text** (Phần G); `raw/vjol/` |
+| VISTA | Bài báo khoa học (PDF), chỉ xử lý | Kế hoạch: đường dẫn tạm |
 
 Chiến lược xử lý (nguồn → parse → ngôn ngữ → làm sạch → chất lượng → loại trùng → knowledge unit → audit):
 xem [`docs/PIPELINE.md`](PIPELINE.md), [`docs/SOURCES.md`](SOURCES.md) và lộ trình [`docs/ROADMAP.md`](ROADMAP.md).
 Các quyết định đã chốt qua từng phiên làm việc: [`docs/DECISION_LOG.md`](DECISION_LOG.md); sơ đồ luồng chính và luồng con: [`docs/diagrams/`](diagrams/).
 Cấu trúc repo và thư mục dữ liệu: [`docs/PROJECT_ARCHITECTURE.md`](PROJECT_ARCHITECTURE.md).
-Phần còn lại của README mô tả phần đã có code: **Phần A** tải dữ liệu SEA, **Phần B** OCR sách stbook, **Phần C** chạy tất cả bằng `scripts/run_all.py`, **Phần D** pipeline xử lý end-to-end trên N mẫu (có visualize, chạy nhiều GPU), **Phần E** công cụ hệ thống đọc .doc / .ppt / .djvu, **Phần F** so sánh engine OCR.
+Phần còn lại của README mô tả phần đã có code: **Phần A** tải dữ liệu SEA, **Phần B** OCR sách stbook, **Phần C** chạy tất cả bằng `scripts/run_all.py`, **Phần G** trích text VJOL, **Phần D** pipeline xử lý end-to-end trên N mẫu (có visualize, chạy nhiều GPU), **Phần E** công cụ hệ thống đọc .doc / .ppt / .djvu, **Phần F** so sánh engine OCR.
 
 ---
 
@@ -374,18 +375,19 @@ Kết quả trong `processed/ocr_vlm_check/`: `summary.json` (số đo theo engi
 
 # Phần C — Chạy tất cả bằng `scripts/run_all.py`
 
-Mỗi nguồn có một thư mục script riêng (`scripts/sea/`, `scripts/stbook/`, `scripts/giao_trinh/`); `run_all.py` chạy lần lượt script của từng phần
-(SEA tải → stbook OCR → giáo trình trích text), truyền `--data-root` cho từng script:
+Mỗi nguồn có một thư mục script riêng (`scripts/sea/`, `scripts/stbook/`, `scripts/giao_trinh/`, `scripts/vjol/`); `run_all.py` chạy lần lượt script của từng phần
+(SEA tải → stbook OCR → giáo trình trích text → VJOL trích text), truyền `--data-root` cho từng script:
 
 ```bash
-uv run python scripts/run_all.py --data-root /duong/dan/data                     # cả 3 phần
+uv run python scripts/run_all.py --data-root /duong/dan/data                     # cả 4 phần
 uv run python scripts/run_all.py --data-root /duong/dan/data --only sea,giao_trinh   # chọn phần
 uv run python scripts/run_all.py --data-root /duong/dan/data --status            # xem tiến độ từng phần
 ```
-- Phần xử lý (`stbook`, `giao_trinh`) thiếu thư mục `raw/...` thì bị bỏ qua, có dòng log nói rõ. `sea` là bước tải nên luôn chạy.
+- Phần xử lý (`stbook`, `giao_trinh`, `vjol`) thiếu thư mục `raw/...` thì bị bỏ qua, có dòng log nói rõ. `sea` là bước tải nên luôn chạy.
 - Một phần lỗi không làm dừng các phần sau; cuối cùng in tóm tắt và thoát với mã khác 0 nếu có phần lỗi.
 - Tham số riêng của từng script (`--workers`, `--device cpu`, ...) không đi qua `run_all`; muốn dùng thì chạy trực tiếp script của phần đó.
 - Giáo trình tải bằng `rclone` (xem `docs/GIAO_TRINH.md`), không nằm trong `run_all`.
+- `vjol` qua `run_all` xử lý **mọi** PDF với tham số mặc định (cần server VLM đã chạy sẵn nếu có trang scan); chạy mẫu hoặc nhiều GPU thì gọi thẳng script (Phần G).
 
 ---
 
@@ -671,6 +673,34 @@ tests/                 # test (không cần mạng): uv run pytest
 pyproject.toml         # khai báo thư viện; uv.lock ghi phiên bản chính xác (commit cả hai)
 ```
 Muốn thêm một bộ dữ liệu HF mới: thêm một `DatasetSpec` vào `vi_corpus/sea/datasets.py`, rồi tạo script mới theo mẫu của một script có sẵn.
+
+---
+
+# Phần G — Trích text VJOL (bài báo khoa học, J-01 ... J-06)
+
+Dữ liệu: `<data-root>/raw/vjol/<năm>/<article_id>_<galley_id>.pdf` + `raw/vjol/metadata/vjol_merged.jsonl` (mỗi dòng một bài: tiêu đề, tạp chí, năm, ngôn ngữ, DOI, ...).
+Chỉ **xử lý**, không crawl. Mỗi trang đọc tối đa 2 lần (R-26): lần 1 PyMuPDF cho mọi trang (lớp chữ Unicode, đổi font TCVN3), lần 2 chỉ cho **trang scan**, bằng chuỗi
+engine VLM của stbook (O-20: `qwen3vl_8b_mt4k` → `qwen3vl_8b_rp110` → Paddle + VietOCR → bỏ trang). Các trang scan của một PDF được gửi song song (`--concurrency`, mặc định 32).
+
+```bash
+# thử nhanh không GPU: 20 bài chia đều theo năm, trang scan để needs_ocr
+uv run python scripts/vjol/extract.py --data-root /duong/dan/data --sample-docs 20 --no-ocr
+# một GPU, tự dựng server vLLM lúc gặp trang scan đầu tiên và tắt khi xong
+uv run --no-sync python scripts/vjol/extract.py --data-root /duong/dan/data --sample-docs 3000 --seed 0 --gpu 0 --serve --vllm-bin $(which vllm)
+# 4 GPU (mỗi GPU một server + một tiến trình, PDF chia nhau bằng khoá); xong tự xuất Parquet và in thống kê
+DATA_ROOT=/duong/dan/data VLLM_BIN=$(which vllm) SAMPLE_DOCS=3000 ./scripts/vjol/run_extract_vlm.sh
+uv run python scripts/vjol/extract.py --data-root /duong/dan/data --status        # tiến độ, trang theo method / engine / trạng thái
+# pipeline chung trên mẫu 10.000 đoạn VJOL
+uv run python scripts/run_pipeline.py --data-root /duong/dan/data --mix vjol=10000 --total 10000 --run-name vjol_10k
+```
+
+- **Mẫu** (`--sample-docs N --seed S`): N bài chia đều theo thư mục năm (năm ít bài nhường chỗ cho năm khác). Mẫu nhỏ luôn nằm trong mẫu lớn (cùng seed), nên tăng N rồi chạy lại chỉ làm phần mới. Không có cờ này thì xử lý mọi PDF.
+- **Kết quả**: `interim/vjol_text/<sha256>.json` (text từng trang, `method` = `text` / `tcvn3` / `ocr_vlm` / `empty` / `needs_ocr`; trang `ocr_vlm` có `tier` và `status` = `ok` / `blank` / `flagged`, trang `flagged` có text rỗng và `rejected_text`).
+  Checkpoint theo PDF (sha256), bị ngắt thì chạy lại đúng lệnh cũ. `processed/vjol/vjol.parquet` để xem; pipeline đọc thẳng checkpoint.
+- **Làm sạch lúc sinh bản ghi** (`vi_corpus/vjol/clean.py`, không lưu vào interim): bỏ trang bìa (trang đầu < 40 từ, bài >= 3 trang), trang mục lục, phần Tài liệu tham khảo / References (từ tiêu đề đến Abstract / Phụ lục / Lời cảm ơn kế tiếp hoặc hết bài), rồi tiêu đề chạy và số trang như giáo trình. Ngưỡng là điểm khởi đầu.
+- **Metadata**: `vjol_merged.jsonl` đọc theo luồng một lượt, chỉ giữ bài có trong mẫu, nối qua `article_id`; PDF không có dòng metadata vẫn thành bản ghi (thiếu trường). Có trong cột `meta` của pipeline: `journal_slug`, `journal_title`, `year`, `language`, `doi`, `title`, `keywords`, `article_id`, `galley_id`, và số trang / dòng bị bỏ.
+- **Lỗi hệ thống** (`ServerDown`, `EngineUnavailable`) dừng cả lượt, không loại trang âm thầm (O-24); PDF đã xong vẫn nằm trong checkpoint. PDF hỏng chỉ tính một lỗi. Quyền `rights_status = unknown` (chỉ gắn nhãn, R-01).
+- **Chưa làm ở bản đầu**: `cmap_healer` và phát hiện font hỏng (V-10), parser bố cục (GROBID / Marker / Docling), dedup VJOL với nguồn khác (chạy `scripts/dedup_global.py` sau), bộ lọc trang `baseline` theo tỷ lệ âm tiết (O-27 c, chưa có ngưỡng).
 
 ## Giấy phép dữ liệu
 Các bộ SEA dùng giấy phép [ODC-By 1.0](https://opendatacommons.org/licenses/by/1-0/), và người dùng cần tuân thủ [CommonCrawl ToU](https://commoncrawl.org/terms-of-use/).

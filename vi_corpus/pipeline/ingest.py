@@ -4,7 +4,7 @@ Stage ingest: lấy mẫu từ data/raw và đưa về schema chung, không sử
 - Nguồn text (SEA, parquet / jsonl.gz): chọn ngẫu nhiên (theo seed) một số file, mỗi file lấy `rows_per_file` dòng
   ngẫu nhiên, cho đến khi đủ số mẫu. Parquet chỉ đọc cột text và chỉ chuyển thành dict các dòng được chọn; jsonl.gz
   dùng reservoir sampling một lượt (gzip không truy cập ngẫu nhiên được). Bộ nhớ không phụ thuộc cỡ file.
-- Nguồn sách (stbook, giao_trinh): đọc cả sách (đã OCR / trích text ở interim/); số mẫu được cắt xuống ở stage chunk,
+- Nguồn sách (stbook, giao_trinh, vjol): đọc cả sách (đã OCR / trích text ở interim/); số mẫu được cắt xuống ở stage chunk,
   vì "mẫu" của nguồn này là một đoạn chứ không phải cả cuốn.
 """
 
@@ -99,12 +99,15 @@ def sample_text_source(spec: SourceSpec, data_root: Path, n: int, cfg: RunConfig
 
 
 def iter_book_source(spec: SourceSpec, data_root: Path) -> Iterator[dict]:
-    """Sinh bản ghi từng cuốn sách / tài liệu của nguồn dài (stbook đã làm sạch theo trang; giao_trinh đã làm sạch sẵn)."""
+    """Sinh bản ghi từng cuốn sách / tài liệu của nguồn dài (stbook đã làm sạch theo trang; giao_trinh, vjol đã làm sạch sẵn)."""
     if spec.key == "stbook":
         from vi_corpus.stbook.ocr_books import iter_records
         yield from iter_records(spec, data_root, clean=True, with_meta=True)
     elif spec.key == "giao_trinh":
         from vi_corpus.giao_trinh.records import iter_records
+        yield from iter_records(spec, data_root, with_meta=True)
+    elif spec.key == "vjol":
+        from vi_corpus.vjol.records import iter_records
         yield from iter_records(spec, data_root, with_meta=True)
     else:
         raise ValueError(f"Chưa có adapter nguồn sách cho {spec.key}")
@@ -113,7 +116,8 @@ def iter_book_source(spec: SourceSpec, data_root: Path) -> Iterator[dict]:
 def input_files(spec: SourceSpec, data_root: Path, chunked: bool) -> list[Path]:
     """
     Các file đầu vào stage ingest đọc cho một nguồn (dùng tính vân tay đầu vào, G-02): file parquet / jsonl.gz của nguồn
-    text; file kết quả OCR (stbook) hoặc checkpoint trích text (giao_trinh) của nguồn sách.
+    text; file kết quả OCR (stbook) hoặc checkpoint trích text (giao_trinh, vjol; vjol thêm file metadata nối vào bản ghi)
+    của nguồn sách.
     """
     if not chunked:
         return source_files(spec, data_root)
@@ -123,6 +127,11 @@ def input_files(spec: SourceSpec, data_root: Path, chunked: bool) -> list[Path]:
     if spec.key == "giao_trinh":
         from vi_corpus.giao_trinh.extract import TEXT_DIR
         return sorted((data_root / TEXT_DIR).glob("*.json"))
+    if spec.key == "vjol":
+        from vi_corpus.vjol.extract import TEXT_DIR
+        from vi_corpus.vjol.records import METADATA_REL
+        metadata = data_root / spec.path / METADATA_REL
+        return sorted((data_root / TEXT_DIR).glob("*.json")) + ([metadata] if metadata.is_file() else [])
     return []
 
 

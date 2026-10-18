@@ -2,7 +2,7 @@
 Sổ đăng ký nguồn (source registry): owner, license, domain, định dạng, đường dẫn.
 
 Đáp ứng KPI W1 "mỗi nguồn có owner, provenance/license, domain". Đường dẫn của
-VISTA/VJOL là tạm; ghi đè bằng file JSON cấu hình (configs/sources.json)
+VISTA là tạm; ghi đè bằng file JSON cấu hình (configs/sources.json)
 thay vì sửa code khi có dữ liệu thật.
 """
 
@@ -18,7 +18,8 @@ class SourceSpec:
 
     Attributes:
         key:      Mã nguồn (vd "sea_pile_v2").
-        fmt:      Định dạng file: "parquet", "jsonl.gz", "pdf" hoặc "stbook_pdf" (thư mục của stbook-crawler).
+        fmt:      Định dạng file: "parquet", "jsonl.gz", "pdf", "stbook_pdf" (thư mục của stbook-crawler), "giao_trinh"
+                  hoặc "vjol" (PDF theo thư mục năm + metadata jsonl).
         path:     Thư mục chứa dữ liệu, tương đối so với data_root (hoặc tuyệt đối).
         owner:    Chủ sở hữu dữ liệu.
         license:  Giấy phép / điều khoản sử dụng.
@@ -51,10 +52,11 @@ SOURCES: dict[str, SourceSpec] = {
                    "sách chính trị - xã hội", text_col=""),
         SourceSpec("giao_trinh", "giao_trinh", "raw/giao_trinh", "nhiều tác giả / trường / NXB (tổng hợp từ Google Drive)",
                    "chưa rõ (có sách từ PDFDrive, z-lib)", "giáo trình đại học đa ngành", text_col=""),
-        # vista: đường dẫn tạm. vjol: raw/VJOL, cấu trúc thư mục bên trong sẽ bổ sung khi có dữ liệu.
-        # Cập nhật trong configs/sources.json khi có dữ liệu thật.
+        # vista: đường dẫn tạm, cập nhật trong configs/sources.json khi có dữ liệu thật.
         SourceSpec("vista", "pdf", "external/vista", "chưa rõ", "chưa rõ", "scientific"),
-        SourceSpec("vjol", "pdf", "raw/VJOL", "chưa rõ", "chưa rõ", "scientific"),
+        # vjol: raw/vjol/<năm>/<article_id>_<galley_id>.pdf + raw/vjol/metadata/*.jsonl (J-01, J-02)
+        SourceSpec("vjol", "vjol", "raw/vjol", "các tạp chí / tác giả (vjol.info.vn)",
+                   "chưa rõ (bản quyền thuộc tạp chí / tác giả)", "bài báo khoa học", text_col=""),
     )
 }
 

@@ -61,7 +61,7 @@ KPI "≥95% truy vết nguồn" = tỷ lệ bản ghi có đủ `source_key`, `s
 | SEA | Đã là text nên bỏ bước parse. `conversations` của SEA-Instruct-2602 là chuỗi Python-repr → `ast.literal_eval`, không dùng `json.loads`. |
 | stbook | PDF toàn ảnh (mỗi trang 1 JPEG) nên bỏ triage, OCR thẳng: PaddleOCR detect + VietOCR nhận dạng (`vi_corpus/common/ocr.py`), kết quả ở `interim/stbook_ocr/`. Mỗi cuốn một bản ghi; text là OCR thô (còn số trang, chú thích) → normalize xử lý. |
 | Giáo trình (Drive) | PDF/pptx, phần lớn có lớp chữ; trích bằng `vi_corpus/common/pdf_text.py`, làm sạch theo trang (header/footer, ghép dòng) trước khi ghép văn bản. Giữ sách tiếng Anh. Chi tiết: `docs/GIAO_TRINH.md`. |
-| VISTA / VJOL | Chỉ **xử lý**, không crawl. PDF đã đặt tên theo sha256 (dùng làm khóa exact dedup). Cần triage (`text_native`, `mixed`, `image_only`, `corrupt`, `protected`, `non_article`) rồi parse "rẻ trước, đắt sau". Bài ở VJOL/VISTA chưa rõ quyền → `rights_quarantine`. |
+| VISTA / VJOL | Chỉ **xử lý**, không crawl. PDF đã đặt tên theo sha256 (dùng làm khóa exact dedup); riêng VJOL tên file là `<article_id>_<galley_id>.pdf` trong thư mục năm, checkpoint theo sha256 nội dung (đã code bản đầu, xem `docs/README.md` Phần G). Cần triage (`text_native`, `mixed`, `image_only`, `corrupt`, `protected`, `non_article`) rồi parse "rẻ trước, đắt sau". Bài ở VJOL/VISTA chưa rõ quyền → `rights_quarantine`. |
 
 ## 5. Điểm đã điều chỉnh so với repo tham khảo
 1. Split train/val/test chuyển xuống tầng knowledge unit (ảnh yêu cầu ma trận CPT/SFT/Hybrid).
@@ -87,9 +87,10 @@ Theo `docs/DECISION_LOG.md` (mục "Phiên 2026-10-08 (code)"). Mọi số ngư�
 | reduce | HDBSCAN trên không gian gốc, tham số cấu hình được (xem mục 5.2). `--embed-scope kept` chỉ nhúng bản giữ lại. | G-01, R-05 |
 | finalize | `cpt_blocks.parquet`: nối các đoạn CPT liền nhau còn giữ của cùng văn bản tới `--cpt-context` (4.096) token. Manifest đếm candidate (KU CPT) và instruction (KU SFT). Quét nhiễm benchmark 13-gram với `configs/benchmarks/*.txt|*.jsonl` (danh sách hiện rỗng). `--compare-tokenizers` ghi tổng token theo tokenizer khác. | R-09, R-16, D-01 |
 | giáo trình | Parser theo magic bytes (`vi_corpus/common/parsers/`): pdf, docx, pptx, doc / ppt (LibreOffice), djvu (djvulibre + OCR trang không chữ), html (trafilatura), epub (ebooklib); thiếu công cụ thì `skipped`, chạy lại bằng `--retry-skipped`. | D-05, R-14 |
+| VJOL | `scripts/vjol/extract.py`: mẫu chia đều theo năm (`--sample-docs`, mẫu nhỏ nằm trong mẫu lớn), PyMuPDF cho mọi trang, trang scan OCR song song bằng chuỗi VLM (O-20) rồi bỏ bìa / mục lục / tài liệu tham khảo và nối metadata tạp chí khi sinh bản ghi; hồ sơ `PROFILES["vjol"]` giữ vi + en. Chưa có `cmap_healer` / parser bố cục. | J-01 ... J-06, R-26 |
 | ngoài pipeline | `scripts/make_judge_sample.py`: mẫu chấm LLM (~10% SFT, ~70% qua rule, phân tầng nguồn × độ dài, water-filling). | G-06, R-11 |
 
-**Chưa code (cần server hoặc số đo trước)**: G-05 bước 2 (đọc 50 cặp Jaccard [0,7; 0,8), S-11), G-07 shard / Arrow (D-06, đo trước), G-08 / D-11 / R-04 Qwen3-Embedding (đọc model card, S-6), L3 semantic dedup (R-03, sau G-08), script chấm LLM (thang Q6 chưa duyệt), VJOL (chờ S-10), lưới tham số HDBSCAN của G-01 (chạy trên run 10.000 ở server).
+**Chưa code (cần server hoặc số đo trước)**: G-05 bước 2 (đọc 50 cặp Jaccard [0,7; 0,8), S-11), G-07 shard / Arrow (D-06, đo trước), G-08 / D-11 / R-04 Qwen3-Embedding (đọc model card, S-6), L3 semantic dedup (R-03, sau G-08), script chấm LLM (thang Q6 chưa duyệt), lưới tham số HDBSCAN của G-01 (chạy trên run 10.000 ở server).
 
 **Giới hạn đã biết**: MinHash cả văn bản làm đổi chữ ký của sách dài > 20.000 từ so với run cũ (`MINHASH_VERSION` 2, vân tay tự chạy lại từ prepare). File kho của run cũ (trước bia mộ) không có `written_at` nên luôn thua dòng mới. L1 bao hàm chỉ trong phạm vi một lần chạy (kho vòng 2 chưa có hash đoạn văn). Recall MinHash cấu hình A đo bằng bản cấy (`tests/test_dedup_recall.py`): sửa 1% → 1,0; 2% → 0,875; 5% → 0; cắt 10% hai đầu → 0,5. Tokenizer Qwen3 thật và fastText thật chưa chạy trong test tự động (không mạng); test fastText tự bật khi có `lid.176.bin`.
 

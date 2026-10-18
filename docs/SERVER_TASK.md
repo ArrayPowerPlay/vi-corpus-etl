@@ -26,6 +26,7 @@
 | S-9 | Đo trùng của FineWeb-2 với SEA, tải 1 shard | N-09 (tùy chọn, khi quyết thêm FineWeb-2) | CHỜ CODE | 1–2 giờ | không |
 | S-10 | VJOL: chép về server, đếm file / trang, khảo sát PDF text hay scan | R-25 (thời gian xử lý VJOL, số lần parse) | CHẠY NGAY | 1–3 giờ (tùy tốc độ chép) | không |
 | S-11 | Đo dương tính giả của fuzzy dedup (chọn tham số MinHash) | N-14 / R-34 (đổi shingle 5 từ, 16×8, ≥0,8 sang shingle 3 từ, 32×4, ≥0,7 hay không) | CHỜ CODE | vài giờ (chạy pipeline 100k + đọc ~150 cặp) | không |
+| S-12 | VJOL: trích text mẫu 3.000 bài (4 GPU) rồi chạy pipeline 10.000 đoạn | J-05 (số liệu để ước giờ cả kho VJOL, tỉ lệ trang scan / flagged / baseline) | CHẠY NGAY | trích text: vài giờ (chưa đo); pipeline: ~1 giờ | 4 |
 
 Thứ tự khuyến nghị: S-10 (VJOL ưu tiên cao nhất, R-15) → S-0 → S-1 → S-2 → S-3 (có đủ số để tính giờ OCR) → S-4 → S-5. S-6 đến S-9 và S-11 làm sau phiên code (S-11 cần script `scripts/dedup_pairs_sample.py`, viết ở gói G-05 bước 2).
 
@@ -93,7 +94,7 @@ uv run --group ocr python scripts/giao_trinh/survey.py --data-root $SEA_DATA_ROO
 uv run --group ocr python scripts/giao_trinh/survey.py --data-root $SEA_DATA_ROOT                # đủ
 ```
 
-Script lấy tối đa 40 trang rải đều mỗi PDF (`--max-pages`), phân loại trang `text / tcvn3 / scan / empty`, in bảng theo ngành và ghi CSV. Cột `scan` là trang cần OCR. Tỉ lệ scan nhân với tổng số trang ở S-1 ra số trang cần OCR của giáo trình. (Sau này dùng được cho VJOL: `--root <root>/raw/VJOL`.)
+Script lấy tối đa 40 trang rải đều mỗi PDF (`--max-pages`), phân loại trang `text / tcvn3 / scan / empty`, in bảng theo ngành và ghi CSV. Cột `scan` là trang cần OCR. Tỉ lệ scan nhân với tổng số trang ở S-1 ra số trang cần OCR của giáo trình. (Sau này dùng được cho VJOL: `--root <root>/raw/vjol`.)
 
 **Ghi lại**: tỉ lệ scan chung và theo ngành (đặc biệt nhóm y học), tỉ lệ tcvn3, vị trí file CSV.
 
@@ -217,22 +218,22 @@ vjol.info.vn/
     └── vjol_pdf_download_log.jsonl 34 MB
 ```
 
-1. **Chép về** `<root>/raw/VJOL/` giữ nguyên cấu trúc (bằng `mc` hoặc `rclone` với khóa của bạn):
+1. **Chép về** `<root>/raw/vjol/` (chữ thường, J-02; **dữ liệu đã có trên server nên có thể bỏ bước này**) giữ nguyên cấu trúc (bằng `mc` hoặc `rclone` với khóa của bạn):
 
    ```bash
    mc alias set ailab https://storage-ailab.icenter.ai <ACCESS_KEY> <SECRET_KEY>
    mc du --depth 2 ailab/datacrawl/vjol.info.vn/          # dung lượng theo năm (ghi lại)
-   mc mirror ailab/datacrawl/vjol.info.vn/ $SEA_DATA_ROOT/raw/VJOL/
+   mc mirror ailab/datacrawl/vjol.info.vn/ $SEA_DATA_ROOT/raw/vjol/
    ```
 
    Chạy lại `mc mirror` là tiếp tục (bỏ qua file đã có). Ghi lại tổng dung lượng và thời gian chép.
 
-2. **Đếm file và trang**: `uv run --group ocr python ~/count_pages.py $SEA_DATA_ROOT/raw/VJOL` (script ở S-1).
+2. **Đếm file và trang**: `uv run --group ocr python ~/count_pages.py $SEA_DATA_ROOT/raw/vjol` (script ở S-1).
 
 3. **Khảo sát text / scan / TCVN3** (5 PDF mỗi năm ≈ 180 PDF, rồi bản đủ nếu cần):
 
    ```bash
-   uv run --group ocr python scripts/giao_trinh/survey.py --data-root $SEA_DATA_ROOT --root $SEA_DATA_ROOT/raw/VJOL --per-dir 5
+   uv run --group ocr python scripts/giao_trinh/survey.py --data-root $SEA_DATA_ROOT --root $SEA_DATA_ROOT/raw/vjol --per-dir 5
    ```
 
    Cột "ngành" trong bảng là thư mục cấp 1, tức năm. Ghi lại theo năm: tỉ lệ trang `text` / `scan` / `tcvn3` / `empty`, `vi_ratio`, `bad_ratio`.
@@ -240,7 +241,7 @@ vjol.info.vn/
 4. **Xem metadata** (không nạp cả file vào RAM):
 
    ```bash
-   for f in $SEA_DATA_ROOT/raw/VJOL/metadata/*.jsonl; do echo "== $f"; wc -l < "$f"; head -c 3000 "$f"; echo; done
+   for f in $SEA_DATA_ROOT/raw/vjol/metadata/*.jsonl; do echo "== $f"; wc -l < "$f"; head -c 3000 "$f"; echo; done
    ```
 
    Gửi cho Claude: số dòng mỗi file và 1–2 dòng mẫu của mỗi file (để biết trường nào có: tiêu đề, tóm tắt, tạp chí, ngôn ngữ, năm, giấy phép, ánh xạ tên file PDF ↔ bài báo).
@@ -279,6 +280,27 @@ vjol.info.vn/
 
 ---
 
+## S-12. VJOL: trích text mẫu và chạy pipeline 10.000 đoạn  [CHẠY NGAY]
+
+**Mục đích**: lần chạy thật đầu tiên của VJOL (J-05). Cho số liệu thật để: ước giờ cả kho, biết tỉ lệ trang scan / bị loại / `baseline` (O-27 c), biết N bài cần để đủ 10.000 đoạn, xem `report.html` của nguồn `vjol`. Dữ liệu đã nằm ở `<root>/raw/vjol/` (J-02).
+
+```bash
+cd /home/jovyan/dinh/vi-corpus-etl && git fetch origin && git checkout worktree-vjol-pipeline && git pull
+source /home/jovyan/dinh/env.sh                       # server cũ có vLLM sẵn; server mới phải cài vLLM trước (tạo env.sh như server cũ)
+# 1) thử không GPU 20 bài (kiểm đường dẫn, metadata, đọc PDF), ~1 phút
+uv run python scripts/vjol/extract.py --data-root data --sample-docs 20 --no-ocr && uv run python scripts/vjol/extract.py --data-root data --status
+# 2) trích text mẫu 3.000 bài trên 4 GPU (trong tmux); chạy lại đúng lệnh này nếu bị ngắt
+DATA_ROOT=data VLLM_BIN=$(which vllm) SAMPLE_DOCS=3000 ./scripts/vjol/run_extract_vlm.sh
+# 3) pipeline 10.000 đoạn VJOL (lần đầu tải tokenizer Qwen3 + fastText + mô hình nhúng)
+uv run --group curator --group viz python scripts/run_pipeline.py --data-root data --mix vjol=10000 --total 10000 --run-name vjol_10k
+```
+
+Sau lệnh 2, nếu log pipeline báo `chỉ lấy được X/10000 mẫu` thì tăng `SAMPLE_DOCS` (vd 6000) rồi chạy lại lệnh 2 và 3 (chỉ làm thêm phần mới; pipeline tự chạy lại stage bị ảnh hưởng).
+
+**Báo lại cho Claude** (để ghi vào `DECISION_LOG.md`): in của `extract.py --status` (số PDF trong raw / đã trích / lỗi / bỏ qua; số trang theo `method`; trang `ocr_vlm` theo `status` và engine; tỉ lệ `flagged`; số trang `baseline`; tổng giờ), số bài có metadata (`metadata_found` trong cột `meta` của `01_ingest.parquet`), `manifest.json` của run (số đoạn mỗi bài ở mục `chunk`, phân bố ngôn ngữ vi / en / khác ở `language`, số đoạn bị loại và lý do), thời gian chạy lệnh 2 và 3, và file `report.html`.
+
+---
+
 ## Bảng ghi kết quả
 
 (Điền sau khi chạy. Ghi ngày, người chạy, lệnh đã chạy nếu khác hướng dẫn.)
@@ -296,4 +318,5 @@ vjol.info.vn/
 | S-8 | | | |
 | S-9 | | | |
 | S-10 | | số file: ; dung lượng: GB; thời gian chép: ; số trang: ; tỉ lệ text / scan / tcvn3 theo năm: ; số dòng metadata: | |
+| S-12 | | PDF trích / lỗi / bỏ qua: ; trang theo method: ; ocr_vlm ok / blank / flagged: ; trang baseline: ; giờ trích text: ; đoạn mỗi bài: ; ngôn ngữ vi / en / khác: | |
 | S-11 | | số cặp A bắt: ; C bắt: ; chỉ C bắt: (cùng nguồn / khác nguồn); nhóm 2 (0,7–0,8): trung / cung-mau / khac = ; nhóm 1: ; nhóm 3: | |

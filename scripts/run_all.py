@@ -5,7 +5,7 @@ Mỗi phần (part) có đúng một script riêng trong scripts/<phần>/; file
 truyền --data-root (và --status nếu có). Một phần lỗi không làm dừng các phần sau:
 cuối cùng in tóm tắt và thoát với mã khác 0 nếu có phần lỗi.
 
-Phần xử lý (stbook, giao_trinh) bị bỏ qua nếu thư mục raw của nó chưa có. Riêng "sea" là bước
+Phần xử lý (stbook, giao_trinh, vjol) bị bỏ qua nếu thư mục raw của nó chưa có. Riêng "sea" là bước
 tải nên tự tạo raw/sea_vi, không bao giờ bị bỏ qua.
 
 Ví dụ:
@@ -27,6 +27,7 @@ PARTS: dict[str, tuple[str | None, str]] = {
     "sea": (None, "scripts/sea/download_all.py"),
     "stbook": ("raw/stbook", "scripts/stbook/ocr.py"),
     "giao_trinh": ("raw/giao_trinh", "scripts/giao_trinh/extract.py"),
+    "vjol": ("raw/vjol", "scripts/vjol/extract.py"),
 }
 
 

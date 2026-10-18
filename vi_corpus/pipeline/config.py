@@ -52,6 +52,8 @@ PROFILES: dict[str, SourceProfile] = {
     "stbook": SourceProfile(chunked=True, min_words=80),
     # giữ sách tiếng Anh (P-08); ngưỡng lang_score thấp hơn vì giáo trình hay trộn Việt - Anh
     "giao_trinh": SourceProfile(chunked=True, min_words=80, allowed_langs=("vi", "en"), min_lang_score=0.5),
+    # bài báo khoa học: giữ cả bản Việt và bản Anh (R-26, P-08); ngưỡng là điểm khởi đầu như giáo trình, chưa kiểm trên bài thật
+    "vjol": SourceProfile(chunked=True, min_words=80, allowed_langs=("vi", "en"), min_lang_score=0.5),
 }
 
 # Cơ cấu mặc định khi không chỉ định --mix (tỷ lệ, sẽ được quy về --total).
