@@ -121,6 +121,8 @@ def test_kiem_ke_theo_nam_bo_metadata_va_file_an(tmp_path):
     assert sorted(by_year) == ["", "2019", "2020"]
     assert [p.name for p in by_year["2019"]] == ["20190_1.pdf", "20191_2.pdf"]
     assert [p.name for p in by_year[""]] == ["ngoai_le.pdf"]
+    (raw / "2019/HOA.PDF").write_bytes((raw / "2019/20190_1.pdf").read_bytes())
+    assert "HOA.PDF" in [p.name for p in vx.list_pdfs_by_year(raw)["2019"]]  # đuôi viết hoa vẫn là PDF
 
 
 def test_chon_mau_chia_deu_theo_nam_va_long_nhau():
@@ -183,6 +185,34 @@ def test_bo_tai_lieu_tham_khao_giu_tom_tat_tieng_anh_sau_do():
     assert strip_references(["a\nb\nc"]) == (["a\nb\nc"], 0)
     early = ["References"] + [f"Dòng nội dung {i} của bài." for i in range(20)]
     assert strip_references(["\n".join(early)])[1] == 0
+
+
+def test_bo_nhieu_muc_tai_lieu_tham_khao_va_giu_phu_luc_abstract_cung_dong():
+    """Bài có hai danh sách (Việt, rồi References sau Abstract) bị bỏ cả hai; "Phụ lục 1" và "Abstract: ..." cùng dòng kết thúc phần tham khảo."""
+    body = [f"Câu thân bài số {i} bàn về chính sách tiền tệ của ngân hàng trung ương." for i in range(20)]
+    pages = ["\n".join(body), "\n".join(["Tài liệu tham khảo", "[1] Nguyễn Văn A (2019), Tiền tệ.",
+                                         "Abstract: This paper studies monetary policy.", "Keywords: money",
+                                         "References", "[2] Smith J. (2020), Money.",
+                                         "PHỤ LỤC 1", "Bảng số liệu phụ lục.", "Tài liệu tham khảo", "[3] Trần B (2018), Lãi suất."])]
+    joined = "\n".join(strip_references(pages)[0])
+    for gone in ("[1] Nguyễn", "[2] Smith", "[3] Trần"):
+        assert gone not in joined, gone
+    for kept in ("Abstract: This paper studies", "Keywords: money", "PHỤ LỤC 1", "Bảng số liệu phụ lục", "Câu thân bài số 19"):
+        assert kept in joined, kept
+    assert heading_key("civil engineering") == "civil engineering" and heading_key("vi. Tham khảo") == "tham khảo"  # La Mã viết thường cần dấu chấm
+
+
+def test_trang_needs_ocr_khong_lam_lech_trang_bia(tmp_path):
+    """Trang scan chưa OCR (needs_ocr) thành trang rỗng chứ không bị xoá khỏi danh sách: trang nội dung đầu tiên (ngắn) không bị coi là bìa."""
+    short_but_real = "Tóm tắt nghiên cứu về lạm phát tại Việt Nam trong giai đoạn gần đây."
+    body = [f"Câu thân bài số {i} bàn về lạm phát và tăng trưởng của nền kinh tế." for i in range(10)]
+    write_ckpt(tmp_path, "d" * 64, "raw/vjol/2019/100_10.pdf", ["", short_but_real, "\n".join(body)])
+    ck = vx.checkpoint_path(tmp_path, "d" * 64)
+    data = json.loads(ck.read_text(encoding="utf-8"))
+    data["pages"][0]["method"] = "needs_ocr"
+    ck.write_text(json.dumps(data), encoding="utf-8")
+    text = next(iter_records(SOURCES["vjol"], tmp_path))["text"]
+    assert short_but_real in text
 
 
 def test_bo_trang_bia_va_muc_luc():

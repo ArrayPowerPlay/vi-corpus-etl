@@ -62,7 +62,7 @@ def list_pdfs_by_year(root: Path) -> dict[str, list[Path]]:
     for d in sorted(root.iterdir()):
         if not d.is_dir() or d.name.startswith(".") or d.name in SKIP_DIRS:
             continue
-        pdfs = sorted(p for p in d.rglob("*.pdf") if not any(part.startswith(".") for part in p.relative_to(root).parts))
+        pdfs = sorted(p for p in d.rglob("*") if p.suffix.lower() == ".pdf" and not any(part.startswith(".") for part in p.relative_to(root).parts))
         if pdfs:
             by_year[d.name] = pdfs
     return by_year

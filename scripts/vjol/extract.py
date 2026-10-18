@@ -50,7 +50,7 @@ def format_report(rep: dict) -> str:
 
 
 def export(spec, data_root: Path) -> int:
-    """Xuất processed/vjol/vjol.parquet từ checkpoint (nối metadata). Trả về số bản ghi."""
+    """Xuất processed/vjol/vjol.parquet từ checkpoint (không có cột meta, chỉ để xem). Trả về số bản ghi."""
     out = data_root / OUT_PATH
     n = export_parquet(iter_records(spec, data_root, with_meta=False), out)
     logging.getLogger("vi_corpus").info("Đã xuất %d bản ghi ra %s", n, out)

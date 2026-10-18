@@ -78,7 +78,7 @@ def iter_records(spec: SourceSpec, data_root: Path, limit_files: int | None = No
     """
     Sinh bản ghi CORPUS_SCHEMA từ interim/vjol_text/, mỗi bài một bản ghi.
 
-    Bỏ qua checkpoint lỗi / bị skip / không có chữ. Trang needs_ocr (chưa OCR) bị bỏ vì text của chúng là rác; trang OCR bị loại
+    Bỏ qua checkpoint lỗi / bị skip / không có chữ. Trang needs_ocr (chưa OCR) thành trang rỗng vì text của chúng là rác; trang OCR bị loại
     (flagged) có text rỗng nên không vào kho. source_path là đường dẫn PDF (nằm trong checkpoint).
 
     Args:
@@ -99,7 +99,7 @@ def iter_records(spec: SourceSpec, data_root: Path, limit_files: int | None = No
         stems = {Path(d["paths"][0]).stem for d in checkpoints}
         meta_rows = load_metadata(metadata_path or data_root / spec.path / METADATA_REL, stems)
     for done in checkpoints:
-        pages = [p["text"] for p in done["pages"] if p["method"] != "needs_ocr"]
+        pages = ["" if p["method"] == "needs_ocr" else p["text"] for p in done["pages"]]  # giữ chỉ số trang cho heuristic bìa
         pages, clean_stats = clean_paper_pages(pages)
         page_stats: dict = {}
         text = clean_pages(pages, stats=page_stats)

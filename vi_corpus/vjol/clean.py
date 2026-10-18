@@ -31,14 +31,16 @@ TOC_MIN_LINES = 5
 COVER_MAX_WORDS = 40  # trang đầu ít hơn ngần ấy từ (bài >= COVER_MIN_PAGES trang) là trang bìa
 COVER_MIN_PAGES = 3
 
-_NUMBERING = re.compile(r"^(?:\d+(?:\.\d+)*|[ivxlc]+)[.)]?\s+", re.IGNORECASE)
+# số thứ tự đầu tiêu đề: "5." "2.1" "IV)" (số La Mã viết hoa, hoặc viết thường nhưng phải có dấu . / ) để không cắt nhầm từ như "civil")
+_NUMBERING = re.compile(r"^(?:\d+(?:\.\d+)*[.)]?|[IVXLC]+[.)]?|[ivxlc]+[.)])\s+")
+# phần đứng sau tài liệu tham khảo: khớp ĐẦU dòng ("Phụ lục 1", "Abstract: this paper ...", "Tóm tắt: ...")
+_AFTER_REF = re.compile(r"^(?:" + "|".join(sorted(AFTER_REF_HEADINGS, key=len, reverse=True)) + r")\b")
 _LEADER = re.compile(r"(?:\.{4,}|…{2,}|(?:\. ){4,})\s*\d+\s*$")
 
 
 def heading_key(line: str) -> str:
     """Khoá so sánh tiêu đề: NFC, chữ thường, bỏ số thứ tự đầu dòng ("5.", "IV)", "2.1") và dấu :. cuối dòng, gộp khoảng trắng."""
-    text = unicodedata.normalize("NFC", line).strip().casefold()
-    text = _NUMBERING.sub("", text)
+    text = _NUMBERING.sub("", unicodedata.normalize("NFC", line).strip()).casefold()
     return re.sub(r"\s+", " ", text).strip(" :.\t")
 
 
@@ -73,22 +75,29 @@ def drop_front_matter(pages: list[str]) -> tuple[list[str], dict]:
 
 def strip_references(pages: list[str]) -> tuple[list[str], int]:
     """
-    Bỏ phần tài liệu tham khảo: từ tiêu đề khớp REF_HEADINGS cuối cùng (nằm sau REF_MIN_POS số dòng) tới tiêu đề AFTER_REF_HEADINGS
-    kế tiếp hoặc hết bài.
+    Bỏ mọi phần tài liệu tham khảo: mỗi đoạn bắt đầu ở một dòng khớp REF_HEADINGS (nằm sau REF_MIN_POS số dòng) và kết thúc ở dòng
+    bắt đầu bằng một tiêu đề AFTER_REF_HEADINGS (Abstract, Phụ lục, ...) hoặc hết bài. Bài thường có hai danh sách (tiếng Việt rồi
+    "References" tiếng Anh sau phần Abstract), nên xử lý hết chứ không chỉ tiêu đề cuối.
 
     Returns:
         (các trang sau khi bỏ, số dòng không rỗng đã bỏ). Không thấy tiêu đề thì giữ nguyên.
     """
     lines = [(p, i, ln) for p, text in enumerate(pages) for i, ln in enumerate(text.splitlines()) if ln.strip()]
     total = len(lines)
-    heads = [k for k, (_, _, ln) in enumerate(lines) if k >= REF_MIN_POS * total and heading_key(ln) in REF_HEADINGS]
-    if not heads:
+    dropped: set[tuple[int, int]] = set()
+    in_refs = False
+    for k, (p, i, ln) in enumerate(lines):
+        key = heading_key(ln)
+        if in_refs and _AFTER_REF.match(key):
+            in_refs = False
+        if not in_refs and k >= REF_MIN_POS * total and key in REF_HEADINGS:
+            in_refs = True
+        if in_refs:
+            dropped.add((p, i))
+    if not dropped:
         return pages, 0
-    start = heads[-1]
-    end = next((k for k in range(start + 1, total) if heading_key(lines[k][2]) in AFTER_REF_HEADINGS), total)
-    dropped = {(p, i) for p, i, _ in lines[start:end]}
     out = ["\n".join(ln for i, ln in enumerate(text.splitlines()) if (p, i) not in dropped) for p, text in enumerate(pages)]
-    return out, end - start
+    return out, len(dropped)
 
 
 def clean_paper_pages(pages: list[str]) -> tuple[list[str], dict]:

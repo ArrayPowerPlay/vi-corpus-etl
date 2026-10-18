@@ -191,8 +191,8 @@ def run_batch(root: Path, data_root: Path, text_dir: str,
                 busy += 1  # tiến trình khác đang làm file này
                 continue
             now = read_json(ckpt)
-            if claim_dir and now and now.get("created_at", "") >= started and not _needs_redo(now, ocr_enabled, False):
-                done_count += 1  # tiến trình khác vừa làm xong trong lần chạy này
+            if claim_dir and now and now.get("created_at", "") >= started:
+                done_count += 1  # tiến trình khác vừa làm xong (kể cả lỗi) trong lần chạy này, không làm lại
                 continue
             result = extract_file(paths[0], get_ocr)
             write_json_atomic(ckpt, {
