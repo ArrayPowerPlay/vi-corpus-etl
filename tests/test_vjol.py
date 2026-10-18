@@ -547,3 +547,17 @@ def test_muc_tham_khao_bat_dau_bang_tu_khoa_ket_thuc_khong_cat_som():
     assert dropped == len(entries) + 1
     for e in entries:
         assert e not in out[0], e
+
+
+@pytest.mark.parametrize("line,ends", [
+    ("Abstract", True), ("ABSTRACT", True), ("Summary", True), ("Tóm tắt", True), ("Abstract: this paper studies", True),
+    ("Phụ lục I", True), ("Phụ lục 1: Bảng", True), ("Appendix A. Tables", True), ("Appendix XII", True), ("Cảm ơn", True),
+    ("Abstract algebra, Dummit D. (2004).", False), ("Summary of the report, World Bank", False), ("Appendix civil", False),
+    ("Appendix a study of rates", False), ("Phụ lục Nghị định 12/2019", False), ("Cảm ơn sự giúp đỡ của", False),
+])
+def test_tieu_de_ket_thuc_phan_tham_khao_bien(line, ends):
+    """(reviewer lần 3) Biên của regex tiêu đề kết thúc: từ khoá đứng một mình / theo sau dấu câu thì kết thúc, mục tham khảo thì không."""
+    body = [f"Câu thân bài số {i} bàn về chính sách tiền tệ." for i in range(20)]
+    out, _ = strip_references(["\n".join(body + ["References", "[1] Smith J (2000), Money.", line, "Smith K (2001), Rates."])])
+    assert "[1] Smith" not in out[0]
+    assert (line in out[0]) is ends and ("Smith K (2001)" in out[0]) is ends  # kết thúc thì giữ cả dòng tiêu đề lẫn dòng sau
