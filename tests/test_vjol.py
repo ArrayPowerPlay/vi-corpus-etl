@@ -536,3 +536,14 @@ def test_dong_lenh_trich_mau_xuat_parquet_va_status(tmp_path):
     assert "6 đã trích text" in run_cli("--data-root", str(tmp_path), "--status").stdout
     assert run_cli("--data-root", str(tmp_path), "--export-only").returncode == 0
     assert run_cli("--data-root", str(tmp_path / "khong_co"), "--status").returncode == 2  # thiếu raw/vjol
+
+
+def test_muc_tham_khao_bat_dau_bang_tu_khoa_ket_thuc_khong_cat_som():
+    """(reviewer lần 2) Một mục tài liệu tham khảo bắt đầu bằng "Summary" / "Abstract algebra" / "Phụ lục Nghị định" không được coi là tiêu đề kết thúc."""
+    body = [f"Câu thân bài số {i} bàn về chính sách tiền tệ của ngân hàng trung ương." for i in range(20)]
+    entries = ["[1] Nguyễn A (2019), Tiền tệ.", "Summary of the economic report, World Bank (2020).",
+               "Abstract algebra, Dummit D. (2004).", "Phụ lục Nghị định 12/2019/NĐ-CP, Chính phủ.", "Smith J (2000), Money."]
+    out, dropped = strip_references(["\n".join(body + ["Tài liệu tham khảo"] + entries)])
+    assert dropped == len(entries) + 1
+    for e in entries:
+        assert e not in out[0], e

@@ -33,8 +33,12 @@ COVER_MIN_PAGES = 3
 
 # số thứ tự đầu tiêu đề: "5." "2.1" "IV)" (số La Mã viết hoa, hoặc viết thường nhưng phải có dấu . / ) để không cắt nhầm từ như "civil")
 _NUMBERING = re.compile(r"^(?:\d+(?:\.\d+)*[.)]?|[IVXLC]+[.)]?|[ivxlc]+[.)])\s+")
-# phần đứng sau tài liệu tham khảo: khớp ĐẦU dòng ("Phụ lục 1", "Abstract: this paper ...", "Tóm tắt: ...")
-_AFTER_REF = re.compile(r"^(?:" + "|".join(sorted(AFTER_REF_HEADINGS, key=len, reverse=True)) + r")\b")
+# Dòng kết thúc phần tài liệu tham khảo (khớp trên khoá heading_key, đã chữ thường): từ khoá phải đứng một mình, hoặc theo sau là dấu
+# câu (": . - – — )"), nên "Abstract: this paper ..." và "Phụ lục 1: Bảng" kết thúc phần tham khảo còn mục tham khảo như "Abstract algebra,
+# Dummit (2004)" hay "Summary of the report, World Bank" thì không. Phụ lục / Appendix có thể kèm nhãn ngắn (số, một chữ cái, số La Mã <= 4 ký tự).
+_APPENDIX = "phụ lục|appendix|appendices"
+_OTHER_END = "|".join(sorted(AFTER_REF_HEADINGS - set(_APPENDIX.split("|")), key=len, reverse=True))
+_AFTER_REF = re.compile(rf"^(?:(?:{_APPENDIX})(?:\s+(?:\d+|[a-z]|[ivxlc]{{1,4}}))?|{_OTHER_END})\s*(?:$|[:.\-–—)])")
 _LEADER = re.compile(r"(?:\.{4,}|…{2,}|(?:\. ){4,})\s*\d+\s*$")
 
 
