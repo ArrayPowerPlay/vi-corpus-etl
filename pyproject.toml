@@ -38,6 +38,9 @@ ocr = [
     "torch>=2.14.0",
     "torchvision>=0.29.0",
     "vietocr>=0.3.12",
+    # Bản headless của OpenCV: không cần libGL.so.1 của hệ điều hành (server không có sẵn, engine baseline sẽ báo ImportError).
+    # Bản contrib-headless đã gồm đủ module của bản thường; xem override-dependencies bên dưới.
+    "opencv-contrib-python-headless>=4.10,<5",
 ]
 
 # Chạy song song nhiều CPU / GPU bằng NeMo Curator + Ray (vi_corpus/pipeline/curator.py): uv sync --group curator.
@@ -64,6 +67,12 @@ viz = [
 # cần OCR thì thêm `--group ocr`.
 [tool.uv]
 default-groups = ["dev", "curator", "viz"]
+# paddlex (paddleocr) và imgaug (vietocr) kéo bản OpenCV có giao diện đồ hoạ, cần libGL.so.1 mà server GPU không có.
+# Loại hai gói đó (điều kiện không bao giờ đúng) và dùng opencv-contrib-python-headless trong group ocr thay vào.
+override-dependencies = [
+    "opencv-python ; sys_platform == 'never'",
+    "opencv-contrib-python ; sys_platform == 'never'",
+]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
