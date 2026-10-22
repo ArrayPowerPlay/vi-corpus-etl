@@ -9,6 +9,7 @@ Không sửa checkpoint nào.
 """
 
 import csv
+import hashlib
 import logging
 from collections import defaultdict
 from pathlib import Path
@@ -37,7 +38,8 @@ def load_checkpoints(data_root: Path) -> list[dict]:
 
 def inspect_articles(data_root: Path, ids: list[str], syllables: Path | None = None) -> str:
     """
-    Báo cáo từng trang của các bài `ids` (article_id hoặc tiền tố sha256 của PDF), dạng văn bản.
+    Báo cáo từng trang của các bài `ids`, dạng văn bản. Mỗi id là article_id, tiền tố sha256 của PDF, hoặc đoạn băm giữa của doc_id / parent_doc_id
+    trong báo cáo pipeline ("vjol:<băm>:0" -> <băm>, là sha1 của sha256 chứ không phải tiền tố sha256).
 
     Với mỗi trang: method, engine OCR (tier) và status nếu là ocr_vlm, lý do OCR lại (reason), các tín hiệu chữ hỏng vượt ngưỡng của LỚP CHỮ
     (garbled_text nếu trang đã OCR lại, ngược lại text), độ lợi chữ đảo ngược của văn bản hiện tại và đoạn đầu.
@@ -50,6 +52,7 @@ def inspect_articles(data_root: Path, ids: list[str], syllables: Path | None = N
     for done in load_checkpoints(data_root):
         by_key[str(done.get("article_id"))] = done
         by_key[done["sha256"][:10]] = done
+        by_key[hashlib.sha1(done["sha256"].encode("utf-8")).hexdigest()[:10]] = done  # đoạn băm trong doc_id (make_doc_id)
     lines = [f"tập âm tiết: {'có' if vocab else 'THIẾU (không đo được độ lợi đảo ngược và tín hiệu unknown)'}"]
     for key in ids:
         done = by_key.get(key) or next((d for k, d in by_key.items() if k.startswith(key)), None)

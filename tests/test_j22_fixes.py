@@ -234,3 +234,6 @@ def test_diagnose_inspect_in_nguon_chu_dao_nguoc(tmp_path):
     assert "tập âm tiết: có" in report and report.count("=== bài 55") == 2
     assert "trang 1: method=text" in report and "độ lợi đảo=-" in report and "độ lợi đảo=+" in report
     assert "=== 999: không thấy checkpoint" in report
+    import hashlib
+    by_doc_id = hashlib.sha1(("b" * 64).encode()).hexdigest()[:10]  # đoạn giữa của doc_id "vjol:<băm>:0"
+    assert "=== bài 55" in dg.inspect_articles(tmp_path, [by_doc_id])

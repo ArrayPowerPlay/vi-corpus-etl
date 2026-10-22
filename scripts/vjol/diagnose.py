@@ -25,7 +25,7 @@ def main() -> int:
     p.add_argument("--syllables", type=Path, default=None, help="Tập âm tiết (mặc định <data-root>/processed/ocr_bakeoff/syllables.json).")
     sub = p.add_subparsers(dest="cmd", required=True)
     s = sub.add_parser("inspect", help="In từng trang của các bài chỉ định.")
-    s.add_argument("ids", nargs="+", help="article_id hoặc tiền tố sha256 của PDF (vd 8053925644).")
+    s.add_argument("ids", nargs="+", help="article_id, tiền tố sha256 của PDF, hoặc đoạn băm trong doc_id của pipeline (vjol:<băm>:0; vd 8053925644).")
     sub.add_parser("producers", help="Đếm producer / creator của PDF kèm tỷ lệ âm tiết lạ của lớp chữ.")
     args = p.parse_args()
     setup_logging(args.data_root / "logs", "vjol_diagnose")
