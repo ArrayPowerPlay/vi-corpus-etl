@@ -26,13 +26,14 @@ from pathlib import Path
 # Thay thư mục script (sys.path[0]) bằng gốc repo: profile.py cạnh đây (giáo trình) sẽ che module `profile` của stdlib.
 sys.path[0] = str(Path(__file__).resolve().parents[2])
 
+from vi_corpus.common.garbled import load_vocab  # noqa: E402
 from vi_corpus.common.ocr_cascade import CascadeOcrGetter  # noqa: E402
 from vi_corpus.common.parquet_export import export_parquet  # noqa: E402
 from vi_corpus.common.registry import SOURCES  # noqa: E402
 from vi_corpus.common.state import acquire_run_lock, setup_logging  # noqa: E402
 from vi_corpus.ocr_bakeoff.cascade import DEFAULT_TIERS, EngineUnavailable, ServerDown, build_tiers  # noqa: E402
 from vi_corpus.ocr_bakeoff.engines import DEFAULT_ENGINES, load_engines  # noqa: E402
-from vi_corpus.vjol.extract import report, run_extract  # noqa: E402
+from vi_corpus.vjol.extract import SYLLABLES_REL, report, run_extract  # noqa: E402
 from vi_corpus.vjol.records import OUT_PATH, iter_records  # noqa: E402
 
 
@@ -77,6 +78,8 @@ def main() -> int:
     p.add_argument("--no-ocr", action="store_true", help="Không OCR: trang scan để needs_ocr (không cần GPU).")
     p.add_argument("--syllables", type=Path, default=None,
                    help="Tập âm tiết cho tín hiệu âm tiết lạ của bộ dò chữ hỏng (mặc định <data-root>/processed/ocr_bakeoff/syllables.json).")
+    p.add_argument("--no-rotate", action="store_true",
+                   help="Không xoay thử trang scan nghi bị xoay (J-24); mặc định xoay thử khi có tập âm tiết.")
     p.add_argument("--no-export", action="store_true", help="Không xuất Parquet ở cuối (dùng khi nhiều tiến trình chạy cùng lúc).")
     p.add_argument("--export-only", action="store_true", help="Chỉ xuất Parquet từ checkpoint hiện có rồi thoát.")
     p.add_argument("--status", action="store_true", help="Chỉ in tiến độ rồi thoát.")
@@ -120,8 +123,11 @@ def main() -> int:
     _lock = acquire_run_lock(state)  # noqa: F841 — giữ khoá
     log = logging.getLogger("vi_corpus")
     setup_logging(args.data_root / "logs", f"vjol_extract_{worker}")
+    vocab = None if args.no_rotate else load_vocab(args.syllables or args.data_root / SYLLABLES_REL)  # J-24: có tập âm tiết thì xoay thử trang nghi ngờ
+    if vocab is None and not args.no_rotate and not args.no_ocr:
+        log.warning("Không thấy tập âm tiết: không xoay thử trang scan bị xoay 180 / 90 / 270 độ (J-24)")
     getter = CascadeOcrGetter(tiers, args.concurrency, enabled=not args.no_ocr, serve=args.serve, gpu=args.gpu,
-                              vllm_bin=args.vllm_bin, state_dir=state, server_timeout=args.server_timeout)
+                              vllm_bin=args.vllm_bin, state_dir=state, server_timeout=args.server_timeout, vocab=vocab)
     try:
         failed = run_extract(root, args.data_root, getter, ocr_enabled=not args.no_ocr, limit_files=args.limit_files,
                              retry_skipped=args.retry_skipped, sample_docs=args.sample_docs, seed=args.seed,

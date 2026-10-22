@@ -330,13 +330,13 @@ uv run --group curator --group viz python scripts/run_pipeline.py --data-root da
 
 ## S-14. VJOL: đo (chữ đảo ngược, producer, embed) rồi chạy `vjol_10k_v3`  [CHẠY SAU S-13]
 
-**Mục đích**: J-22 / J-23. Bước 1-3 đo bằng CPU hoặc GPU nhẹ, chưa sửa dữ liệu; bước 4 làm lại trích text (tín hiệu `nodiac` mới nên `EXTRACT_VERSION` 3 làm lại cả 3.000 bài, kể cả OCR lại trang scan, ~3 giờ đồng hồ trên 4 GPU như S-13); bước 5-7 chạy pipeline mới và so với `vjol_10k_v2`.
+**Mục đích**: J-22 / J-23. Bước 1-3 đo bằng CPU hoặc GPU nhẹ, chưa sửa dữ liệu (đã chạy 2026-10-23, kết quả ở J-24); bước 4 làm lại trích text (tín hiệu `nodiac` mới nên `EXTRACT_VERSION` 3 làm lại cả 3.000 bài, kể cả OCR lại trang scan, ~3 giờ đồng hồ trên 4 GPU như S-13); bước 5-7 chạy pipeline mới và so với `vjol_10k_v2`.
 
 ```bash
 cd /home/jovyan/dinh/vi-corpus-etl && git fetch origin && git checkout worktree-vjol-pipeline && git pull
 source /home/jovyan/dinh/env.sh
 uv sync --group curator --group viz --group ocr
-uv run pytest -q                                   # kỳ vọng 241 test qua
+uv run pytest -q                                   # kỳ vọng 242 test qua
 ls -la data/processed/ocr_bakeoff/syllables.json   # cần cho reversed_text, odd_words, tín hiệu unknown
 # 1) (J-22 (1)) chữ đảo ngược đến từ lớp chữ nhúng (method=text) hay từ OCR VLM (method=ocr_vlm)? CPU, vài giây
 uv run python scripts/vjol/diagnose.py --data-root data inspect 8053925644 26f746692e | tee data/processed/vjol_diagnose_inspect.txt
@@ -346,7 +346,9 @@ uv run python scripts/vjol/diagnose.py --data-root data producers
 nvidia-smi
 uv run --group viz python scripts/bench_embed.py --run-dir data/processed/pipeline_runs/vjol_10k_v2 --n 640 2>&1 | tee data/processed/vjol_bench_embed.txt
 # 4) làm lại trích text 3.000 bài trên 4 GPU (tmux); ghi giờ thực bằng `date`
+# (J-24) từ lần này trang scan nghi bị xoay được xoay thử 180/90/270 độ; xem log: grep 'Xoay thử' data/logs/vjol_extract_gpu*.log
 date; DATA_ROOT=data VLLM_BIN=$(which vllm) SAMPLE_DOCS=3000 ./scripts/vjol/run_extract_vlm.sh; date
+nvidia-smi                                         # phải không còn tiến trình vLLM nào trước khi chạy pipeline (bước 5)
 uv run python scripts/vjol/check_garbled.py --data-root data      # có thêm tín hiệu nodiac (summary.json, new_signals.txt)
 # 5) pipeline mới; embed yêu cầu GPU (không có thì dừng với lỗi), bản đồ cụm trên UMAP 10 chiều (J-22 (9))
 uv run --group curator --group viz python scripts/run_pipeline.py --data-root data --mix vjol=10000 --total 10000 \

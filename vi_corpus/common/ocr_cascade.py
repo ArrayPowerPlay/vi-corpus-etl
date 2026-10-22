@@ -6,19 +6,32 @@ và (sau này) giáo trình.
   (J-10) được vẽ lại cả trang thay vì lấy ảnh nhúng.
 - CascadePageOcr: bộ OCR có đúng giao diện mà vi_corpus.common.pdf_text.extract_pdf cần (.ocr_pages): extract_pdf gom các
   trang scan của một PDF rồi gửi một lượt, thay vì OCR tuần tự từng trang (J-04).
+- Trang xoay (J-24): trang scan bị xoay 180 độ (hoặc 90 / 270) làm cả chuỗi VLM bị báo rồi rơi xuống engine baseline, engine này đọc ra chữ
+  ngược rác mà bộ kiểm trang không thấy (status "ok"). Khi CascadePageOcr có tập âm tiết (vocab), mỗi trang kết thúc ở engine baseline
+  hoặc bị loại sẽ được xoay thử 180 / 90 / 270 độ và chạy lại chuỗi; bản xoay chỉ thắng khi tỷ lệ âm tiết hợp lệ cao hơn rõ rệt
+  (ROTATE_MIN_GAIN, ROTATE_MIN_RATE). Không có vocab thì không xoay (giữ hành vi cũ cho stbook, giáo trình).
 - CascadeOcrGetter: hàm `get_ocr` nạp lười. Chỉ khi gặp trang scan đầu tiên mới dựng server vLLM (nếu --serve), chờ server
   sẵn sàng và dựng chuỗi engine; tài liệu toàn trang có chữ không tốn thời gian khởi động GPU. Lỗi dựng bị nhớ lại và ném lại
   dưới dạng EngineUnavailable (dừng cả lượt, không loại trang âm thầm, O-24).
 """
 
+import io
 import logging
 from collections.abc import Iterable
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from pathlib import Path
 
+from vi_corpus.common.garbled import unknown_syllable_rate
 from vi_corpus.ocr_bakeoff.cascade import CascadeOcr, EngineUnavailable, Tier
 
 logger = logging.getLogger("vi_corpus")
+
+# Xoay trang (J-24). Các hằng số là điểm khởi đầu, chưa đo trên trang thật.
+ROTATIONS = (180, 90, 270)  # góc thử, theo thứ tự thường gặp; dừng ngay khi một góc đạt ROTATE_GOOD_RATE
+ROTATE_MIN_WORDS = 20  # văn bản ít từ Latinh hơn mức này thì không đủ để so, giữ bản gốc
+ROTATE_GOOD_RATE = 0.85  # tỷ lệ âm tiết hợp lệ từ mức này là đọc ổn (cùng ngưỡng lọc trang baseline của stbook, O-30), dừng thử góc khác
+ROTATE_MIN_GAIN = 0.20  # bản xoay phải hơn bản gốc ít nhất chừng này
+ROTATE_MIN_RATE = 0.50  # và tự nó phải đạt ít nhất chừng này
 
 # Định dạng ảnh vLLM chắc chắn đọc được; ảnh nhúng ở định dạng khác (tiff, jb2, ...) được render lại thành PNG.
 SAFE_IMAGE_EXT = frozenset({"jpg", "png", "webp", "jp2"})
@@ -44,6 +57,22 @@ def page_image_for_vlm(page, render: bool = False) -> tuple[bytes, str]:
     if ext not in SAFE_IMAGE_EXT:
         return page.get_pixmap(dpi=200).tobytes("png"), "png"
     return data, ext
+
+
+def rotate_image(data: bytes, angle: int) -> tuple[bytes, str]:
+    """Xoay ảnh `angle` độ (ngược chiều kim đồng hồ, mở rộng khung cho góc 90 / 270) rồi mã hoá PNG. Returns (byte ảnh, "png")."""
+    from PIL import Image
+
+    with Image.open(io.BytesIO(data)) as img:
+        buf = io.BytesIO()
+        img.convert("RGB").rotate(angle, expand=True).save(buf, format="PNG")
+    return buf.getvalue(), "png"
+
+
+def valid_rate(text: str | None, vocab: frozenset[str]) -> float | None:
+    """Tỷ lệ từ Latinh là âm tiết hợp lệ (1 - tỷ lệ âm tiết lạ) của văn bản; None nếu dưới ROTATE_MIN_WORDS từ Latinh (không đủ để so)."""
+    unknown, n = unknown_syllable_rate(text or "", vocab)
+    return None if n < ROTATE_MIN_WORDS else 1.0 - unknown
 
 
 def run_pages(cascade: CascadeOcr, pages: Iterable, concurrency: int = 32, render: Iterable[bool] | None = None) -> list[dict]:
@@ -83,14 +112,40 @@ def run_pages(cascade: CascadeOcr, pages: Iterable, concurrency: int = 32, rende
 class CascadePageOcr:
     """Bộ OCR cho extract_pdf dựa trên chuỗi engine VLM: nhận cả lô trang của một PDF và OCR song song."""
 
-    def __init__(self, cascade: CascadeOcr, concurrency: int = 32) -> None:
+    def __init__(self, cascade: CascadeOcr, concurrency: int = 32, vocab: frozenset[str] | None = None) -> None:
         """
         Args:
             cascade:     Chuỗi engine đã dựng (CascadeOcr).
             concurrency: Số trang gửi đồng thời cho server.
+            vocab:       Tập âm tiết tham chiếu; có thì bật xoay thử trang (J-24), None thì không xoay.
         """
         self.cascade = cascade
         self.concurrency = concurrency
+        self.vocab = vocab
+
+    def _needs_rotation_check(self, r: dict) -> bool:
+        """Trang bị loại, hoặc do engine tuần tự (baseline) đọc sau khi mọi engine VLM bị báo: nghi trang xoay."""
+        return r["status"] == "flagged" or any(t.name == r["tier"] and t.serial for t in self.cascade.tiers)
+
+    def _try_rotations(self, page, render: bool, first: dict) -> dict:
+        """
+        Xoay thử trang nghi ngờ (ROTATIONS) và chạy lại chuỗi engine; trả về kết quả tốt nhất.
+
+        So bằng tỷ lệ âm tiết hợp lệ (valid_rate). Giữ `first` trừ khi bản xoay hơn ít nhất ROTATE_MIN_GAIN và đạt ROTATE_MIN_RATE; không đủ từ để
+        so (văn bản gốc hoặc bản xoay) thì cũng giữ `first`. Bản được chọn có thêm khoá "rotation" (góc).
+        """
+        base = valid_rate(first["text"] or first.get("rejected_text"), self.vocab)
+        data, ext = page_image_for_vlm(page, render)
+        best, best_rate = first, base if base is not None else 0.0
+        for angle in ROTATIONS:
+            rot_data, rot_ext = rotate_image(data, angle)
+            res = self.cascade.page(rot_data, rot_ext)
+            rate = valid_rate(res["text"], self.vocab)
+            if rate is not None and rate >= ROTATE_MIN_RATE and rate >= (base or 0.0) + ROTATE_MIN_GAIN and rate > best_rate:
+                best, best_rate = {**res, "rotation": angle}, rate
+                if rate >= ROTATE_GOOD_RATE:
+                    break
+        return best
 
     def ocr_pages(self, pages: Iterable, render: Iterable[bool] | None = None) -> list[dict]:
         """
@@ -99,12 +154,24 @@ class CascadePageOcr:
         `render`: cờ từng trang, True = vẽ lại cả trang thay vì lấy ảnh nhúng (trang lỗi font, J-10).
 
         Returns:
-            Danh sách {"text", "method": "ocr_vlm", "tier", "status"} (+ "rejected_text" nếu trang bị loại), theo thứ tự trang.
+            Danh sách {"text", "method": "ocr_vlm", "tier", "status"} (+ "rotation" nếu phải xoay mới đọc được, + "rejected_text" nếu trang bị loại), theo thứ tự trang.
             Trang flagged / blank có text rỗng.
         """
+        pages = list(pages)
+        flags = [False] * len(pages) if render is None else list(render)
+        results = run_pages(self.cascade, pages, self.concurrency, flags)
+        if self.vocab is not None:
+            todo = [i for i, r in enumerate(results) if self._needs_rotation_check(r)]
+            if todo:
+                with ThreadPoolExecutor(self.concurrency) as pool:
+                    for i, fixed in zip(todo, pool.map(lambda i: self._try_rotations(pages[i], flags[i], results[i]), todo)):
+                        results[i] = fixed
+                logger.info("Xoay thử %d trang nghi ngờ, %d trang đọc được sau khi xoay", len(todo), sum("rotation" in results[i] for i in todo))
         out = []
-        for r in run_pages(self.cascade, pages, self.concurrency, render):
+        for r in results:
             entry = {"text": r["text"], "method": "ocr_vlm", "tier": r["tier"], "status": r["status"]}
+            if "rotation" in r:
+                entry["rotation"] = r["rotation"]
             if "rejected_text" in r:
                 entry["rejected_text"] = r["rejected_text"]
             out.append(entry)
@@ -124,7 +191,7 @@ class CascadeOcrGetter:
 
     def __init__(self, tiers: list[Tier], concurrency: int = 32, enabled: bool = True, serve: bool = False,
                  gpu: str | None = None, vllm_bin: str | None = None, state_dir: Path | None = None,
-                 server_timeout: float = 3600) -> None:
+                 server_timeout: float = 3600, vocab: frozenset[str] | None = None) -> None:
         """
         Args:
             tiers:          Chuỗi engine (vi_corpus.ocr_bakeoff.cascade.build_tiers).
@@ -135,12 +202,14 @@ class CascadeOcrGetter:
             vllm_bin:       Đường dẫn lệnh vllm (môi trường riêng).
             state_dir:      Thư mục ghi server.log (cần khi serve).
             server_timeout: Thời gian chờ server sẵn sàng (giây).
+            vocab:          Tập âm tiết; có thì CascadePageOcr xoay thử trang nghi ngờ (J-24).
         """
         if serve and state_dir is None:
             raise ValueError("serve=True cần state_dir (nơi ghi server.log)")
         self.tiers, self.concurrency, self.enabled = tiers, concurrency, enabled
         self.serve, self.gpu, self.vllm_bin, self.state_dir = serve, gpu, vllm_bin, state_dir
         self.server_timeout = server_timeout
+        self.vocab = vocab
         self._ocr: CascadePageOcr | None = None
         self._error: Exception | None = None
         self._proc = None
@@ -176,7 +245,7 @@ class CascadeOcrGetter:
                 self._proc = start_server(vlm.cfg, self.state_dir, self.gpu, self.vllm_bin)
             wait_ready(vlm.cfg["base_url"], vlm.cfg.get("health", "/models"), self.server_timeout, self._proc)
         logger.info("Chuỗi OCR sẵn sàng: %s, %d trang đồng thời", " -> ".join(t.name for t in self.tiers), self.concurrency)
-        return CascadePageOcr(CascadeOcr(self.tiers), self.concurrency)
+        return CascadePageOcr(CascadeOcr(self.tiers), self.concurrency, self.vocab)
 
     def close(self) -> None:
         """Tắt server vLLM do getter này dựng (không làm gì nếu chưa dựng)."""

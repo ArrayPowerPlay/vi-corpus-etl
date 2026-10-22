@@ -237,3 +237,59 @@ def test_diagnose_inspect_in_nguon_chu_dao_nguoc(tmp_path):
     import hashlib
     by_doc_id = hashlib.sha1(("b" * 64).encode()).hexdigest()[:10]  # đoạn giữa của doc_id "vjol:<băm>:0"
     assert "=== bài 55" in dg.inspect_articles(tmp_path, [by_doc_id])
+
+
+# ---- J-24: trang scan bị xoay
+
+
+class RotatingStubCascade:
+    """
+    Chuỗi engine giả cho ảnh 60x90 đen có khối trắng ở góc trên-trái: ảnh đúng chiều thì VLM bị bỏ và baseline đọc ra chữ ngược rác (status ok);
+    ảnh xoay 180 độ (khối ở góc dưới-phải) thì VLM đọc tốt; mọi ảnh khác (xoay 90 / 270) bị loại.
+    """
+
+    def __init__(self, good: str, junk: str) -> None:
+        """good: văn bản đọc đúng; junk: chữ rác của baseline."""
+        from vi_corpus.ocr_bakeoff import cascade as cas
+
+        self.tiers = [cas.Tier("vlm", {"type": "openai"}, factory=lambda: None), cas.Tier("baseline", {"type": "baseline"}, factory=lambda: None, serial=True)]
+        self.good, self.junk = good, junk
+
+    def page(self, image: bytes, ext: str = "jpg") -> dict:
+        """Trả kết quả theo hướng của ảnh (xem docstring lớp)."""
+        import io
+
+        from PIL import Image
+
+        img = Image.open(io.BytesIO(image)).convert("L")
+        if img.size == (60, 90) and img.getpixel((3, 3)) > 128:
+            return {"text": self.junk, "status": "ok", "tier": "baseline", "finish_reason": None, "reasons": []}
+        if img.size == (60, 90) and img.getpixel((56, 86)) > 128:
+            return {"text": self.good, "status": "ok", "tier": "vlm", "finish_reason": "stop", "reasons": []}
+        return {"text": "", "status": "flagged", "tier": "baseline", "finish_reason": None, "reasons": ["loop"], "rejected_text": "xx"}
+
+
+def test_trang_scan_xoay_180_duoc_xoay_lai_va_chon_ban_doc_duoc():
+    """Trang baseline đọc ra chữ ngược rác được xoay thử; bản xoay 180 độ đọc tốt hơn rõ rệt thì thắng và ghi rotation=180; không có vocab thì không xoay."""
+    import io
+
+    import pymupdf
+    from PIL import Image
+
+    from vi_corpus.common.ocr_cascade import CascadePageOcr
+
+    img = Image.new("RGB", (60, 90), (0, 0, 0))
+    img.paste((255, 255, 255), (0, 0, 10, 10))
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    doc = pymupdf.open()
+    doc.new_page(width=60, height=90).insert_image(pymupdf.Rect(0, 0, 60, 90), stream=buf.getvalue())
+    good = vi_text(6, 11)
+    junk = " ".join(w[::-1] for w in good.split())
+    out = CascadePageOcr(RotatingStubCascade(good, junk), concurrency=2, vocab=make_vocab(good)).ocr_pages([doc[0]])
+    assert out[0]["rotation"] == 180 and out[0]["tier"] == "vlm" and out[0]["text"] == good
+    out2 = CascadePageOcr(RotatingStubCascade(good, junk), concurrency=2).ocr_pages([doc[0]])
+    assert "rotation" not in out2[0] and out2[0]["tier"] == "baseline" and out2[0]["text"] == junk
+    # trang ngắn (không đủ từ để so) giữ nguyên bản gốc dù có xoay được
+    short = CascadePageOcr(RotatingStubCascade("Xin chào", "oàhc niX"), concurrency=2, vocab=make_vocab(good)).ocr_pages([doc[0]])
+    assert "rotation" not in short[0]
