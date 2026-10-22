@@ -29,7 +29,7 @@ data/raw/
 | SEA (AI Singapore, HF) | only the Vietnamese partition of 3 datasets, byte-for-byte | `raw/sea_vi/<key>/` | download done, processing = design |
 | stbook.vn | books as image-only PDFs, OCR'd here | `raw/stbook/` | crawl + OCR code exists |
 | giao_trinh | Google Drive university textbooks, PDF/pptx | `raw/giao_trinh/` | download by rclone; `scripts/giao_trinh/extract.py` |
-| VJOL | scientific papers (PDF), only **processed**, never crawled here | `raw/vjol/` (registry key `vjol`) | `scripts/vjol/extract.py`; data already on the server, code not yet run on it |
+| VJOL | scientific papers (PDF), only **processed**, never crawled here | `raw/vjol/` (registry key `vjol`) | `scripts/vjol/extract.py`; 10,000-chunk run done on the server (J-21), fixes J-22 coded in J-23, next run = `docs/SERVER_TASK.md` S-14 |
 | VISTA | scientific papers (PDF), same as VJOL | placeholder path in registry | placeholder |
 
 - **SEA**: AI Singapore datasets on Hugging Face.

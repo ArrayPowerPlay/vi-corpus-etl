@@ -367,7 +367,8 @@ def test_phien_ban_co_vocab_checkpoint_thieu_vocab_duoc_lam_lai_khi_co_file(tmp_
     stamp = ckpt.stat().st_mtime_ns
     syl.unlink()
     assert vx.run_extract(raw, tmp_path, lambda: None) == 0 and ckpt.stat().st_mtime_ns == stamp
-    assert vx.accepted_versions(None) == {"2", "2+vocab"} and vx.accepted_versions(frozenset({"a"})) == {"2+vocab"}
+    v = vx.EXTRACT_VERSION
+    assert vx.accepted_versions(None) == {v, v + "+vocab"} and vx.accepted_versions(frozenset({"a"})) == {v + "+vocab"}
 
 
 def test_dung_vocab_trong_trich_text_bat_ho_windows_1258(tmp_path):

@@ -11,6 +11,12 @@ Chất lượng kỹ thuật và quyền sử dụng là hai trục tách biệt
   lang_unknown: không còn chữ cái để nhận diện (language "und", F-07), chỉ gắn nhãn, không trừ điểm.
   garbled_font (J-10): chữ hỏng do font PDF (từ có >= 2 dấu thanh chiếm tỷ lệ cao, vi_corpus.common.garbled); lưới an toàn khi
   trang lỗi font lọt qua bước trích text, vì chữ hỏng vẫn toàn chữ Latinh có dấu nên fastText nhận là tiếng Việt.
+  Bốn mã cứng của J-22/J-23 (chữ hỏng mà fastText không thấy): private_use_chars (còn >= PUA_HARD_CHARS ký tự vùng riêng sau khi
+  normalize đã đổi font Symbol), math_font_junk (>= JUNK_HARD_CHARS chữ Ấn Độ / Ả Rập / Thái, rác của font toán; chữ Hán không tính),
+  lost_diacritics (tiếng Việt mất dấu, vi_corpus.common.garbled.unaccented_ratio), reversed_text (chữ đảo ngược, garbled.reversed_gain,
+  cần tập âm tiết). odd_words (chỉ nguồn bật SourceProfile.odd_words) là "từ lạ": từ Latinh không phải âm tiết Việt hợp lệ và xuất hiện ở
+  < ODD_MIN_DOCS bài của lần chạy, tính ở annotate_odd_words sau khi cả lần chạy đã có số đo. reference_list chỉ gắn nhãn (không trừ
+  điểm): đoạn phần lớn là dòng danh mục tài liệu tham khảo còn sót.
 Công thức / code (F-03): các số đo hình dạng (rep_trigram, symbol, digit, upper, mean_word_len, alpha, vi_diacritic)
 tính trên phần văn xuôi còn lại sau vi_corpus.pipeline.spans.strip_math_code; words, lines, dup_line, end_punct... giữ
 trên văn bản gốc; math_share = tỷ lệ ký tự bị bỏ. Văn bản gần như toàn công thức / code (văn xuôi < MATH_PROSE_WORDS từ
@@ -22,15 +28,20 @@ Ngưỡng là điểm khởi đầu, cần chỉnh sau khi xem báo cáo (report
 
 import json
 import re
+from collections import Counter
+from functools import lru_cache
+from pathlib import Path
 
-from vi_corpus.common.garbled import GARBLED_HARD_RATIO, GARBLED_MIN_WORDS, garbled_ratio
+from vi_corpus.common.garbled import (DEFAULT_THRESHOLDS, GARBLED_HARD_RATIO, GARBLED_MIN_WORDS, garbled_ratio, latin_tokens,
+                                      load_vocab, reversed_gain, unaccented_ratio)
 from vi_corpus.pipeline.config import RunConfig, SourceProfile
 from vi_corpus.pipeline.language import UNDETERMINED, is_mixed, vi_diacritic_ratio
 from vi_corpus.pipeline.spans import math_share, strip_math_code
 
-QUALITY_VERSION = "4"  # 2 = thêm low_lang_score, mixed_language, low_diacritic; 3 = dup_line bỏ dòng không có chữ
+QUALITY_VERSION = "5"  # 2 = thêm low_lang_score, mixed_language, low_diacritic; 3 = dup_line bỏ dòng không có chữ
 # cái (F-01), số đo hình dạng trên văn xuôi, miễn cho văn bản toàn công thức / code (F-03), lang_unknown (F-07);
-# 4 = thêm số đo garbled và mã cứng garbled_font (J-10)
+# 4 = thêm số đo garbled và mã cứng garbled_font (J-10); 5 = private_use_chars, math_font_junk, lost_diacritics, reversed_text,
+# odd_words, reference_list (J-22, J-23)
 MIN_VI_DIACRITIC = 0.05  # tiếng Việt có dấu bình thường ~0,2-0,3 chữ có dấu / chữ cái
 # F-03, ngưỡng khởi điểm chưa đo: văn xuôi < MATH_PROSE_WORDS từ và math_share >= MATH_SHARE_MIN thì miễn MATH_EXEMPT
 MATH_PROSE_WORDS = 20
@@ -39,6 +50,25 @@ RAW_REPEAT_HARD = 0.8  # rep_trigram_raw (văn bản gốc, kể cả công th�
 MATH_EXEMPT = frozenset({"repetitive", "symbol_heavy", "digit_heavy", "odd_word_length", "repeated_ngrams",
                          "low_alpha"})
 
+# J-23, các ngưỡng dưới đây là điểm khởi đầu từ số đo J-22 (chưa hiệu chỉnh trên đọc tay 300 + 100 đoạn của J-22 (10)); số đo thô nằm trong quality_metrics để chỉnh.
+PUA_HARD_CHARS = 5  # từ ngần này ký tự vùng riêng còn sót thì band D
+JUNK_HARD_CHARS = 5  # từ ngần này chữ Ấn Độ / Ả Rập / Thái thì band D (J-22 (5)); không áp cho chữ Hán (bài trích Hán-Nôm hợp lệ)
+UNACCENTED_MIN_WORDS = 50  # số từ Latinh tối thiểu để đo tỷ lệ mất dấu
+REVERSED_MIN_WORDS = 30  # số từ (>= 3 chữ cái) tối thiểu để đo chữ đảo ngược
+REVERSED_HARD = 0.25  # độ lợi tỷ lệ âm tiết hợp lệ khi viết ngược từ mức này là chữ đảo ngược
+REVERSED_MIN_REV = 0.5  # và bản viết ngược phải có ít nhất tỷ lệ này từ hợp lệ
+REF_LINE_TAG = 0.5  # đoạn có từ tỷ lệ này số dòng là mục tài liệu tham khảo thì gắn reference_list
+REF_MIN_LINES = 5
+ODD_MIN_WORDS = 50  # số từ Latinh tối thiểu để tính tỷ lệ từ lạ
+ODD_MIN_DOCS = 3  # từ lạ xuất hiện ở ít hơn ngần ấy bài của lần chạy mới tính là "lạ" (từ lặp lại ở nhiều bài là thuật ngữ thật)
+ODD_ABBREV_MAX = 6  # từ viết hoa toàn bộ không dài hơn ngần này chữ cái là viết tắt, miễn
+ODD_HARD = 0.15  # tỷ lệ từ lạ từ mức này thì band D (J-22 (3) C)
+
+_PUA = re.compile("[\ue000-\uf8ff]")
+_JUNK_SCRIPT = re.compile("[\u0600-\u06ff\u0900-\u0eff]")
+# mục tài liệu tham khảo: có năm xuất bản và (chữ cái đầu tên "Nguyen V.A.", "et al", nhà xuất bản / tạp chí / trang / DOI / liên kết)
+_REF_YEAR = re.compile(r"(?<!\d)(?:19|20)\d{2}(?!\d)")
+_REF_CUE = re.compile(r"\b[A-ZĐ]\.\s?[A-ZĐ]?\.?|et al|\bNXB\b|\bNxb\b|Nhà xuất bản|Tạp chí|Journal|Press\b|\bpp?\.|\btr\.|\bdoi\b|https?://")
 _URL = re.compile(r"https?://\S+|www\.\S+")
 _BULLET = re.compile(r"^\s*([-•*–·►▪]|\d+[.)])\s")
 _BOILERPLATE = ("đăng nhập", "đăng ký", "liên hệ", "bản quyền", "copyright", "xem thêm", "đọc thêm", "chia sẻ",
@@ -54,7 +84,7 @@ def _rep_trigram(words: list[str]) -> float:
     return 1 - len(set(trigrams)) / len(trigrams) if len(trigrams) >= 30 else 0.0
 
 
-def compute_metrics(text: str) -> dict:
+def compute_metrics(text: str, vocab: frozenset[str] | None = None) -> dict:
     """
     Tính các số đo thô của một văn bản (không phụ thuộc nguồn).
 
@@ -63,6 +93,11 @@ def compute_metrics(text: str) -> dict:
     >= 2 dấu thanh trên các từ >= 2 chữ cái, tính trên văn bản gốc, 0 nếu dưới GARBLED_MIN_WORDS từ. alpha, digit,
     symbol, upper, mean_word_len, rep_trigram, vi_diacritic đo trên văn xuôi (đã bỏ công thức / code, F-03); dup_line chỉ
     xét dòng có chữ cái (dòng "$$", "}", "---" lặp là cú pháp, F-01).
+
+    Số đo của J-23, đều trên văn bản gốc: pua_chars (số ký tự vùng riêng), junk_script_chars (số chữ Ấn Độ / Ả Rập / Thái), unaccented (tỷ lệ
+    từ không dấu thông dụng, 0 nếu dưới UNACCENTED_MIN_WORDS từ Latinh), reversed_gain (độ lợi âm tiết hợp lệ khi viết ngược từ, 0 nếu
+    không có `vocab` hoặc dưới REVERSED_MIN_WORDS từ hoặc bản viết ngược dưới REVERSED_MIN_REV), ref_line (tỷ lệ dòng là mục tài liệu tham khảo,
+    0 nếu dưới REF_MIN_LINES dòng), odd_word (luôn 0 ở đây; annotate_odd_words điền sau).
     """
     words = text.split()
     prose = strip_math_code(text)
@@ -76,6 +111,8 @@ def compute_metrics(text: str) -> dict:
     garbled = garbled_share if garbled_words >= GARBLED_MIN_WORDS else 0.0
     worded = [ln for ln in lines if any(c.isalpha() for c in ln)]
     lowered = [ln.lower() for ln in lines]
+    unaccented, n_latin = unaccented_ratio(text)
+    gain, rev_known, n_rev = reversed_gain(text, vocab) if vocab is not None else (0.0, 0.0, 0)
     return {
         "words": len(words),
         "prose_words": len(pwords),
@@ -97,6 +134,13 @@ def compute_metrics(text: str) -> dict:
         "vi_diacritic": vi_diacritic_ratio(prose),
         "garbled": garbled,
         "lines": len(lines),
+        "pua_chars": len(_PUA.findall(text)),
+        "junk_script_chars": len(_JUNK_SCRIPT.findall(text)),
+        "unaccented": unaccented if n_latin >= UNACCENTED_MIN_WORDS else 0.0,
+        "reversed_gain": gain if n_rev >= REVERSED_MIN_WORDS and rev_known >= REVERSED_MIN_REV else 0.0,
+        "ref_line": sum(bool(_REF_YEAR.search(ln) and _REF_CUE.search(ln)) for ln in lines) / n_lines
+        if len(lines) >= REF_MIN_LINES else 0.0,
+        "odd_word": 0.0,
     }
 
 
@@ -135,6 +179,16 @@ def score_metrics(m: dict, lang: str | None, profile: SourceProfile, lang_score:
         reasons.append("duplicate_lines")
     if m.get("garbled", 0.0) >= GARBLED_HARD_RATIO:
         reasons.append("garbled_font")
+    if m.get("pua_chars", 0) >= PUA_HARD_CHARS:
+        reasons.append("private_use_chars")
+    if m.get("junk_script_chars", 0) >= JUNK_HARD_CHARS:
+        reasons.append("math_font_junk")
+    if m.get("unaccented", 0.0) >= DEFAULT_THRESHOLDS.nodiac:
+        reasons.append("lost_diacritics")
+    if m.get("reversed_gain", 0.0) >= REVERSED_HARD:
+        reasons.append("reversed_text")
+    if profile.odd_words and m.get("odd_word", 0.0) >= ODD_HARD:
+        reasons.append("odd_words")
 
     soft = [  # (điều kiện, mã, điểm trừ)
         (m["rep_trigram"] > 0.3, "repetitive", 20),
@@ -148,6 +202,7 @@ def score_metrics(m: dict, lang: str | None, profile: SourceProfile, lang_score:
         (lang != UNDETERMINED and lang_score is not None and lang_score < profile.min_lang_score, "low_lang_score", 10),
         (lang_mix is not None and is_mixed(lang_mix), "mixed_language", 0),
         (lang == "vi" and m["words"] >= 20 and m.get("vi_diacritic", 1.0) < MIN_VI_DIACRITIC, "low_diacritic", 15),
+        (m.get("ref_line", 0.0) >= REF_LINE_TAG, "reference_list", 0),
     ]
     if profile.web_checks:
         soft += [
@@ -171,7 +226,8 @@ def score_metrics(m: dict, lang: str | None, profile: SourceProfile, lang_score:
 
 
 HARD_REASONS = frozenset({"empty", "too_short", "too_long", "lang_not_allowed", "low_alpha", "replacement_chars",
-                          "repeated_ngrams", "duplicate_lines", "garbled_font"})
+                          "repeated_ngrams", "duplicate_lines", "garbled_font", "private_use_chars", "math_font_junk",
+                          "lost_diacritics", "reversed_text", "odd_words"})
 
 
 def band_of(score: float) -> str:
@@ -182,14 +238,34 @@ def band_of(score: float) -> str:
     return "D"
 
 
+@lru_cache(maxsize=4)
+def _load_vocab(path: str) -> frozenset[str] | None:
+    """Nạp tập âm tiết từ file (nhớ kết quả theo đường dẫn); None nếu file không tồn tại."""
+    return load_vocab(Path(path))
+
+
+def vocab_for(cfg: RunConfig) -> frozenset[str] | None:
+    """Tập âm tiết của lần chạy (cfg.syllables); None nếu không đặt hoặc file không có (khi đó bỏ reversed_text và odd_words)."""
+    return _load_vocab(cfg.syllables) if cfg.syllables else None
+
+
+def vocab_identity(cfg: RunConfig) -> list | None:
+    """Dấu nhận dạng tập âm tiết cho vân tay stage quality: [đường dẫn, kích thước]; None nếu không dùng (đổi file thì stage chạy lại)."""
+    if not cfg.syllables:
+        return None
+    path = Path(cfg.syllables)
+    return [str(path), path.stat().st_size] if path.is_file() else None
+
+
 def annotate_quality(rows: list[dict], cfg: RunConfig) -> list[dict]:
     """
     Điền quality_metrics, quality_score, quality_band, reason_codes cho mọi bản ghi (sửa tại chỗ, trả lại chính list đó).
 
-    Hàm thuần theo từng bản ghi nên chạy song song được (xem vi_corpus.pipeline.curator).
+    Hàm thuần theo từng bản ghi nên chạy song song được (xem vi_corpus.pipeline.curator). Tập âm tiết (cfg.syllables) nạp một lần mỗi tiến trình.
     """
+    vocab = vocab_for(cfg)
     for row in rows:
-        m = compute_metrics(row["text"] or "")
+        m = compute_metrics(row["text"] or "", vocab)
         score, codes = score_metrics(m, row["language"], cfg.profile(row["source_key"]), row.get("lang_score"),
                                      row.get("lang_mix"))
         row["quality_metrics"] = json.dumps({k: round(v, 4) for k, v in m.items()})
@@ -197,6 +273,69 @@ def annotate_quality(rows: list[dict], cfg: RunConfig) -> list[dict]:
         row["quality_band"] = band_of(score)
         row["reason_codes"] = codes
     return rows
+
+
+def odd_tokens(text: str, vocab: frozenset[str]) -> tuple[list[str], int]:
+    """
+    Các từ "ứng viên lạ" của một văn bản: từ Latinh (chữ thường) không phải âm tiết trong `vocab`, trừ viết tắt (viết hoa toàn bộ, <= ODD_ABBREV_MAX
+    chữ cái) và tên khoa học (hai từ ASCII liền nhau dạng "Escherichia coli": Genus viết hoa rồi tên loài viết thường).
+
+    Returns:
+        (danh sách từ ứng viên, tổng số từ Latinh).
+    """
+    toks = latin_tokens(text)
+    out: list[str] = []
+    for i, t in enumerate(toks):
+        low = t.lower()
+        if low in vocab or (t.isupper() and len(t) <= ODD_ABBREV_MAX):
+            continue
+        prev, nxt = toks[i - 1] if i else "", toks[i + 1] if i + 1 < len(toks) else ""
+        genus = t.isascii() and t[:1].isupper() and t[1:].islower() and len(t) >= 4
+        species = t.isascii() and t.islower() and len(t) >= 3
+        if (genus and nxt.isascii() and nxt.islower() and len(nxt) >= 3) or \
+                (species and prev.isascii() and prev[:1].isupper() and prev[1:].islower() and len(prev) >= 4):
+            continue
+        out.append(low)
+    return out, len(toks)
+
+
+def annotate_odd_words(rows: list[dict], cfg: RunConfig) -> dict:
+    """
+    Chỉ số "từ lạ" (J-22 (3) C): với các nguồn bật SourceProfile.odd_words, tính tỷ lệ từ lạ của từng đoạn tiếng Việt rồi chấm điểm lại.
+
+    Từ lạ = ứng viên (odd_tokens) xuất hiện ở ít hơn ODD_MIN_DOCS bài (parent_doc_id) của lần chạy: lỗi OCR hiếm khi lặp lại ở nhiều bài, còn
+    thuật ngữ và tên riêng thì có. Cần số bài chứa từ trên CẢ lần chạy nên không chạy song song theo lô được; chạy tuần tự sau annotate_quality.
+    Ghi odd_word vào quality_metrics rồi gọi lại score_metrics (điểm, band, reason code cập nhật tại chỗ). Không có tập âm tiết thì bỏ qua.
+
+    Returns:
+        {"checked": số đoạn được tính, "flagged": số đoạn bị mã odd_words, "skipped": lý do bỏ qua hoặc None}.
+    """
+    vocab = vocab_for(cfg)
+    gated = [r for r in rows if cfg.profile(r["source_key"]).odd_words]
+    if not gated:
+        return {"checked": 0, "flagged": 0, "skipped": "không nguồn nào bật odd_words"}
+    if vocab is None:
+        return {"checked": 0, "flagged": 0, "skipped": "thiếu tập âm tiết (RunConfig.syllables)"}
+    found = [odd_tokens(r["text"] or "", vocab) for r in gated]
+    docs: Counter = Counter()
+    for r, (cands, _) in zip(gated, found):
+        parent = r.get("parent_doc_id") or r["doc_id"]
+        for w in set(cands):
+            docs[(r["source_key"], w, parent)] += 1
+    df: Counter = Counter((src, w) for src, w, _ in docs)
+    checked = flagged = 0
+    for r, (cands, n) in zip(gated, found):
+        if r.get("language") != "vi" or n < ODD_MIN_WORDS:
+            continue
+        rate = sum(df[(r["source_key"], w)] < ODD_MIN_DOCS for w in cands) / n
+        m = json.loads(r["quality_metrics"])
+        m["odd_word"] = round(rate, 4)
+        score, codes = score_metrics(m, r["language"], cfg.profile(r["source_key"]), r.get("lang_score"), r.get("lang_mix"))
+        r["quality_metrics"] = json.dumps(m)
+        r["quality_score"], r["quality_band"], r["reason_codes"] = round(score, 1), band_of(score), codes
+        checked += 1
+        flagged += "odd_words" in codes
+    return {"checked": checked, "flagged": flagged, "skipped": None}
 
 
 def quality_stats(rows: list[dict]) -> dict:

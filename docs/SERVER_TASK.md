@@ -27,6 +27,7 @@
 | S-10 | VJOL: chép về server, đếm file / trang, khảo sát PDF text hay scan | R-25 (thời gian xử lý VJOL, số lần parse) | CHẠY NGAY | 1–3 giờ (tùy tốc độ chép) | không |
 | S-11 | Đo dương tính giả của fuzzy dedup (chọn tham số MinHash) | N-14 / R-34 (đổi shingle 5 từ, 16×8, ≥0,8 sang shingle 3 từ, 32×4, ≥0,7 hay không) | CHỜ CODE | vài giờ (chạy pipeline 100k + đọc ~150 cặp) | không |
 | S-12 | VJOL: trích text mẫu 3.000 bài (4 GPU) rồi chạy pipeline 10.000 đoạn | J-05 (số liệu để ước giờ cả kho VJOL, tỉ lệ trang scan / flagged / baseline) | CHẠY NGAY | trích text: vài giờ (chưa đo); pipeline: ~1 giờ | 4 |
+| S-14 | VJOL: đo nguồn chữ đảo ngược / producer / tốc độ embed, rồi chạy `vjol_10k_v3` và so với `v2` | J-22, J-23 | CHẠY SAU S-13 | trích lại ~3 giờ đồng hồ (4 GPU), pipeline ~1 giờ | 4 |
 
 Thứ tự khuyến nghị: S-10 (VJOL ưu tiên cao nhất, R-15) → S-0 → S-1 → S-2 → S-3 (có đủ số để tính giờ OCR) → S-4 → S-5. S-6 đến S-9 và S-11 làm sau phiên code (S-11 cần script `scripts/dedup_pairs_sample.py`, viết ở gói G-05 bước 2).
 
@@ -327,6 +328,40 @@ uv run --group curator --group viz python scripts/run_pipeline.py --data-root da
 
 ---
 
+## S-14. VJOL: đo (chữ đảo ngược, producer, embed) rồi chạy `vjol_10k_v3`  [CHẠY SAU S-13]
+
+**Mục đích**: J-22 / J-23. Bước 1-3 đo bằng CPU hoặc GPU nhẹ, chưa sửa dữ liệu; bước 4 làm lại trích text (tín hiệu `nodiac` mới nên `EXTRACT_VERSION` 3 làm lại cả 3.000 bài, kể cả OCR lại trang scan, ~3 giờ đồng hồ trên 4 GPU như S-13); bước 5-7 chạy pipeline mới và so với `vjol_10k_v2`.
+
+```bash
+cd /home/jovyan/dinh/vi-corpus-etl && git fetch origin && git checkout worktree-vjol-pipeline && git pull
+source /home/jovyan/dinh/env.sh
+uv sync --group curator --group viz --group ocr
+uv run pytest -q                                   # kỳ vọng 241 test qua
+ls -la data/processed/ocr_bakeoff/syllables.json   # cần cho reversed_text, odd_words, tín hiệu unknown
+# 1) (J-22 (1)) chữ đảo ngược đến từ lớp chữ nhúng (method=text) hay từ OCR VLM (method=ocr_vlm)? CPU, vài giây
+uv run python scripts/vjol/diagnose.py --data-root data inspect 8053925644 26f746692e | tee data/processed/vjol_diagnose_inspect.txt
+# 2) (J-22 (3) A) phân bố producer / creator của PDF; CPU, vài phút -> data/processed/vjol_diagnose/{producers.csv,summary.json}
+uv run python scripts/vjol/diagnose.py --data-root data producers
+# 3) (J-22 (8)) đo riêng tốc độ embed: DỪNG hết vLLM / tiến trình dùng GPU trước (xem danh sách in ra); dùng run cũ để lấy 640 đoạn
+nvidia-smi
+uv run --group viz python scripts/bench_embed.py --run-dir data/processed/pipeline_runs/vjol_10k_v2 --n 640 2>&1 | tee data/processed/vjol_bench_embed.txt
+# 4) làm lại trích text 3.000 bài trên 4 GPU (tmux); ghi giờ thực bằng `date`
+date; DATA_ROOT=data VLLM_BIN=$(which vllm) SAMPLE_DOCS=3000 ./scripts/vjol/run_extract_vlm.sh; date
+uv run python scripts/vjol/check_garbled.py --data-root data      # có thêm tín hiệu nodiac (summary.json, new_signals.txt)
+# 5) pipeline mới; embed yêu cầu GPU (không có thì dừng với lỗi), bản đồ cụm trên UMAP 10 chiều (J-22 (9))
+uv run --group curator --group viz python scripts/run_pipeline.py --data-root data --mix vjol=10000 --total 10000 \
+    --run-name vjol_10k_v3 --embed-device cuda --cluster-space umap10
+# 6) (J-22 (10)) bộ đọc tay: 300 ngẫu nhiên + 100 nghi ngờ -> data/processed/pipeline_runs/vjol_10k_v3/review/review_sample.{csv,md}
+uv run python scripts/vjol/review_sample.py --run-dir data/processed/pipeline_runs/vjol_10k_v3
+# 7) gói kết quả gửi lại
+tar czf vjol_s14.tar.gz data/processed/vjol_diagnose data/processed/vjol_diagnose_inspect.txt data/processed/vjol_bench_embed.txt \
+    data/processed/vjol_garbled_check data/processed/pipeline_runs/vjol_10k_v3/{manifest.json,report.html,review}
+```
+
+**Báo lại cho Claude**: gói `vjol_s14.tar.gz`, `extract.py --status` sau bước 4 và hai dòng `date`. Claude so với `vjol_10k_v2` (J-21 / J-22): số đoạn lỗi chữ nặng (v2: ~236, band A ~180), đoạn có email (v2: 597), mã `math_font_junk` / `private_use_chars` / `lost_diacritics` / `reversed_text` / `odd_words` / `reference_list` trong `manifest.json`, `symbol_chars` ở mục `normalize`, tỷ lệ nhiễu và số cụm của HDBSCAN (v2: 93,3% nhiễu trên 768 chiều), giây nhúng 10.000 đoạn (v2: 4.252) và dòng log `[embed] ... device=...`. Từ gói này chốt (1) B / C, (3) A và phần còn lại của (8).
+
+---
+
 ## Bảng ghi kết quả
 
 (Điền sau khi chạy. Ghi ngày, người chạy, lệnh đã chạy nếu khác hướng dẫn.)
@@ -343,6 +378,7 @@ uv run --group curator --group viz python scripts/run_pipeline.py --data-root da
 | S-7 | | | |
 | S-8 | | | |
 | S-9 | | | |
+| S-14 | | inspect: nguồn chữ đảo ngược (text / ocr_vlm); producer top: ; embed giây/640 đoạn và device: ; extract giờ: ; v3 so với v2: | |
 | S-10 | | số file: ; dung lượng: GB; thời gian chép: ; số trang: ; tỉ lệ text / scan / tcvn3 theo năm: ; số dòng metadata: | |
 | S-12 | | PDF trích / lỗi / bỏ qua: ; trang theo method: ; ocr_vlm ok / blank / flagged: ; trang baseline: ; giờ trích text: ; đoạn mỗi bài: ; ngôn ngữ vi / en / khác: | |
 | S-11 | | số cặp A bắt: ; C bắt: ; chỉ C bắt: (cùng nguồn / khác nguồn); nhóm 2 (0,7–0,8): trung / cung-mau / khac = ; nhóm 1: ; nhóm 3: | |

@@ -41,8 +41,8 @@ logger = logging.getLogger("vi_corpus")
 
 TEXT_DIR = "interim/vjol_text"
 # Phiên bản cách trích text VJOL, ghi vào checkpoint; đổi số này thì lần chạy sau làm lại mọi checkpoint cũ hơn. 1 = bản đầu (chưa có
-# trường extract_version); 2 = J-10: trang lỗi font cũng đi OCR. Không dùng PARSER_VERSION vì nó dùng chung với giáo trình.
-EXTRACT_VERSION = "2"
+# trường extract_version); 2 = J-10: trang lỗi font cũng đi OCR; 3 = J-23: thêm tín hiệu nodiac (mất dấu tiếng Việt). Không dùng PARSER_VERSION vì nó dùng chung với giáo trình.
+EXTRACT_VERSION = "3"
 VOCAB_TAG = "+vocab"  # hậu tố extract_version khi bộ dò có tín hiệu âm tiết lạ (J-16)
 CLAIM_DIR = "state/vjol_extract/claims"
 SYLLABLES_REL = "processed/ocr_bakeoff/syllables.json"  # tập âm tiết cho tín hiệu "unknown" của bộ dò chữ hỏng (J-16)

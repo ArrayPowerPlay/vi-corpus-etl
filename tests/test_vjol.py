@@ -225,7 +225,7 @@ def test_bo_trang_bia_va_muc_luc():
     assert is_toc_page(toc_leaders) and not is_toc_page(body)
     assert drop_front_matter(["Tiêu đề ngắn", body])[1] == {"cover_pages": 0, "toc_pages": 0}  # bài 2 trang: không coi là bìa
     out, st = clean_paper_pages(pages)
-    assert st == {"cover_pages": 1, "toc_pages": 1, "reference_lines": 0}
+    assert (st["cover_pages"], st["toc_pages"], st["reference_lines"]) == (1, 1, 0)
 
 
 # --------------------------------------------------------------------------------------------------------------------

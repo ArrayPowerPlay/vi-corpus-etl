@@ -73,7 +73,8 @@ def _digest(obj) -> str:
 # Trường SourceProfile mà mỗi stage đọc: vân tay của stage chỉ băm các trường này, để chỉnh ngưỡng chất lượng (R-11)
 # không làm chạy lại prepare / language (tokenizer, fastText trên mọi bản ghi).
 PROFILE_FIELDS = {"ingest": ("chunked",), "prepare": ("chunked", "split_long", "in_doc_line_clean", "cross_line_clean"),
-                  "quality": ("min_words", "max_words", "min_alpha", "web_checks", "allowed_langs", "min_lang_score"),
+                  "quality": ("min_words", "max_words", "min_alpha", "web_checks", "allowed_langs", "min_lang_score",
+                              "odd_words"),
                   "dedup": ("dedup_group",)}
 
 
@@ -100,7 +101,7 @@ def stage_params(name: str, cfg: RunConfig) -> dict:
         "language": lambda: {"version": language.LANG_VERSION, "spans": spans.SPANS_VERSION, "model": cfg.lang_model,
                              "segments": cfg.lang_max_segments},
         "quality": lambda: {"version": quality.QUALITY_VERSION, "spans": spans.SPANS_VERSION,
-                            "profiles": _profiles(cfg, "quality")},
+                            "vocab": quality.vocab_identity(cfg), "profiles": _profiles(cfg, "quality")},
         "dedup": lambda: {"version": dedup.DEDUP_VERSION, "minhash": dedup.MINHASH_VERSION, "keep_bands": cfg.keep_bands,
                           "rights_gate": cfg.rights_gate, "fuzzy": cfg.fuzzy_threshold, "priority": cfg.source_priority,
                           "profiles": _profiles(cfg, "dedup"),
@@ -242,7 +243,8 @@ def run_pipeline(specs: dict[str, SourceSpec], data_root: Path, run_dir: Path, c
     def do_quality(rows):
         """Stage quality (song song nếu có backend)."""
         rows = backend.quality(rows, cfg) if backend else quality.annotate_quality(rows, cfg)
-        return rows, quality.quality_stats(rows)
+        odd = quality.annotate_odd_words(rows, cfg)  # J-22 (3) C: cần đếm số bài chứa từ, nên chạy tuần tự trên cả lần chạy
+        return rows, {**quality.quality_stats(rows), "odd_words": odd}
 
     def do_dedup(rows):
         """Stage dedup vòng 1 + ghi kho dấu vân tay (D-09); không ghi kho thì xoá kho cũ của lần chạy (đã hết hiệu lực)."""
@@ -294,7 +296,7 @@ def run_pipeline(specs: dict[str, SourceSpec], data_root: Path, run_dir: Path, c
             t0 = time.time()
             targets = rows if cfg.embed_scope == "all" else [r for r in rows if r["status"] == "kept"]
             items = backend.embed(targets, cfg) if backend and cfg.embed_spec.startswith("hf:") else embed.embed_rows(
-                targets, cfg.embed_spec, "auto", cfg.embed_prompt, cfg.embed_batch_size, cfg.embed_max_seq)
+                targets, cfg.embed_spec, cfg.embed_device, cfg.embed_prompt, cfg.embed_batch_size, cfg.embed_max_seq)
             save_fingerprint("embed")
             embed.write_embeddings(emb_path, items)
             io.update_manifest(run_dir, "embed", {"rows": len(items), "spec": cfg.embed_spec, "scope": cfg.embed_scope,

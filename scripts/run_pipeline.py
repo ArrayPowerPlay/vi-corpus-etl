@@ -19,6 +19,7 @@ Kết quả ở <data-root>/processed/pipeline_runs/<run-name>/ (mở report.htm
 """
 
 import argparse
+import logging
 import os
 import sys
 from pathlib import Path
@@ -63,6 +64,8 @@ def build_parser() -> argparse.ArgumentParser:
                    help="Các tokenizer khác (cách nhau bằng dấu phẩy) chỉ để so tổng token giữ lại trong báo cáo.")
     p.add_argument("--lang-model", default=DEFAULT_LANG_MODEL,
                    help="Nhận diện ngôn ngữ: 'fasttext:lid.176' (tự tải), 'fasttext:<file.bin>' hoặc 'heuristic'.")
+    p.add_argument("--syllables", type=Path, default=None,
+                   help="Tập âm tiết cho chỉ số chữ đảo ngược / từ lạ ở stage quality (mặc định <data-root>/processed/ocr_bakeoff/syllables.json nếu có).")
     p.add_argument("--rights-gate", choices=["tag", "enforce"], default="tag")
     p.add_argument("--no-dedup-index", action="store_true", help="Không ghi kho dấu vân tay dedup vòng 1 (state/dedup_index/).")
     p.add_argument("--global-verdict", type=Path, default=None,
@@ -75,6 +78,8 @@ def build_parser() -> argparse.ArgumentParser:
                    help="'hf:<model_id>' (GPU), 'tfidf' (CPU, thử nhanh, không song song) hoặc 'none' để bỏ embed/reduce/bản đồ.")
     g.add_argument("--embed-prompt", default="passage: ", help="Tiền tố trước văn bản khi nhúng (E5 cần 'passage: ').")
     g.add_argument("--embed-batch-size", type=int, default=64)
+    g.add_argument("--embed-device", choices=["auto", "cuda", "cpu"], default="auto",
+                   help="auto: GPU nếu có (không thì CPU kèm cảnh báo); cuda: không có GPU thì dừng với lỗi; cpu.")
     g.add_argument("--embed-scope", choices=["all", "kept"], default="all",
                    help="all: nhúng mọi bản ghi (bản đồ thấy cả bản bị loại); kept: chỉ phần còn sống (R-05, chạy lớn).")
     g.add_argument("--no-gpu-reduce", action="store_true", help="Giảm chiều bằng scikit-learn/umap-learn dù có cuML.")
@@ -103,13 +108,17 @@ def main() -> int:
     _lock = acquire_run_lock(args.data_root / "state" / f"pipeline_{run_dir.name}")  # noqa: F841 — giữ khoá
     setup_logging(args.data_root / "logs", "pipeline")
 
-    cfg = RunConfig(mix=mix, seed=args.seed, tokenizer=args.tokenizer,
+    syllables = args.syllables or args.data_root / "processed" / "ocr_bakeoff" / "syllables.json"
+    if not syllables.is_file():
+        logging.getLogger("vi_corpus").warning("Không thấy tập âm tiết %s: bỏ chỉ số chữ đảo ngược / từ lạ ở stage quality", syllables)
+        syllables = None
+    cfg = RunConfig(mix=mix, syllables=str(syllables) if syllables else None, seed=args.seed, tokenizer=args.tokenizer,
                     compare_tokenizers=tuple(t.strip() for t in args.compare_tokenizers.split(",") if t.strip()),
                     lang_model=args.lang_model, rights_gate=args.rights_gate, dedup_index=not args.no_dedup_index,
                     global_verdict=str(args.global_verdict) if args.global_verdict else None,
                     cpt_context_tokens=args.cpt_context,
                     embed_spec=None if args.embedder == "none" else args.embedder, embed_prompt=args.embed_prompt,
-                    embed_batch_size=args.embed_batch_size, embed_scope=args.embed_scope,
+                    embed_batch_size=args.embed_batch_size, embed_scope=args.embed_scope, embed_device=args.embed_device,
                     prefer_gpu=not args.no_gpu_reduce, cluster_space=args.cluster_space,
                     hdbscan_min_cluster_size=args.min_cluster_size, hdbscan_min_samples=args.min_samples)
 

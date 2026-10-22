@@ -15,6 +15,11 @@ tối đa MỘT dấu thanh (huyền, sắc, ngã, hỏi, nặng) trên mỗi â
   trong tiếng Việt: ñ ö ï ø å, họ VNI "Thöïc TRAïNg"; ngưỡng 0,3% và phải có ít nhất 5 chữ cái lạ để tên riêng không kích hoạt, J-18), unknown_syllable_rate (tỷ lệ âm tiết không có trong tập âm tiết tham chiếu
   processed/ocr_bakeoff/syllables.json: bắt thêm họ sai dấu kiểu Windows-1258 "Phỏt triển trờn"; chỉ tính từ Latinh nên trang chữ Hán không
   bị phạt; thiếu file thì bỏ tín hiệu này). page_signals trả tên các tín hiệu vượt ngưỡng của một trang; ngưỡng nằm trong Thresholds.
+- Tín hiệu thứ năm "nodiac" (J-22 (2), J-23): mất dấu tiếng Việt từng phần (nhiều từ chức năng không dấu như "cua", "nhung", "duoc"
+  trong khi chữ có dấu khác vẫn còn); lớp chữ kiểu này là chữ Latinh hợp lệ nên bốn tín hiệu trên không bắt. Tập từ chức năng nằm ở
+  UNACCENTED_WORDS; trang bị nghi thì đi OCR VLM như lỗi font. Không khôi phục dấu bằng mô hình (dễ bịa chữ).
+- reversed_gain (J-22 (1), J-23): chữ đảo ngược (trang xoay 180 độ): tỷ lệ âm tiết hợp lệ của từng từ viết ngược trừ tỷ lệ của văn bản gốc.
+  Chỉ dùng ở stage quality (mã reversed_text), chưa là tín hiệu OCR lại vì nguồn gốc lỗi (lớp chữ nhúng hay OCR VLM) chưa xác định.
 - single_letter_ratio: tín hiệu thứ hai (chữ bị mất kiểu "đ u"), chỉ để đo (scripts/vjol/check_garbled.py), chưa dùng để quyết.
 Ngưỡng chỉnh bằng số liệu của scripts/vjol/check_garbled.py (J-13: trang 5%, cấp bài 30%, cứng ở quality 8%).
 """
@@ -34,7 +39,7 @@ GARBLED_HARD_RATIO = 0.08
 GARBLED_MIN_WORDS = 10
 GARBLED_DOC_SHARE = 0.30
 FOREIGN_LETTERS = frozenset("ñöïøåæÑÖÏØÅÆ")  # chữ cái Latin-1 không có trong tiếng Việt; trong chữ VNI chúng thay cho ư, ị, ờ, ả ...
-SIGNALS = ("tone", "case", "foreign", "unknown")  # tên các tín hiệu, theo thứ tự page_signals trả về
+SIGNALS = ("tone", "case", "foreign", "unknown", "nodiac")  # tên các tín hiệu, theo thứ tự page_signals trả về
 
 
 class Thresholds(NamedTuple):
@@ -48,12 +53,19 @@ class Thresholds(NamedTuple):
     unknown_min_words: int = 30  # số từ Latinh tối thiểu để xét tín hiệu unknown
     foreign_min_letters: int = 100  # số chữ cái tối thiểu để xét tín hiệu foreign
     foreign_min_count: int = 5  # số chữ cái thuộc FOREIGN_LETTERS tối thiểu (J-18: tên riêng có 1-2 chữ ñ / ö không kích hoạt)
+    nodiac: float = 0.02  # tỷ lệ từ Latinh thuộc UNACCENTED_WORDS (J-23: tiếng Việt có dấu đúng gần như 0, mất dấu hoàn toàn khoảng 5-6%)
+    nodiac_min_words: int = 50  # số từ Latinh tối thiểu để xét tín hiệu nodiac
 
 
 DEFAULT_THRESHOLDS = Thresholds()
 # Mã lý do ghi trên trang bị đưa đi OCR vì lỗi font.
 REASON_PAGE = "garbled_text_layer"  # chính trang này bị nghi
 REASON_DOC = "garbled_doc"  # trang bình thường nhưng bài có >= GARBLED_DOC_SHARE số trang bị nghi
+
+# Từ chức năng / thông dụng của tiếng Việt viết KHÔNG dấu ("của" -> "cua") mà tiếng Anh gần như không dùng; chữ có dấu đúng thì hầu như không
+# có từ nào trong tập này (J-23, điểm khởi đầu chưa đo trên bài thật). Không đưa tên riêng hay tên đệm (Thanh, Hien, Cong, Quoc, Gia ...) vào
+# để danh mục tham khảo "Tran Thanh Hien" không kích hoạt.
+UNACCENTED_WORDS = frozenset("cua nhung duoc khong nguoi nhieu mot voi hoac cung nghien cuu viec hoat thuc trien doanh".split())
 
 # Dấu thanh (NFD): huyền, sắc, ngã, hỏi, nặng. Dấu mũ / trăng / râu không phải dấu thanh.
 _TONES = frozenset("̣̀́̃̉")
@@ -139,6 +151,11 @@ def load_vocab(path: Path) -> frozenset[str] | None:
     return frozenset(json.loads(path.read_text(encoding="utf-8"))["syllables"])
 
 
+def latin_tokens(text: str) -> list[str]:
+    """Các cụm chữ cái Latinh (NFC, giữ nguyên chữ hoa / thường) của văn bản; cụm có chữ Hán, Kirin... bị bỏ."""
+    return [w for w in _LETTERS.findall(unicodedata.normalize("NFC", text)) if _LATIN_WORD.fullmatch(w)]
+
+
 def unknown_syllable_rate(text: str, vocab: frozenset[str]) -> tuple[float, int]:
     """
     Tỷ lệ từ Latinh (chữ thường, NFC) không có trong `vocab`; từ có chữ Hán, Kirin... bị bỏ nên trang chữ Hán không bị phạt.
@@ -152,15 +169,46 @@ def unknown_syllable_rate(text: str, vocab: frozenset[str]) -> tuple[float, int]
     return sum(w not in vocab for w in words) / len(words), len(words)
 
 
+def unaccented_ratio(text: str) -> tuple[float, int]:
+    """
+    Tỷ lệ từ Latinh (chữ thường, NFC) thuộc UNACCENTED_WORDS: tiếng Việt bị mất dấu ("cua", "nhung", "duoc" thay cho "của", "những", "được").
+
+    Returns:
+        (tỷ lệ, số từ Latinh); tỷ lệ là 0.0 khi không có từ nào.
+    """
+    words = [w for w in _LETTERS.findall(unicodedata.normalize("NFC", text).lower()) if _LATIN_WORD.fullmatch(w)]
+    if not words:
+        return 0.0, 0
+    return sum(w in UNACCENTED_WORDS for w in words) / len(words), len(words)
+
+
+def reversed_gain(text: str, vocab: frozenset[str], min_len: int = 3) -> tuple[float, float, int]:
+    """
+    Đo chữ đảo ngược (trang xoay 180 độ): so tỷ lệ từ nằm trong tập âm tiết `vocab` của văn bản với tỷ lệ của từng từ viết NGƯỢC.
+
+    Chỉ xét từ Latinh >= min_len chữ cái (từ ngắn dễ là đối xứng / trùng hợp). Văn bản đúng chiều có tỷ lệ gốc cao và tỷ lệ ngược thấp
+    (độ lợi âm); văn bản bị đảo thì ngược lại.
+
+    Returns:
+        (độ lợi = tỷ lệ ngược - tỷ lệ gốc, tỷ lệ ngược, số từ xét); (0.0, 0.0, 0) khi không có từ nào.
+    """
+    words = [w for w in _LETTERS.findall(unicodedata.normalize("NFC", text).lower()) if len(w) >= min_len and _LATIN_WORD.fullmatch(w)]
+    if not words:
+        return 0.0, 0.0, 0
+    fwd = sum(w in vocab for w in words) / len(words)
+    rev = sum(w[::-1] in vocab for w in words) / len(words)
+    return rev - fwd, rev, len(words)
+
+
 def page_measures(text: str, vocab: frozenset[str] | None = None) -> dict:
     """
-    Số đo thô của bốn tín hiệu cho một trang: {"tone" | "case" | "foreign" | "unknown": (tỷ lệ, số mẫu[, số chữ cái lạ])}; "unknown" là None khi không có vocab.
+    Số đo thô của năm tín hiệu cho một trang: {"tone" | "case" | "foreign" | "unknown" | "nodiac": (tỷ lệ, số mẫu[, số chữ cái lạ])}; "unknown" là None khi không có vocab.
 
-    Số mẫu là số từ (tone), số từ >= 4 chữ cái (case), số chữ cái (foreign, kèm số chữ cái lạ ở phần tử thứ ba), số từ Latinh (unknown). Tách khỏi page_signals để script đo
+    Số mẫu là số từ (tone), số từ >= 4 chữ cái (case), số chữ cái (foreign, kèm số chữ cái lạ ở phần tử thứ ba), số từ Latinh (unknown, nodiac). Tách khỏi page_signals để script đo
     tính một lần rồi thử nhiều ngưỡng.
     """
     return {"tone": garbled_ratio(text), "case": case_mix_ratio(text), "foreign": foreign_letter_ratio(text),
-            "unknown": unknown_syllable_rate(text, vocab) if vocab is not None else None}
+            "unknown": unknown_syllable_rate(text, vocab) if vocab is not None else None, "nodiac": unaccented_ratio(text)}
 
 
 def signals_from_measures(m: dict, th: Thresholds = DEFAULT_THRESHOLDS) -> list[str]:
@@ -174,6 +222,8 @@ def signals_from_measures(m: dict, th: Thresholds = DEFAULT_THRESHOLDS) -> list[
         out.append("foreign")
     if m["unknown"] is not None and m["unknown"][1] >= th.unknown_min_words and m["unknown"][0] >= th.unknown:
         out.append("unknown")
+    if m["nodiac"][1] >= th.nodiac_min_words and m["nodiac"][0] >= th.nodiac:
+        out.append("nodiac")
     return out
 
 

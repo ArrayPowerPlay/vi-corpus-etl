@@ -28,6 +28,8 @@ class SourceProfile:
         cross_line_clean: Xoá dòng lặp ở nhiều văn bản của cùng nguồn (D-04 mục C, chỉ dành cho nguồn web).
         allowed_langs:    Ngôn ngữ chấp nhận; ngoài danh sách thì loại (lang_not_allowed).
         min_lang_score:   Ngưỡng lang_score (độ thuần x độ tin cậy, D-02); thấp hơn thì gắn mã low_lang_score (trừ điểm nhẹ).
+        odd_words:        Bật chỉ số "từ lạ" (J-22 (3) C, vi_corpus.pipeline.quality.annotate_odd_words): đoạn tiếng Việt có tỷ lệ từ
+                          lạ cao bị loại (odd_words). Cần tập âm tiết (RunConfig.syllables); mới dùng cho bài báo khoa học.
         dedup_group:      Nhóm dedup: "cpt" dedup toàn cục giữa mọi nguồn, "sft" (hỏi - đáp) chỉ dedup trong nhóm của mình (Q4).
     """
 
@@ -41,6 +43,7 @@ class SourceProfile:
     cross_line_clean: bool = False
     allowed_langs: tuple[str, ...] = ("vi",)
     min_lang_score: float = 0.65
+    odd_words: bool = False
     dedup_group: str = "cpt"
 
 
@@ -53,7 +56,7 @@ PROFILES: dict[str, SourceProfile] = {
     # giữ sách tiếng Anh (P-08); ngưỡng lang_score thấp hơn vì giáo trình hay trộn Việt - Anh
     "giao_trinh": SourceProfile(chunked=True, min_words=80, allowed_langs=("vi", "en"), min_lang_score=0.5),
     # bài báo khoa học: giữ cả bản Việt và bản Anh (R-26, P-08); ngưỡng là điểm khởi đầu như giáo trình, chưa kiểm trên bài thật
-    "vjol": SourceProfile(chunked=True, min_words=80, allowed_langs=("vi", "en"), min_lang_score=0.5),
+    "vjol": SourceProfile(chunked=True, min_words=80, allowed_langs=("vi", "en"), min_lang_score=0.5, odd_words=True),
 }
 
 # Cơ cấu mặc định khi không chỉ định --mix (tỷ lệ, sẽ được quy về --total).
@@ -127,6 +130,7 @@ class RunConfig:
         embed_prompt:         Tiền tố gắn trước văn bản khi nhúng (E5 cần "passage: ").
         embed_batch_size:     Số văn bản mỗi lần chạy mô hình nhúng.
         embed_max_seq:        Số token tối đa khi nhúng.
+        embed_device:         Thiết bị nhúng: "auto" (GPU nếu có, không thì CPU kèm cảnh báo), "cuda" (không có GPU thì dừng với lỗi, J-22 (8)) hoặc "cpu".
         embed_scope:          "all" nhúng mọi bản ghi (bản đồ thấy cả bản bị loại, dùng cho chạy mẫu); "kept" chỉ nhúng phần
                               còn sống sau lọc rẻ (R-05, dùng khi chạy lớn).
         prefer_gpu:           Giảm chiều bằng cuML (GPU) nếu cài; không thì scikit-learn / umap-learn trên CPU.
@@ -136,6 +140,8 @@ class RunConfig:
         hdbscan_min_samples:  None = để HDBSCAN tự đặt; chỉ truyền khi đặt rõ (R-29).
         cpt_context_tokens:   Độ dài tối đa một khối CPT khi nối các đoạn liền nhau còn giữ (D-10). Chưa chốt theo mô hình đích.
         benchmarks_dir:       Thư mục tập benchmark cho quét rò rỉ 13-gram; rỗng / không có = danh sách rỗng (R-16).
+        syllables:            File tập âm tiết (processed/ocr_bakeoff/syllables.json) cho các chỉ số cần từ điển ở stage quality: chữ đảo
+                              ngược (reversed_text) và từ lạ (odd_words). None = bỏ các chỉ số này.
         global_verdict:       Đường dẫn verdict.parquet của dedup vòng 2 (D-09); có thì áp vào trước khi sinh knowledge unit.
         profiles:             Hồ sơ theo nguồn.
     """
@@ -167,6 +173,7 @@ class RunConfig:
     embed_batch_size: int = 64
     embed_max_seq: int = 512
     embed_scope: str = "all"
+    embed_device: str = "auto"
     prefer_gpu: bool = True
     cluster_space: str = "raw"
     hdbscan_min_cluster_size: int | None = None
@@ -174,6 +181,7 @@ class RunConfig:
     cpt_context_tokens: int = 4096
     benchmarks_dir: str | None = "configs/benchmarks"
     global_verdict: str | None = None
+    syllables: str | None = None
     profiles: dict[str, SourceProfile] = field(default_factory=lambda: dict(PROFILES))
 
     def profile(self, source_key: str) -> SourceProfile:

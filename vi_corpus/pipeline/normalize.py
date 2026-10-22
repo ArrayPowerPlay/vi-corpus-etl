@@ -4,6 +4,7 @@ Stage prepare, bước 1 (normalize) và đếm từ / token: chỉ chuẩn hóa
 Theo nguyên tắc "không sửa nội dung" của docs/PIPELINE.md: không paraphrase, không sửa số liệu / tên / chính tả.
 Việc làm: NFC, bỏ ký tự điều khiển và ký tự vô hình (zero-width, BOM, soft hyphen), đổi mọi loại khoảng trắng Unicode
 về dấu cách, gộp dấu cách thừa, gộp dòng trống thừa. Vị trí dấu thanh (hòa / hoà) giữ nguyên.
+Ký tự vùng riêng của font Symbol (U+F020-U+F0FE) đổi về Unicode bằng vi_corpus.pipeline.symbol_font (J-22 (4)): "" -> "±", "" -> "α".
 Văn bản có code (vi_corpus.pipeline.lines.has_code, chạy trên text CÒN thụt lề) giữ khoảng trắng đầu dòng (C-09): thụt lề
 là cú pháp của Python; chỉ gộp khoảng trắng giữa dòng và bỏ khoảng trắng cuối dòng. Văn bản khác bỏ cả khoảng trắng đầu dòng.
 Việc bỏ tiêu đề / số trang của sách đã làm ở ingest (clean_pages); xoá dòng lặp ở vi_corpus.pipeline.lines.
@@ -14,9 +15,10 @@ import re
 import unicodedata
 
 from vi_corpus.pipeline.lines import has_code
+from vi_corpus.pipeline.symbol_font import map_symbol_font
 from vi_corpus.pipeline.tokens import TokenCounter
 
-NORMALIZER_VERSION = "2"  # 2 = giữ thụt lề cho văn bản có code (C-09)
+NORMALIZER_VERSION = "3"  # 2 = giữ thụt lề cho văn bản có code (C-09); 3 = đổi ký tự font Symbol về Unicode (J-22 (4))
 _SPACES = re.compile(r"[ \t]+")
 _INDENT = re.compile(r"^[ \t]*")
 _BLANK_LINES = re.compile(r"\n{3,}")
@@ -25,6 +27,7 @@ _BLANK_LINES = re.compile(r"\n{3,}")
 def _normalize(text: str) -> tuple[str, bool]:
     """Chuẩn hóa một văn bản (xem docstring module). Returns (text mới, có giữ thụt lề vì là code không)."""
     text = unicodedata.normalize("NFC", text.replace("\r\n", "\n").replace("\r", "\n"))
+    text = map_symbol_font(text)[0]
     out = []
     for ch in text:
         cat = unicodedata.category(ch)
@@ -73,12 +76,13 @@ def normalize_rows(rows: list[dict]) -> tuple[list[dict], dict]:
     Returns:
         (rows, thống kê: số ký tự trước / sau, số bản ghi bị đổi, số bản ghi giữ thụt lề vì có code).
     """
-    before = after = changed = indented = 0
+    before = after = changed = indented = symbols = 0
     for row in rows:
         old = row["text"] or ""
+        symbols += map_symbol_font(old)[1]
         row["text"], keep_indent = _normalize(old)
         before, after = before + len(old), after + len(row["text"])
         changed += old != row["text"]
         indented += keep_indent
     return rows, {"chars_before": before, "chars_after": after, "rows_changed": changed,
-                  "indent_kept_docs": indented, "normalizer_version": NORMALIZER_VERSION}
+                  "indent_kept_docs": indented, "symbol_chars": symbols, "normalizer_version": NORMALIZER_VERSION}
