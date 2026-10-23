@@ -111,7 +111,8 @@ def tcvn3_to_unicode(text: str) -> str:
 
 
 def extract_pdf(path, get_ocr: Callable[[], object | None], detect_garbled: bool = False,
-                garbled_vocab: frozenset[str] | None = None, garbled_th: Thresholds = DEFAULT_THRESHOLDS) -> list[dict]:
+                garbled_vocab: frozenset[str] | None = None, garbled_th: Thresholds = DEFAULT_THRESHOLDS,
+                garbled_unaccented: frozenset[str] | None = None, ocr_cache=None) -> list[dict]:
     """
     Trích text từng trang của một PDF.
 
@@ -125,6 +126,9 @@ def extract_pdf(path, get_ocr: Callable[[], object | None], detect_garbled: bool
                  nguồn khác (giáo trình) chạy y như trước.
         garbled_vocab: Tập âm tiết cho tín hiệu "unknown" của bộ dò (None = bỏ tín hiệu này, J-16).
         garbled_th: Ngưỡng các tín hiệu của bộ dò.
+        garbled_unaccented: Danh sách từ không dấu cho tín hiệu "nodiac" (None = garbled.UNACCENTED_WORDS, J-25 A).
+        ocr_cache: vi_corpus.common.ocr_cache.OcrCache của PDF này (J-25 Bước 2): trang đã có kết quả OCR trong cache thì không OCR lại và get_ocr
+                 không được gọi nếu mọi trang cần OCR đều có sẵn; kết quả OCR mới được ghi vào cache (save) khi xong cả lô. None = không dùng cache.
 
     Returns:
         Danh sách {"text": ..., "method": ...} theo thứ tự trang (method xem đầu file). Trang lỗi font có thêm "reason",
@@ -161,23 +165,32 @@ def extract_pdf(path, get_ocr: Callable[[], object | None], detect_garbled: bool
             layer.append(None)
         reasons: dict[int, str] = {}  # trang chữ bị lỗi font -> lý do (J-10), cũng đi OCR như trang scan
         if detect_garbled:
-            reasons = {i: r for i, r in enumerate(plan_garbled(layer, garbled_th, vocab=garbled_vocab)) if r}
+            reasons = {i: r for i, r in enumerate(plan_garbled(layer, garbled_th, vocab=garbled_vocab, unaccented=garbled_unaccented)) if r}
             for i in reasons:
                 pages[i] = None
         todo = sorted([*scan_idx, *reasons])
         if todo:
-            ocr = get_ocr()
-            if ocr is None:
-                for i in todo:
-                    pages[i] = {"text": texts[i], "method": "needs_ocr", **({"reason": reasons[i]} if i in reasons else {})}
-            else:
+            cached = {i: ocr_cache.get(i, i in reasons) for i in todo} if ocr_cache is not None else {}
+            miss = [i for i in todo if cached.get(i) is None]
+            fresh: dict[int, dict] = {}
+            ocr = get_ocr() if miss else None
+            if miss and ocr is not None:
                 if hasattr(ocr, "ocr_pages"):  # OCR nhận cả lô trang để gửi song song (CascadePageOcr)
-                    kwargs = {"render": [i in reasons for i in todo]} if reasons else {}
-                    results = ocr.ocr_pages([doc[i] for i in todo], **kwargs)
+                    kwargs = {"render": [i in reasons for i in miss]} if reasons else {}
+                    results = ocr.ocr_pages([doc[i] for i in miss], **kwargs)
                 else:
-                    results = [{"text": ocr.page_text(page_image(doc[i], render=i in reasons)), "method": "ocr"} for i in todo]
-                for i, entry in zip(todo, results):
-                    pages[i] = ({**entry, "reason": reasons[i], "signals": page_signals(texts[i], garbled_th, garbled_vocab),
+                    results = [{"text": ocr.page_text(page_image(doc[i], render=i in reasons)), "method": "ocr"} for i in miss]
+                fresh = dict(zip(miss, results))
+                if ocr_cache is not None and hasattr(ocr, "ocr_pages"):  # chỉ bộ OCR chuỗi engine có chữ ký đúng với cache
+                    for i, entry in fresh.items():
+                        ocr_cache.put(i, i in reasons, entry)
+                    ocr_cache.save()
+            for i in todo:
+                entry = cached.get(i) or fresh.get(i)
+                if entry is None:  # không OCR được (tắt OCR / chưa cài nhóm ocr) và cache cũng không có
+                    pages[i] = {"text": texts[i], "method": "needs_ocr", **({"reason": reasons[i]} if i in reasons else {})}
+                else:
+                    pages[i] = ({**entry, "reason": reasons[i], "signals": page_signals(texts[i], garbled_th, garbled_vocab, garbled_unaccented),
                                  "garbled_text": texts[i]} if i in reasons else entry)
         return pages
 

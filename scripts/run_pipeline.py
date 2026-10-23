@@ -64,6 +64,11 @@ def build_parser() -> argparse.ArgumentParser:
                    help="Các tokenizer khác (cách nhau bằng dấu phẩy) chỉ để so tổng token giữ lại trong báo cáo.")
     p.add_argument("--lang-model", default=DEFAULT_LANG_MODEL,
                    help="Nhận diện ngôn ngữ: 'fasttext:lid.176' (tự tải), 'fasttext:<file.bin>' hoặc 'heuristic'.")
+    p.add_argument("--unaccented", type=Path, default=None,
+                   help="Danh sách từ không dấu cho mã lost_diacritics (mặc định <data-root>/processed/ocr_bakeoff/unaccented.json, sinh bằng scripts/build_unaccented.py; thiếu thì dùng danh sách tối thiểu).")
+    p.add_argument("--perplexity-model", default=None,
+                   help="Chấm perplexity đoạn bài báo khoa học (J-25 D3) bằng mô hình này, vd Qwen/Qwen3-0.6B; mặc định tắt. Cần GPU (--perplexity-device).")
+    p.add_argument("--perplexity-device", default="cuda", choices=["cuda", "cpu", "auto"], help="Thiết bị chấm perplexity (mặc định cuda, không rơi xuống CPU lặng lẽ).")
     p.add_argument("--syllables", type=Path, default=None,
                    help="Tập âm tiết cho chỉ số chữ đảo ngược / từ lạ ở stage quality (mặc định <data-root>/processed/ocr_bakeoff/syllables.json nếu có).")
     p.add_argument("--rights-gate", choices=["tag", "enforce"], default="tag")
@@ -112,7 +117,12 @@ def main() -> int:
     if not syllables.is_file():
         logging.getLogger("vi_corpus").warning("Không thấy tập âm tiết %s: bỏ chỉ số chữ đảo ngược / từ lạ ở stage quality", syllables)
         syllables = None
-    cfg = RunConfig(mix=mix, syllables=str(syllables) if syllables else None, seed=args.seed, tokenizer=args.tokenizer,
+    unaccented = args.unaccented or args.data_root / "processed" / "ocr_bakeoff" / "unaccented.json"
+    if not unaccented.is_file():
+        logging.getLogger("vi_corpus").warning("Không thấy danh sách từ không dấu %s: mã lost_diacritics dùng danh sách tối thiểu (chạy scripts/build_unaccented.py)", unaccented)
+        unaccented = None
+    cfg = RunConfig(mix=mix, syllables=str(syllables) if syllables else None, unaccented=str(unaccented) if unaccented else None,
+                    perplexity_model=args.perplexity_model, perplexity_device=args.perplexity_device, seed=args.seed, tokenizer=args.tokenizer,
                     compare_tokenizers=tuple(t.strip() for t in args.compare_tokenizers.split(",") if t.strip()),
                     lang_model=args.lang_model, rights_gate=args.rights_gate, dedup_index=not args.no_dedup_index,
                     global_verdict=str(args.global_verdict) if args.global_verdict else None,

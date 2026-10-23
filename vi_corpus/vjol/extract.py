@@ -11,6 +11,8 @@ vi_corpus.common.batch_extract, dùng chung với giáo trình):
 Chiến lược (R-26, J-03, J-04): mỗi trang đọc tối đa 2 lần. Lần 1 là PyMuPDF cho mọi trang (text / tcvn3, vi_corpus.common.pdf_text);
 lần 2 chỉ cho trang scan và trang lỗi font (J-10: lớp chữ toàn chữ có dấu nhưng sai, vi_corpus.common.garbled), bằng chuỗi engine
 VLM (vi_corpus.common.ocr_cascade), method "ocr_vlm" kèm tier và status; trang lỗi font còn có reason và garbled_text.
+Kết quả OCR từng trang được nhớ ở interim/vjol_ocr_cache/ (vi_corpus.common.ocr_cache, J-25 Bước 2): đổi tín hiệu dò chữ hỏng (EXTRACT_VERSION)
+thì chỉ trang MỚI bị gắn cờ mới phải OCR.
 - list_pdfs_by_year / sample_pdfs: kiểm kê PDF theo thư mục năm và chọn mẫu N bài chia đều theo năm. Mẫu là TIỀN TỐ của một
   thứ tự cố định theo seed, nên tăng N rồi chạy lại thì mẫu cũ nằm trong mẫu mới và chỉ phần mới được làm.
 - extract_file: trích một PDF, không ném lỗi của file (PDF hỏng -> error); ServerDown / EngineUnavailable (lỗi hệ thống) thì
@@ -30,8 +32,9 @@ from functools import partial
 from pathlib import Path
 
 from vi_corpus.common.batch_extract import checkpoint_path as _checkpoint_path
-from vi_corpus.common.batch_extract import run_batch
-from vi_corpus.common.garbled import DEFAULT_THRESHOLDS, Thresholds, load_vocab
+from vi_corpus.common.batch_extract import file_sha256, run_batch
+from vi_corpus.common.garbled import DEFAULT_THRESHOLDS, Thresholds, load_unaccented, load_vocab, unaccented_tag
+from vi_corpus.common.ocr_cache import OcrCache
 from vi_corpus.common.parsers import PARSER_VERSION, detect_format
 from vi_corpus.common.pdf_text import extract_pdf
 from vi_corpus.common.state import read_json
@@ -42,26 +45,39 @@ logger = logging.getLogger("vi_corpus")
 TEXT_DIR = "interim/vjol_text"
 # Phiên bản cách trích text VJOL, ghi vào checkpoint; đổi số này thì lần chạy sau làm lại mọi checkpoint cũ hơn. 1 = bản đầu (chưa có
 # trường extract_version); 2 = J-10: trang lỗi font cũng đi OCR; 3 = J-23: thêm tín hiệu nodiac (mất dấu tiếng Việt), J-24: xoay thử trang scan nghi bị xoay. Không dùng PARSER_VERSION vì nó dùng chung với giáo trình.
-EXTRACT_VERSION = "3"
+# 4 = J-25: tín hiệu hyphen (font mất ư / ơ), danh sách từ không dấu sinh từ kho chữ sạch (bỏ "doanh", "cung"), bộ nhớ đệm OCR.
+EXTRACT_VERSION = "4"
 VOCAB_TAG = "+vocab"  # hậu tố extract_version khi bộ dò có tín hiệu âm tiết lạ (J-16)
+UNACC_TAG = "+unacc"  # hậu tố (kèm băm nội dung) khi bộ dò dùng danh sách từ không dấu sinh từ dữ liệu thay cho danh sách tối thiểu (J-25 A)
 CLAIM_DIR = "state/vjol_extract/claims"
 SYLLABLES_REL = "processed/ocr_bakeoff/syllables.json"  # tập âm tiết cho tín hiệu "unknown" của bộ dò chữ hỏng (J-16)
+UNACCENTED_REL = "processed/ocr_bakeoff/unaccented.json"  # danh sách từ không dấu cho tín hiệu "nodiac" (J-25 A, scripts/build_unaccented.py)
+_VERSION_RE = re.compile(rf"^{re.escape(EXTRACT_VERSION)}(?:{re.escape(UNACC_TAG)}\w+)?(?:{re.escape(VOCAB_TAG)})?$")
 YEAR_DIR = re.compile(r"^\d{4}$")
 PDF_STEM = re.compile(r"^(\d+)_(\d+)$")  # <article_id>_<galley_id>
 SKIP_DIRS = frozenset({"metadata"})  # thư mục không chứa PDF bài báo
 
 
-def version_for(vocab) -> str:
-    """extract_version ghi vào checkpoint: EXTRACT_VERSION, thêm "+vocab" nếu bộ dò chữ hỏng có tín hiệu âm tiết lạ (J-16)."""
-    return EXTRACT_VERSION + (VOCAB_TAG if vocab is not None else "")
+def version_for(vocab, unaccented=None) -> str:
+    """
+    extract_version ghi vào checkpoint: EXTRACT_VERSION, thêm "+unacc<băm>" nếu bộ dò dùng danh sách từ không dấu sinh từ dữ liệu (đổi danh sách thì
+    băm đổi và checkpoint cũ bị làm lại), rồi "+vocab" nếu bộ dò có tín hiệu âm tiết lạ (J-16).
+    """
+    tag = unaccented_tag(unaccented)
+    return EXTRACT_VERSION + (f"{UNACC_TAG}{tag}" if tag else "") + (VOCAB_TAG if vocab is not None else "")
 
 
-def accepted_versions(vocab) -> frozenset[str]:
+def accepted_versions(vocab, unaccented=None) -> frozenset[str]:
     """
     Các extract_version mà lần chạy này coi là đã xong: có tập âm tiết thì chỉ "+vocab" (checkpoint dò thiếu tín hiệu bị làm lại); không có
-    thì cả hai (không làm lại checkpoint đã dò đủ chỉ vì lần này thiếu file).
+    thì cả hai (không làm lại checkpoint đã dò đủ chỉ vì lần này thiếu file). Danh sách từ không dấu thì phải khớp đúng (kể cả băm).
     """
-    return frozenset({version_for(vocab)} | ({EXTRACT_VERSION + VOCAB_TAG} if vocab is None else set()))
+    return frozenset({version_for(vocab, unaccented)} | ({version_for(frozenset(), unaccented)} if vocab is None else set()))
+
+
+def version_is_current(version: str | None) -> bool:
+    """True nếu extract_version của checkpoint thuộc đời EXTRACT_VERSION hiện hành (bất kể có / không "+unacc", "+vocab")."""
+    return bool(version and _VERSION_RE.match(version))
 
 
 def checkpoint_path(data_root: Path, sha256: str) -> Path:
@@ -145,13 +161,16 @@ def path_meta(path: Path) -> dict:
 
 
 def extract_file(path: Path, get_ocr: Callable[[], object | None], vocab: frozenset[str] | None = None,
-                 th: Thresholds = DEFAULT_THRESHOLDS) -> dict:
+                 th: Thresholds = DEFAULT_THRESHOLDS, unaccented: frozenset[str] | None = None,
+                 cache_root: Path | None = None) -> dict:
     """
     Trích text một PDF VJOL; không ném lỗi của file.
 
     Args:
         vocab: Tập âm tiết cho tín hiệu "unknown" của bộ dò chữ hỏng (None = bỏ tín hiệu này; checkpoint ghi extract_version không có "+vocab").
         th:    Ngưỡng của bộ dò chữ hỏng.
+        unaccented: Danh sách từ không dấu cho tín hiệu "nodiac" (None = danh sách tối thiểu trong vi_corpus.common.garbled).
+        cache_root: Thư mục gốc dữ liệu để đặt bộ nhớ đệm OCR (J-25 Bước 2); None hoặc `get_ocr` không có `signature()` thì không dùng cache.
 
     Returns:
         {"format", "pages", "error", "skipped", "parser_version", "extract_version", "seconds"}: không phải PDF thì skipped="unsupported_format";
@@ -163,12 +182,15 @@ def extract_file(path: Path, get_ocr: Callable[[], object | None], vocab: frozen
     t0 = time.time()
     fmt = detect_format(path)
     out = {"format": fmt, "pages": [], "error": None, "skipped": None, "parser_version": PARSER_VERSION,
-           "extract_version": version_for(vocab)}
+           "extract_version": version_for(vocab, unaccented)}
     if fmt != "pdf":
         out["skipped"] = "unsupported_format"
     else:
         try:
-            out["pages"] = extract_pdf(path, get_ocr, detect_garbled=True, garbled_vocab=vocab, garbled_th=th)
+            signature = getattr(get_ocr, "signature", None)
+            cache = OcrCache.for_pdf(cache_root, file_sha256(path), signature()) if cache_root is not None and callable(signature) else None
+            out["pages"] = extract_pdf(path, get_ocr, detect_garbled=True, garbled_vocab=vocab, garbled_th=th, garbled_unaccented=unaccented,
+                                       ocr_cache=cache)
         except (ServerDown, EngineUnavailable):
             raise
         except Exception as exc:  # noqa: BLE001 — một PDF lỗi không được dừng cả lô
@@ -179,7 +201,8 @@ def extract_file(path: Path, get_ocr: Callable[[], object | None], vocab: frozen
 
 def run_extract(root: Path, data_root: Path, get_ocr: Callable[[], object | None], ocr_enabled: bool = True,
                 limit_files: int | None = None, retry_skipped: bool = False, sample_docs: int | None = None,
-                seed: int = 0, syllables: Path | None = None, th: Thresholds = DEFAULT_THRESHOLDS) -> int:
+                seed: int = 0, syllables: Path | None = None, th: Thresholds = DEFAULT_THRESHOLDS,
+                unaccented_path: Path | None = None) -> int:
     """
     Chọn PDF (select_files) rồi trích text mọi file chưa làm (xem vi_corpus.common.batch_extract.run_batch).
 
@@ -187,6 +210,7 @@ def run_extract(root: Path, data_root: Path, get_ocr: Callable[[], object | None
 
     `syllables`: file tập âm tiết (mặc định <data_root>/processed/ocr_bakeoff/syllables.json). Thiếu file thì bộ dò chữ hỏng bỏ tín hiệu
     "unknown" (ghi cảnh báo; checkpoint ghi extract_version không có +vocab, report() đếm các checkpoint đó và lần chạy sau có file sẽ làm lại chúng).
+    `unaccented_path`: file danh sách từ không dấu (mặc định <data_root>/processed/ocr_bakeoff/unaccented.json); thiếu thì dùng danh sách tối thiểu.
 
     Returns:
         Số PDF bị lỗi trong lần chạy này.
@@ -198,11 +222,16 @@ def run_extract(root: Path, data_root: Path, get_ocr: Callable[[], object | None
     if vocab is None:
         logger.warning("Không thấy tập âm tiết %s: bộ dò chữ hỏng bỏ tín hiệu âm tiết lạ (họ chữ sai dấu kiểu Windows-1258 có thể lọt)",
                        syllables or data_root / SYLLABLES_REL)
+    unaccented = load_unaccented(unaccented_path or data_root / UNACCENTED_REL)
+    if unaccented is None:
+        logger.warning("Không thấy danh sách từ không dấu %s: dùng danh sách tối thiểu (chạy scripts/build_unaccented.py để sinh từ dữ liệu, J-25 A)",
+                       unaccented_path or data_root / UNACCENTED_REL)
     files = select_files(root, sample_docs, seed, limit_files)
     logger.info("VJOL: %d PDF được chọn (sample_docs=%s, seed=%s)", len(files), sample_docs, seed)
-    return run_batch(root, data_root, TEXT_DIR, partial(extract_file, vocab=vocab, th=th), path_meta, get_ocr, ocr_enabled=ocr_enabled,
+    return run_batch(root, data_root, TEXT_DIR, partial(extract_file, vocab=vocab, th=th, unaccented=unaccented, cache_root=data_root),
+                     path_meta, get_ocr, ocr_enabled=ocr_enabled,
                      desc="Trích text VJOL", retry_skipped=retry_skipped, files=files, claim_dir=CLAIM_DIR,
-                     extract_versions=accepted_versions(vocab))
+                     extract_versions=accepted_versions(vocab, unaccented))
 
 
 def report(root: Path | None, data_root: Path) -> dict:
@@ -232,11 +261,11 @@ def report(root: Path | None, data_root: Path) -> dict:
         info["errors"] += bool(done.get("error"))
         info["skipped"] += bool(done.get("skipped"))
         info["seconds"] += done.get("seconds") or 0.0
-        old_version += done.get("extract_version") not in (EXTRACT_VERSION, EXTRACT_VERSION + VOCAB_TAG)
+        old_version += not version_is_current(done.get("extract_version"))
         reasons = [p["reason"] for p in done["pages"] if p.get("reason")]
         garbled.update(reasons)
         garbled_docs += bool(reasons)
-        without_vocab += done.get("extract_version") == EXTRACT_VERSION
+        without_vocab += not str(done.get("extract_version")).endswith(VOCAB_TAG)
         signals.update(sig for p in done["pages"] for sig in p.get("signals", []))
         for page in done["pages"]:
             methods[page["method"]] += 1

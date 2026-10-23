@@ -78,6 +78,8 @@ def main() -> int:
     p.add_argument("--no-ocr", action="store_true", help="Không OCR: trang scan để needs_ocr (không cần GPU).")
     p.add_argument("--syllables", type=Path, default=None,
                    help="Tập âm tiết cho tín hiệu âm tiết lạ của bộ dò chữ hỏng (mặc định <data-root>/processed/ocr_bakeoff/syllables.json).")
+    p.add_argument("--unaccented", type=Path, default=None,
+                   help="Danh sách từ không dấu cho tín hiệu nodiac (mặc định <data-root>/processed/ocr_bakeoff/unaccented.json, sinh bằng scripts/build_unaccented.py; thiếu thì dùng danh sách tối thiểu).")
     p.add_argument("--no-rotate", action="store_true",
                    help="Không xoay thử trang scan nghi bị xoay (J-24); mặc định xoay thử khi có tập âm tiết.")
     p.add_argument("--no-export", action="store_true", help="Không xuất Parquet ở cuối (dùng khi nhiều tiến trình chạy cùng lúc).")
@@ -131,7 +133,7 @@ def main() -> int:
     try:
         failed = run_extract(root, args.data_root, getter, ocr_enabled=not args.no_ocr, limit_files=args.limit_files,
                              retry_skipped=args.retry_skipped, sample_docs=args.sample_docs, seed=args.seed,
-                             syllables=args.syllables)
+                             syllables=args.syllables, unaccented_path=args.unaccented)
     except (ServerDown, EngineUnavailable) as exc:
         log.error("%s. Dừng cả lượt (không loại trang âm thầm); sửa server / môi trường rồi chạy lại đúng lệnh cũ.", exc)
         return 1

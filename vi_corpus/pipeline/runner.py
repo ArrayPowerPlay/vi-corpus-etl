@@ -74,7 +74,7 @@ def _digest(obj) -> str:
 # không làm chạy lại prepare / language (tokenizer, fastText trên mọi bản ghi).
 PROFILE_FIELDS = {"ingest": ("chunked",), "prepare": ("chunked", "split_long", "in_doc_line_clean", "cross_line_clean"),
                   "quality": ("min_words", "max_words", "min_alpha", "web_checks", "allowed_langs", "min_lang_score",
-                              "odd_words"),
+                              "odd_words", "perplexity"),
                   "dedup": ("dedup_group",)}
 
 
@@ -101,7 +101,9 @@ def stage_params(name: str, cfg: RunConfig) -> dict:
         "language": lambda: {"version": language.LANG_VERSION, "spans": spans.SPANS_VERSION, "model": cfg.lang_model,
                              "segments": cfg.lang_max_segments},
         "quality": lambda: {"version": quality.QUALITY_VERSION, "spans": spans.SPANS_VERSION,
-                            "vocab": quality.vocab_identity(cfg), "profiles": _profiles(cfg, "quality")},
+                            "vocab": quality.vocab_identity(cfg), "unaccented": quality.unaccented_identity(cfg),
+                            "perplexity": [cfg.perplexity_model, quality.PPL_HIGH] if cfg.perplexity_model else None,
+                            "profiles": _profiles(cfg, "quality")},
         "dedup": lambda: {"version": dedup.DEDUP_VERSION, "minhash": dedup.MINHASH_VERSION, "keep_bands": cfg.keep_bands,
                           "rights_gate": cfg.rights_gate, "fuzzy": cfg.fuzzy_threshold, "priority": cfg.source_priority,
                           "profiles": _profiles(cfg, "dedup"),
@@ -244,7 +246,8 @@ def run_pipeline(specs: dict[str, SourceSpec], data_root: Path, run_dir: Path, c
         """Stage quality (song song nếu có backend)."""
         rows = backend.quality(rows, cfg) if backend else quality.annotate_quality(rows, cfg)
         odd = quality.annotate_odd_words(rows, cfg)  # J-22 (3) C: cần đếm số bài chứa từ, nên chạy tuần tự trên cả lần chạy
-        return rows, {**quality.quality_stats(rows), "odd_words": odd}
+        ppl = quality.annotate_perplexity(rows, cfg)  # J-25 D3: cần odd_word đã điền, GPU nhỏ; bỏ qua khi perplexity_model chưa đặt
+        return rows, {**quality.quality_stats(rows), "odd_words": odd, "perplexity": ppl}
 
     def do_dedup(rows):
         """Stage dedup vòng 1 + ghi kho dấu vân tay (D-09); không ghi kho thì xoá kho cũ của lần chạy (đã hết hiệu lực)."""

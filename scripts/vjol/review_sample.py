@@ -9,7 +9,6 @@ văn bản đầy đủ, cột trống `nhan_tay`) và review_sample.md (đọc 
 
 import argparse
 import csv
-import json
 import random
 import sys
 from pathlib import Path
@@ -17,18 +16,7 @@ from pathlib import Path
 sys.path[0] = str(Path(__file__).resolve().parents[2])  # thay thư mục script bằng gốc repo (xem scripts/vjol/extract.py)
 
 from vi_corpus.pipeline.io import read_rows  # noqa: E402
-from vi_corpus.vjol.clean import EMAIL, PHONE  # noqa: E402
-
-SUSPECT_RULES = (("odd_word", 0.08), ("unaccented", 0.01), ("reversed_gain", 0.15), ("pua_chars", 1), ("junk_script_chars", 1))
-
-
-def suspicious(row: dict) -> list[str]:
-    """Tên các số đo của đoạn vượt ngưỡng nghi ngờ (SUSPECT_RULES), thêm 'pii' nếu còn email / số điện thoại thật trong text."""
-    m = json.loads(row["quality_metrics"])
-    why = [k for k, t in SUSPECT_RULES if m.get(k, 0) >= t]
-    if EMAIL.search(row["text"]) or PHONE.search(row["text"]):
-        why.append("pii")
-    return why
+from vi_corpus.vjol.audit import suspicious  # noqa: E402
 
 
 def main() -> int:

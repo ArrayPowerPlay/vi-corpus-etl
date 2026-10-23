@@ -20,13 +20,19 @@ tối đa MỘT dấu thanh (huyền, sắc, ngã, hỏi, nặng) trên mỗi â
   UNACCENTED_WORDS; trang bị nghi thì đi OCR VLM như lỗi font. Không khôi phục dấu bằng mô hình (dễ bịa chữ).
 - reversed_gain (J-22 (1), J-23): chữ đảo ngược (trang xoay 180 độ): tỷ lệ âm tiết hợp lệ của từng từ viết ngược trừ tỷ lệ của văn bản gốc.
   Chỉ dùng ở stage quality (mã reversed_text), chưa là tín hiệu OCR lại vì nguồn gốc lỗi (lớp chữ nhúng hay OCR VLM) chưa xác định.
+- Tín hiệu thứ sáu "hyphen" (J-25 B): font đời cũ mất ư / ơ thành dấu gạch nối ("đ-ợc", "ng-ời", "th- viện"); trang nghi đi OCR VLM
+  như lỗi font. Cùng bộ dò dùng ở stage quality (mã lost_letters) làm lưới an toàn.
+- Danh sách từ không dấu (nodiac) lấy từ file sinh bằng scripts/build_unaccented.py (J-25 A): từ mà chữ đúng gần như không bao giờ viết
+  trần, lập từ kho chữ sạch thay cho danh sách viết tay (vốn có "doanh", "cung" là từ đúng không dấu nên loại oan). Thiếu file thì dùng
+  UNACCENTED_WORDS (danh sách tối thiểu đã bỏ hai từ đó).
 - single_letter_ratio: tín hiệu thứ hai (chữ bị mất kiểu "đ u"), chỉ để đo (scripts/vjol/check_garbled.py), chưa dùng để quyết.
 Ngưỡng chỉnh bằng số liệu của scripts/vjol/check_garbled.py (J-13: trang 5%, cấp bài 30%, cứng ở quality 8%).
 """
 
+import hashlib
+import json
 import re
 import unicodedata
-import json
 from collections.abc import Sequence
 from pathlib import Path
 from typing import NamedTuple
@@ -39,7 +45,7 @@ GARBLED_HARD_RATIO = 0.08
 GARBLED_MIN_WORDS = 10
 GARBLED_DOC_SHARE = 0.30
 FOREIGN_LETTERS = frozenset("ñöïøåæÑÖÏØÅÆ")  # chữ cái Latin-1 không có trong tiếng Việt; trong chữ VNI chúng thay cho ư, ị, ờ, ả ...
-SIGNALS = ("tone", "case", "foreign", "unknown", "nodiac")  # tên các tín hiệu, theo thứ tự page_signals trả về
+SIGNALS = ("tone", "case", "foreign", "unknown", "nodiac", "hyphen")  # tên các tín hiệu, theo thứ tự page_signals trả về
 
 
 class Thresholds(NamedTuple):
@@ -55,6 +61,9 @@ class Thresholds(NamedTuple):
     foreign_min_count: int = 5  # số chữ cái thuộc FOREIGN_LETTERS tối thiểu (J-18: tên riêng có 1-2 chữ ñ / ö không kích hoạt)
     nodiac: float = 0.02  # tỷ lệ từ Latinh thuộc UNACCENTED_WORDS (J-23: tiếng Việt có dấu đúng gần như 0, mất dấu hoàn toàn khoảng 5-6%)
     nodiac_min_words: int = 50  # số từ Latinh tối thiểu để xét tín hiệu nodiac
+    hyphen: float = 0.004  # tỷ lệ từ Latinh có dạng "đ-ợc" / "th- viện" (J-25 B, điểm khởi đầu chưa đo trên bài thật)
+    hyphen_min_count: int = 4  # số chỗ gạch nối thay ư / ơ tối thiểu (một vài "x-ray", "N-acetyl" không kích hoạt)
+    hyphen_min_words: int = 50  # số từ Latinh tối thiểu để xét tín hiệu hyphen
 
 
 DEFAULT_THRESHOLDS = Thresholds()
@@ -65,7 +74,14 @@ REASON_DOC = "garbled_doc"  # trang bình thường nhưng bài có >= GARBLED_D
 # Từ chức năng / thông dụng của tiếng Việt viết KHÔNG dấu ("của" -> "cua") mà tiếng Anh gần như không dùng; chữ có dấu đúng thì hầu như không
 # có từ nào trong tập này (J-23, điểm khởi đầu chưa đo trên bài thật). Không đưa tên riêng hay tên đệm (Thanh, Hien, Cong, Quoc, Gia ...) vào
 # để danh mục tham khảo "Tran Thanh Hien" không kích hoạt.
-UNACCENTED_WORDS = frozenset("cua nhung duoc khong nguoi nhieu mot voi hoac cung nghien cuu viec hoat thuc trien doanh".split())
+# J-25 A: đã bỏ "doanh" ("doanh nghiệp") và "cung" ("cung cấp") vì đó là từ đúng không dấu, làm loại oan 102 đoạn kinh tế của vjol_10k_v3.
+UNACCENTED_WORDS = frozenset("cua nhung duoc khong nguoi nhieu mot voi hoac nghien cuu viec hoat thuc trien".split())
+
+# Font mất ư / ơ: phụ âm đầu + "-" + nguyên âm có móc (đ-ợc, ng-ời, tr-ờng) hoặc + khoảng trắng (th- viện, h- ớng). Chỉ nhận phụ âm đầu thật của
+# tiếng Việt đứng đầu từ để "e-mail", "x-ray", "k-means", "co-operate" không khớp; "N-acetyl" (chữ đơn + nguyên âm thường) không khớp vì nhánh
+# nguyên âm chỉ nhận ơ ờ ớ ở ỡ ợ ư ừ ứ ử ữ ự.
+_HYPHEN_ONSET = r"(?:ngh|ng|nh|ch|kh|th|tr|gh|gi|ph|qu|[bcdđghklmnpqrstvx])"
+_HYPHEN_LOST = re.compile(rf"(?<![\w-]){_HYPHEN_ONSET}-(?=[ơờớởỡợưừứửữự]|\s+[a-zà-ỹ])", re.IGNORECASE)
 
 # Dấu thanh (NFD): huyền, sắc, ngã, hỏi, nặng. Dấu mũ / trăng / râu không phải dấu thanh.
 _TONES = frozenset("̣̀́̃̉")
@@ -169,17 +185,46 @@ def unknown_syllable_rate(text: str, vocab: frozenset[str]) -> tuple[float, int]
     return sum(w not in vocab for w in words) / len(words), len(words)
 
 
-def unaccented_ratio(text: str) -> tuple[float, int]:
+def load_unaccented(path: Path) -> frozenset[str] | None:
+    """Đọc danh sách từ không dấu do scripts/build_unaccented.py sinh (khoá "words"); None nếu file không tồn tại."""
+    path = Path(path)
+    if not path.is_file():
+        return None
+    return frozenset(json.loads(path.read_text(encoding="utf-8"))["words"])
+
+
+def unaccented_tag(words: frozenset[str] | None) -> str:
+    """Dấu nhận dạng ngắn (băm nội dung) của danh sách từ không dấu, ghi vào extract_version để đổi danh sách thì checkpoint cũ bị làm lại; "" nếu None."""
+    return hashlib.sha1("\n".join(sorted(words)).encode("utf-8")).hexdigest()[:6] if words else ""
+
+
+def unaccented_ratio(text: str, words: frozenset[str] | None = None) -> tuple[float, int]:
     """
-    Tỷ lệ từ Latinh (chữ thường, NFC) thuộc UNACCENTED_WORDS: tiếng Việt bị mất dấu ("cua", "nhung", "duoc" thay cho "của", "những", "được").
+    Tỷ lệ từ Latinh (chữ thường, NFC) thuộc `words` (mặc định UNACCENTED_WORDS): tiếng Việt bị mất dấu ("cua", "nhung", "duoc" thay cho "của", "những", "được").
 
     Returns:
         (tỷ lệ, số từ Latinh); tỷ lệ là 0.0 khi không có từ nào.
     """
-    words = [w for w in _LETTERS.findall(unicodedata.normalize("NFC", text).lower()) if _LATIN_WORD.fullmatch(w)]
-    if not words:
+    lexicon = UNACCENTED_WORDS if words is None else words
+    toks = [w for w in _LETTERS.findall(unicodedata.normalize("NFC", text).lower()) if _LATIN_WORD.fullmatch(w)]
+    if not toks:
         return 0.0, 0
-    return sum(w in UNACCENTED_WORDS for w in words) / len(words), len(words)
+    return sum(w in lexicon for w in toks) / len(toks), len(toks)
+
+
+def hyphen_lost(text: str) -> tuple[float, int, int]:
+    """
+    Đo chỗ font mất ư / ơ thành dấu gạch nối ("đ-ợc", "ng-ời", "th- viện"; J-25 B).
+
+    Returns:
+        (tỷ lệ chỗ lỗi trên số từ Latinh, số từ Latinh, số chỗ lỗi); (0.0, 0, 0) khi không có từ nào.
+    """
+    nfc = unicodedata.normalize("NFC", text)
+    n = len(latin_tokens(nfc))
+    if not n:
+        return 0.0, 0, 0
+    hits = len(_HYPHEN_LOST.findall(nfc))
+    return hits / n, n, hits
 
 
 def reversed_gain(text: str, vocab: frozenset[str], min_len: int = 3) -> tuple[float, float, int]:
@@ -200,15 +245,17 @@ def reversed_gain(text: str, vocab: frozenset[str], min_len: int = 3) -> tuple[f
     return rev - fwd, rev, len(words)
 
 
-def page_measures(text: str, vocab: frozenset[str] | None = None) -> dict:
+def page_measures(text: str, vocab: frozenset[str] | None = None, unaccented: frozenset[str] | None = None) -> dict:
     """
-    Số đo thô của năm tín hiệu cho một trang: {"tone" | "case" | "foreign" | "unknown" | "nodiac": (tỷ lệ, số mẫu[, số chữ cái lạ])}; "unknown" là None khi không có vocab.
+    Số đo thô của sáu tín hiệu cho một trang: {"tone" | "case" | "foreign" | "unknown" | "nodiac" | "hyphen": (tỷ lệ, số mẫu[, số chữ cái lạ / số chỗ lỗi])}; "unknown" là None khi không có vocab.
 
-    Số mẫu là số từ (tone), số từ >= 4 chữ cái (case), số chữ cái (foreign, kèm số chữ cái lạ ở phần tử thứ ba), số từ Latinh (unknown, nodiac). Tách khỏi page_signals để script đo
-    tính một lần rồi thử nhiều ngưỡng.
+    Số mẫu là số từ (tone), số từ >= 4 chữ cái (case), số chữ cái (foreign, kèm số chữ cái lạ ở phần tử thứ ba), số từ Latinh (unknown, nodiac,
+    hyphen; hyphen kèm số chỗ lỗi ở phần tử thứ ba). Tách khỏi page_signals để script đo tính một lần rồi thử nhiều ngưỡng.
+    `unaccented`: danh sách từ không dấu (None = UNACCENTED_WORDS).
     """
     return {"tone": garbled_ratio(text), "case": case_mix_ratio(text), "foreign": foreign_letter_ratio(text),
-            "unknown": unknown_syllable_rate(text, vocab) if vocab is not None else None, "nodiac": unaccented_ratio(text)}
+            "unknown": unknown_syllable_rate(text, vocab) if vocab is not None else None, "nodiac": unaccented_ratio(text, unaccented),
+            "hyphen": hyphen_lost(text)}
 
 
 def signals_from_measures(m: dict, th: Thresholds = DEFAULT_THRESHOLDS) -> list[str]:
@@ -224,19 +271,23 @@ def signals_from_measures(m: dict, th: Thresholds = DEFAULT_THRESHOLDS) -> list[
         out.append("unknown")
     if m["nodiac"][1] >= th.nodiac_min_words and m["nodiac"][0] >= th.nodiac:
         out.append("nodiac")
+    if m["hyphen"][1] >= th.hyphen_min_words and m["hyphen"][2] >= th.hyphen_min_count and m["hyphen"][0] >= th.hyphen:
+        out.append("hyphen")
     return out
 
 
-def page_signals(text: str, th: Thresholds = DEFAULT_THRESHOLDS, vocab: frozenset[str] | None = None) -> list[str]:
+def page_signals(text: str, th: Thresholds = DEFAULT_THRESHOLDS, vocab: frozenset[str] | None = None,
+                 unaccented: frozenset[str] | None = None) -> list[str]:
     """
     Các tín hiệu chữ hỏng vượt ngưỡng của một trang (tên trong SIGNALS); rỗng nghĩa là trang không bị nghi.
 
     Args:
-        text:  Lớp chữ của trang.
-        th:    Ngưỡng.
-        vocab: Tập âm tiết tham chiếu cho tín hiệu "unknown"; None thì bỏ tín hiệu này.
+        text:       Lớp chữ của trang.
+        th:         Ngưỡng.
+        vocab:      Tập âm tiết tham chiếu cho tín hiệu "unknown"; None thì bỏ tín hiệu này.
+        unaccented: Danh sách từ không dấu cho tín hiệu "nodiac" (None = UNACCENTED_WORDS).
     """
-    return signals_from_measures(page_measures(text, vocab), th)
+    return signals_from_measures(page_measures(text, vocab, unaccented), th)
 
 
 def plan_from_flags(has_text: Sequence[bool], suspect: Sequence[bool], doc_share: float = GARBLED_DOC_SHARE) -> list[str | None]:
@@ -250,21 +301,22 @@ def plan_from_flags(has_text: Sequence[bool], suspect: Sequence[bool], doc_share
 
 
 def plan_garbled(texts: Sequence[str | None], th: Thresholds = DEFAULT_THRESHOLDS, doc_share: float = GARBLED_DOC_SHARE,
-                 vocab: frozenset[str] | None = None) -> list[str | None]:
+                 vocab: frozenset[str] | None = None, unaccented: frozenset[str] | None = None) -> list[str | None]:
     """
     Quyết định trang nào của một PDF phải OCR lại vì lớp chữ hỏng.
 
     Args:
-        texts:     Text lớp chữ từng trang; None cho trang không phải trang chữ (trang scan đã đi OCR, trang trắng).
-                   Trang chữ có text rỗng sau strip cũng không được tính.
-        th:        Ngưỡng các tín hiệu (page_signals); trang bị nghi nếu có ít nhất một tín hiệu vượt ngưỡng.
-        doc_share: Tỷ lệ trang bị nghi trên số trang có chữ mà từ đó cả bài bị coi là hỏng.
-        vocab:     Tập âm tiết cho tín hiệu "unknown" (None = bỏ tín hiệu này).
+        texts:      Text lớp chữ từng trang; None cho trang không phải trang chữ (trang scan đã đi OCR, trang trắng).
+                    Trang chữ có text rỗng sau strip cũng không được tính.
+        th:         Ngưỡng các tín hiệu (page_signals); trang bị nghi nếu có ít nhất một tín hiệu vượt ngưỡng.
+        doc_share:  Tỷ lệ trang bị nghi trên số trang có chữ mà từ đó cả bài bị coi là hỏng.
+        vocab:      Tập âm tiết cho tín hiệu "unknown" (None = bỏ tín hiệu này).
+        unaccented: Danh sách từ không dấu cho tín hiệu "nodiac" (None = UNACCENTED_WORDS).
 
     Returns:
         Danh sách cùng độ dài `texts`: REASON_PAGE cho trang bị nghi, REASON_DOC cho trang còn lại của bài bị nâng lên cấp bài, None
         cho trang không cần OCR lại.
     """
     has_text = [t is not None and bool(t.strip()) for t in texts]
-    suspect = [ok and bool(page_signals(t, th, vocab)) for t, ok in zip(texts, has_text)]
+    suspect = [ok and bool(page_signals(t, th, vocab, unaccented)) for t, ok in zip(texts, has_text)]
     return plan_from_flags(has_text, suspect, doc_share)

@@ -22,6 +22,7 @@ from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from pathlib import Path
 
 from vi_corpus.common.garbled import unknown_syllable_rate
+from vi_corpus.common.ocr_cache import ocr_signature
 from vi_corpus.ocr_bakeoff.cascade import CascadeOcr, EngineUnavailable, Tier
 
 logger = logging.getLogger("vi_corpus")
@@ -213,6 +214,10 @@ class CascadeOcrGetter:
         self._ocr: CascadePageOcr | None = None
         self._error: Exception | None = None
         self._proc = None
+
+    def signature(self) -> str:
+        """Chữ ký bộ OCR cho bộ nhớ đệm OCR (vi_corpus.common.ocr_cache.ocr_signature): chuỗi engine + có xoay thử trang hay không."""
+        return ocr_signature([t.name for t in self.tiers], self.vocab is not None)
 
     def __call__(self) -> CascadePageOcr | None:
         """

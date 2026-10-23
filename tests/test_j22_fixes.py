@@ -120,7 +120,7 @@ def test_tu_la_cap_bai_cho_rieng_vjol_va_mien_viet_tat_ten_khoa_hoc():
         annotate_quality(rows, cfg2)
         stats = annotate_odd_words(rows, cfg2)
         assert vocab_identity(cfg2) == [str(syl), syl.stat().st_size]
-    assert stats == {"checked": 4, "flagged": 1, "skipped": None}
+    assert stats == {"checked": 4, "flagged": 1, "skipped": None, "unit": "doc", "journals": 0}
     assert "odd_words" in rows[0]["reason_codes"] and rows[0]["quality_band"] == "D"
     assert all("odd_words" not in r["reason_codes"] for r in rows[1:])  # "mekong" lặp ở 3 bài; nguồn web không bật
     assert json.loads(rows[1]["quality_metrics"])["odd_word"] < 0.15

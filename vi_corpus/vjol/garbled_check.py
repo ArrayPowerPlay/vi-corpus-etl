@@ -32,13 +32,14 @@ from vi_corpus.common.garbled import (
     REASON_DOC,
     REASON_PAGE,
     SIGNALS,
+    load_unaccented,
     load_vocab,
     page_measures,
     plan_from_flags,
     signals_from_measures,
 )
 from vi_corpus.common.state import read_json, write_json_atomic
-from vi_corpus.vjol.extract import SYLLABLES_REL, TEXT_DIR
+from vi_corpus.vjol.extract import SYLLABLES_REL, TEXT_DIR, UNACCENTED_REL
 
 logger = logging.getLogger("vi_corpus")
 
@@ -49,6 +50,7 @@ SWEEPS = {  # ngưỡng thử cho từng tín hiệu
     "foreign": (0.002, 0.003, 0.005, 0.01),
     "unknown": (0.25, 0.30, 0.35, 0.40, 0.50),
     "nodiac": (0.01, 0.02, 0.03, 0.05),
+    "hyphen": (0.002, 0.004, 0.008, 0.015),  # J-25 B: font mất ư / ơ thành "-"
 }
 SHARE_SWEEP = (0.10, 0.20, 0.30, 0.50)  # ngưỡng cấp bài thử
 HIST_BINS = (0.0, 0.01, 0.02, 0.04, 0.06, 0.08, 0.10, 0.15, 0.20, 0.30, 0.50, 1.01)  # cột phân bố tỷ lệ tone theo trang
@@ -74,7 +76,7 @@ def hist_bin(ratio: float) -> str:
     return f"{HIST_BINS[-2]:.2f}-1.00"
 
 
-def read_docs(data_root: Path, vocab: frozenset[str] | None) -> list[dict]:
+def read_docs(data_root: Path, vocab: frozenset[str] | None, unaccented: frozenset[str] | None = None) -> list[dict]:
     """
     Đọc checkpoint VJOL không lỗi, không bị bỏ qua và đo bốn tín hiệu cho từng trang có lớp chữ (một lần).
 
@@ -89,7 +91,7 @@ def read_docs(data_root: Path, vocab: frozenset[str] | None) -> list[dict]:
         pages = []
         for p in done["pages"]:
             t = layer_text(p)
-            pages.append({"text": t, "m": page_measures(t, vocab)} if t is not None and t.strip() else None)
+            pages.append({"text": t, "m": page_measures(t, vocab, unaccented)} if t is not None and t.strip() else None)
         docs.append({"sha256": done["sha256"], "path": done["paths"][0], "year": done.get("year_dir"), "pages": pages})
     return docs
 
@@ -165,7 +167,7 @@ def check(data_root: Path, seed: int = 0, syllables: Path | None = None) -> Path
     vocab = load_vocab(syllables or data_root / SYLLABLES_REL)
     if vocab is None:
         logger.warning("Không thấy tập âm tiết: bỏ tín hiệu 'unknown' trong lần đo này")
-    docs = read_docs(data_root, vocab)
+    docs = read_docs(data_root, vocab, load_unaccented(data_root / UNACCENTED_REL))
     hist: Counter = Counter()
     years: dict = defaultdict(Counter)
     by_signal: Counter = Counter()

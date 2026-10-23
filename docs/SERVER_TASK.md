@@ -28,6 +28,7 @@
 | S-11 | Đo dương tính giả của fuzzy dedup (chọn tham số MinHash) | N-14 / R-34 (đổi shingle 5 từ, 16×8, ≥0,8 sang shingle 3 từ, 32×4, ≥0,7 hay không) | CHỜ CODE | vài giờ (chạy pipeline 100k + đọc ~150 cặp) | không |
 | S-12 | VJOL: trích text mẫu 3.000 bài (4 GPU) rồi chạy pipeline 10.000 đoạn | J-05 (số liệu để ước giờ cả kho VJOL, tỉ lệ trang scan / flagged / baseline) | CHẠY NGAY | trích text: vài giờ (chưa đo); pipeline: ~1 giờ | 4 |
 | S-14 | VJOL: đo nguồn chữ đảo ngược / producer / tốc độ embed, rồi chạy `vjol_10k_v3` và so với `v2` | J-22, J-23 | CHẠY SAU S-13 | trích lại ~3 giờ đồng hồ (4 GPU), pipeline ~1 giờ | 4 |
+| S-15 | VJOL: đo gốc trên `vjol_10k_v3`, sinh danh sách từ không dấu, chạy lại pipeline từ checkpoint cũ (`vjol_10k_v4a`) | J-25, J-26, J-27 | CHẠY SAU S-14 | CPU vài chục phút; pipeline ~1 giờ + perplexity vài phút GPU | 1 |
 
 Thứ tự khuyến nghị: S-10 (VJOL ưu tiên cao nhất, R-15) → S-0 → S-1 → S-2 → S-3 (có đủ số để tính giờ OCR) → S-4 → S-5. S-6 đến S-9 và S-11 làm sau phiên code (S-11 cần script `scripts/dedup_pairs_sample.py`, viết ở gói G-05 bước 2).
 
@@ -361,6 +362,46 @@ tar czf vjol_s14.tar.gz data/processed/vjol_diagnose data/processed/vjol_diagnos
 ```
 
 **Báo lại cho Claude**: gói `vjol_s14.tar.gz`, `extract.py --status` sau bước 4 và hai dòng `date`. Claude so với `vjol_10k_v2` (J-21 / J-22): số đoạn lỗi chữ nặng (v2: ~236, band A ~180), đoạn có email (v2: 597), mã `math_font_junk` / `private_use_chars` / `lost_diacritics` / `reversed_text` / `odd_words` / `reference_list` trong `manifest.json`, `symbol_chars` ở mục `normalize`, tỷ lệ nhiễu và số cụm của HDBSCAN (v2: 93,3% nhiễu trên 768 chiều), giây nhúng 10.000 đoạn (v2: 4.252) và dòng log `[embed] ... device=...`. Từ gói này chốt (1) B / C, (3) A và phần còn lại của (8).
+
+---
+
+## S-15. VJOL: đo gốc, danh sách từ không dấu, pipeline `vjol_10k_v4a` (chưa trích lại)  [CHẠY SAU S-14]
+
+**Mục đích**: J-27 đã code Bước 0-4 của J-25. Lượt này CHƯA trích lại text (không tốn GPU trích): (1) đo gốc bằng công cụ mới trên `vjol_10k_v3`; (2) lập 400 đoạn để Claude đọc gán nhãn (chia hai nửa theo bài) và tập chữ đúng; (3) sinh danh sách từ không dấu từ SEA-PILE; (4) tái hiện các lỗi trên PDF thật bằng `diagnose.py inspect`; (5) nối producer với đoạn xấu (J-26); (6) chạy lại pipeline từ checkpoint v3 (đổi A, C, E, F, D1, D3 chỉ nằm ở bước tạo bản ghi và stage quality, không cần trích lại). Trích lại (Bước 3: gạch nối thay ư/ơ, A phần trang) và mẫu mới 3.000 bài hạt giống khác làm SAU, khi Claude đã chỉnh ngưỡng bằng nửa tune của bộ đáp án (J-26).
+
+```bash
+cd /home/jovyan/dinh/vi-corpus-etl && git fetch origin && git checkout worktree-vjol-pipeline && git pull
+source /home/jovyan/dinh/env.sh
+uv sync --group curator --group viz --group ocr
+uv run pytest -q                                   # kỳ vọng 263 test qua
+V3=data/processed/pipeline_runs/vjol_10k_v3
+# 1) danh sách từ không dấu từ kho chữ sạch (CPU, vài phút) -> data/processed/ocr_bakeoff/unaccented.json; kiểm in ra: "doanh", "cung" phải KHÔNG có
+uv run python scripts/build_unaccented.py --data-root data
+# 2) Bước 0: số đo gốc trên v3 (CPU, vài giây mỗi lệnh)
+uv run python scripts/vjol/audit_run.py --run-dir $V3                                   # -> $V3/audit/{audit.json,audit.md,audit_journals.csv}
+uv run python scripts/vjol/groundtruth.py sample --run-dir $V3 --n 400                  # -> $V3/groundtruth/labeling_sample.{csv,md}
+uv run python scripts/vjol/groundtruth.py clean-set --run-dir $V3 --n 300               # -> $V3/groundtruth/clean_set.jsonl
+uv run python scripts/vjol/groundtruth.py check-clean --clean-set $V3/groundtruth/clean_set.jsonl --data-root data   # phải "0 bị gắn cờ nhầm"
+# 3) tái hiện trên PDF thật (J-25): gạch nối 243535 (2009), 244285 (2004); mất dấu nhầm c00360926b; lỗi đọc font acd7883f9b; OCR cũ 02b971e693
+uv run python scripts/vjol/diagnose.py --data-root data inspect 243535 244285 c00360926b acd7883f9b 02b971e693 | tee data/processed/vjol_diagnose_inspect_j25.txt
+# 4) trang bị nghi theo từng tín hiệu, có thêm "hyphen" và danh sách mới (CPU)
+uv run python scripts/vjol/check_garbled.py --data-root data
+# 5) producer: một dòng mỗi bài, rồi đoạn xấu còn lọt ở v3 theo producer (J-26)
+uv run python scripts/vjol/diagnose.py --data-root data producers
+uv run python scripts/vjol/diagnose.py --data-root data chunks-by-producer --run-dir $V3
+# 6) nạp bộ nhớ đệm OCR từ checkpoint cũ (CPU, vài phút; để lần trích lại sau không OCR lại trang đã OCR)
+uv run python scripts/vjol/seed_ocr_cache.py --data-root data
+# 7) pipeline từ checkpoint v3 với mã mới + perplexity Qwen3-0.6B (GPU nhỏ); phải không còn tiến trình vLLM nào
+nvidia-smi
+uv run --group curator --group viz python scripts/run_pipeline.py --data-root data --mix vjol=10000 --total 10000 \
+    --run-name vjol_10k_v4a --embed-device cuda --cluster-space umap10 --perplexity-model Qwen/Qwen3-0.6B
+uv run python scripts/vjol/audit_run.py --run-dir data/processed/pipeline_runs/vjol_10k_v4a
+# 8) gói kết quả gửi lại
+tar czf vjol_s15.tar.gz data/processed/ocr_bakeoff/unaccented.json data/processed/vjol_diagnose data/processed/vjol_diagnose_inspect_j25.txt data/processed/vjol_garbled_check \
+    $V3/audit $V3/groundtruth data/processed/pipeline_runs/vjol_10k_v4a/{manifest.json,report.html,audit}
+```
+
+**Báo lại cho Claude**: gói `vjol_s15.tar.gz`. Claude (1) đọc 400 đoạn của `labeling_sample.md` và điền nhãn (cột `label`; chia hai nửa theo bài: tune để chỉnh ngưỡng, holdout chỉ để kiểm), (2) so `audit.json` của v3 và v4a với tiêu chí nghiệm thu J-25 (0 cờ lên tập chữ đúng; 102 đoạn bị loại oan được trả lại; `econst` hết bất thường; tiêu đề trang < 0,2%; ...), (3) xem `producers_chunks.csv` để quyết quy tắc D2, (4) chốt ngưỡng `hyphen`, `ODD_SOFT`, `PPL_HIGH`, độ chính xác nhãn tham khảo (>= 95% mới được loại hẳn). Sau đó mới có lượt trích lại một lần và mẫu mới (J-26).
 
 ---
 

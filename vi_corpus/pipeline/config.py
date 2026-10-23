@@ -28,6 +28,8 @@ class SourceProfile:
         cross_line_clean: Xoá dòng lặp ở nhiều văn bản của cùng nguồn (D-04 mục C, chỉ dành cho nguồn web).
         allowed_langs:    Ngôn ngữ chấp nhận; ngoài danh sách thì loại (lang_not_allowed).
         min_lang_score:   Ngưỡng lang_score (độ thuần x độ tin cậy, D-02); thấp hơn thì gắn mã low_lang_score (trừ điểm nhẹ).
+        perplexity:       Chấm perplexity của đoạn bằng mô hình ngôn ngữ nhỏ (J-25 D3, vi_corpus.pipeline.quality.annotate_perplexity) làm tín hiệu thứ hai; cần
+                          RunConfig.perplexity_model. Mới dùng cho bài báo khoa học.
         odd_words:        Bật chỉ số "từ lạ" (J-22 (3) C, vi_corpus.pipeline.quality.annotate_odd_words): đoạn tiếng Việt có tỷ lệ từ
                           lạ cao bị loại (odd_words). Cần tập âm tiết (RunConfig.syllables); mới dùng cho bài báo khoa học.
         dedup_group:      Nhóm dedup: "cpt" dedup toàn cục giữa mọi nguồn, "sft" (hỏi - đáp) chỉ dedup trong nhóm của mình (Q4).
@@ -44,6 +46,7 @@ class SourceProfile:
     allowed_langs: tuple[str, ...] = ("vi",)
     min_lang_score: float = 0.65
     odd_words: bool = False
+    perplexity: bool = False
     dedup_group: str = "cpt"
 
 
@@ -56,7 +59,8 @@ PROFILES: dict[str, SourceProfile] = {
     # giữ sách tiếng Anh (P-08); ngưỡng lang_score thấp hơn vì giáo trình hay trộn Việt - Anh
     "giao_trinh": SourceProfile(chunked=True, min_words=80, allowed_langs=("vi", "en"), min_lang_score=0.5),
     # bài báo khoa học: giữ cả bản Việt và bản Anh (R-26, P-08); ngưỡng là điểm khởi đầu như giáo trình, chưa kiểm trên bài thật
-    "vjol": SourceProfile(chunked=True, min_words=80, allowed_langs=("vi", "en"), min_lang_score=0.5, odd_words=True),
+    "vjol": SourceProfile(chunked=True, min_words=80, allowed_langs=("vi", "en"), min_lang_score=0.5, odd_words=True,
+                           perplexity=True),
 }
 
 # Cơ cấu mặc định khi không chỉ định --mix (tỷ lệ, sẽ được quy về --total).
@@ -142,6 +146,10 @@ class RunConfig:
         benchmarks_dir:       Thư mục tập benchmark cho quét rò rỉ 13-gram; rỗng / không có = danh sách rỗng (R-16).
         syllables:            File tập âm tiết (processed/ocr_bakeoff/syllables.json) cho các chỉ số cần từ điển ở stage quality: chữ đảo
                               ngược (reversed_text) và từ lạ (odd_words). None = bỏ các chỉ số này.
+        unaccented:           File danh sách từ không dấu (processed/ocr_bakeoff/unaccented.json, sinh bằng scripts/build_unaccented.py, J-25 A) cho mã lost_diacritics;
+                              None = danh sách tối thiểu trong vi_corpus.common.garbled.
+        perplexity_model:     Mô hình chấm perplexity cho các nguồn bật SourceProfile.perplexity (J-25 D3), vd "Qwen/Qwen3-0.6B"; None = tắt (không GPU).
+        perplexity_device:    "cuda" | "cpu" | "auto" cho mô hình trên.
         global_verdict:       Đường dẫn verdict.parquet của dedup vòng 2 (D-09); có thì áp vào trước khi sinh knowledge unit.
         profiles:             Hồ sơ theo nguồn.
     """
@@ -182,6 +190,9 @@ class RunConfig:
     benchmarks_dir: str | None = "configs/benchmarks"
     global_verdict: str | None = None
     syllables: str | None = None
+    unaccented: str | None = None
+    perplexity_model: str | None = None
+    perplexity_device: str = "cuda"
     profiles: dict[str, SourceProfile] = field(default_factory=lambda: dict(PROFILES))
 
     def profile(self, source_key: str) -> SourceProfile:
