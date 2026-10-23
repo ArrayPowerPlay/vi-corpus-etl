@@ -143,9 +143,39 @@ def _is_intl_phone(match: re.Match) -> bool:
     return not _THOUSANDS.match(match.group(0).strip())
 
 
+def _is_phone(match: re.Match) -> bool:
+    """
+    PHONE khớp mà đúng là số điện thoại, không phải dãy số liệu bảng (J-28).
+
+    Số điện thoại hoặc liền một khối 10-11 chữ số ("0912345678"), hoặc là các khối cách nhau bằng dấu cách / chấm / gạch mà khối đầu là mã vùng / đầu số
+    ("0903", "024", "+84") và các khối sau mỗi khối >= 3 chữ số ("0903 123 456", "024.3825.1234"). Dãy "0.0 0.2 0.4 0.6 0.8" hay "0.15 0.23 0.42 5.89" của bảng và
+    trục biểu đồ có khối 1-2 chữ số nên bị loại; trên vjol_10k_v4a hơn một nửa trong 425 chỗ bị che là số liệu như vậy.
+    """
+    toks = [t for t in re.split(r"[\s.-]+", match.group(0).strip()) if t]
+    if len(toks) == 1:
+        return len(re.sub(r"\D", "", toks[0])) in (10, 11)
+    head = toks[0].lstrip("+")
+    return 2 <= len(head) <= 4 and all(len(t) >= 3 for t in toks[1:])
+
+
+def find_phones(text: str) -> list[str]:
+    """Các số điện thoại thật trong văn bản (PHONE hợp lệ theo _is_phone, và PHONE_INTL không phải số có nhóm nghìn)."""
+    return [m.group(0) for m in PHONE.finditer(text) if _is_phone(m)] + [m.group(0) for m in PHONE_INTL.finditer(text) if _is_intl_phone(m)]
+
+
 def mask_phones(line: str) -> tuple[str, int]:
-    """Che số điện thoại (PHONE và PHONE_INTL) trong một dòng bằng <PHONE>; trả về (dòng mới, số số đã che)."""
-    line, n = PHONE.subn("<PHONE>", line)
+    """Che số điện thoại (PHONE hợp lệ theo _is_phone, và PHONE_INTL) trong một dòng bằng <PHONE>; trả về (dòng mới, số số đã che)."""
+    n = 0
+
+    def repl(m: re.Match) -> str:
+        """Thay số điện thoại hợp lệ bằng <PHONE>, giữ nguyên dãy số liệu."""
+        nonlocal n
+        if _is_phone(m):
+            n += 1
+            return "<PHONE>"
+        return m.group(0)
+
+    line = PHONE.sub(repl, line)
     out, last, extra = [], 0, 0
     for m in PHONE_INTL.finditer(line):
         if _is_intl_phone(m):

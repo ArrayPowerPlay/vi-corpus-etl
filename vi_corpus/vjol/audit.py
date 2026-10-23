@@ -15,16 +15,17 @@ import json
 import random
 import re
 import statistics
+import unicodedata
 from collections import Counter, defaultdict
 from collections.abc import Callable
 from pathlib import Path
 
-from vi_corpus.common.garbled import DEFAULT_THRESHOLDS, hyphen_lost, page_signals
+from vi_corpus.common.garbled import _HYPHEN_LOST, DEFAULT_THRESHOLDS, hyphen_lost, page_signals
 from vi_corpus.common.state import write_json_atomic
 from vi_corpus.pipeline import quality as Q
 from vi_corpus.pipeline.config import PROFILES
 from vi_corpus.pipeline.io import read_rows
-from vi_corpus.vjol.clean import _BOILER, BOILER_MAX_WORDS, EMAIL, PHONE, PHONE_INTL, heading_key, is_ref_heading
+from vi_corpus.vjol.clean import _BOILER, BOILER_MAX_WORDS, EMAIL, find_phones, heading_key, is_ref_heading
 
 OUT_SUBDIR = "audit"
 SUSPECT_RULES = (("odd_word", 0.08), ("unaccented", 0.01), ("reversed_gain", 0.15), ("pua_chars", 1), ("junk_script_chars", 1), ("hyphen_lost", 1))
@@ -56,7 +57,7 @@ def suspicious(row: dict) -> list[str]:
     """Tên các số đo của đoạn vượt ngưỡng nghi ngờ (SUSPECT_RULES), thêm 'pii' nếu còn email / số điện thoại thật trong text."""
     m = metrics_of(row)
     why = [k for k, t in SUSPECT_RULES if m.get(k, 0) >= t]
-    if EMAIL.search(row["text"]) or PHONE.search(row["text"]) or PHONE_INTL.search(row["text"]):
+    if EMAIL.search(row["text"]) or find_phones(row["text"]):
         why.append("pii")
     return why
 
@@ -68,7 +69,7 @@ def _lines(text: str) -> list[str]:
 
 ERROR_CHECKS: dict[str, Callable[[dict, dict], bool]] = {
     "email": lambda r, m: bool(EMAIL.search(r["text"])),
-    "phone": lambda r, m: bool(PHONE.search(r["text"]) or PHONE_INTL.search(r["text"])),
+    "phone": lambda r, m: bool(find_phones(r["text"])),
     "hyphen_lost": lambda r, m: m.get("hyphen_lost", hyphen_lost(r["text"])[2]) >= 1,
     "unaccented": lambda r, m: m.get("unaccented", 0.0) >= 0.01,
     "odd_word_high": lambda r, m: m.get("odd_word", 0.0) >= 0.2,
@@ -80,6 +81,31 @@ ERROR_CHECKS: dict[str, Callable[[dict, dict], bool]] = {
     "received_line": lambda r, m: any(len(ln.split()) <= BOILER_MAX_WORDS and _BOILER.match(ln) for ln in _lines(r["text"])),
     "high_perplexity": lambda r, m: m.get("perplexity", 0.0) >= Q.PPL_HIGH,
 }
+
+
+def _locate_phone(text: str) -> tuple[int, int] | None:
+    """Vị trí số điện thoại thật đầu tiên (find_phones) trong văn bản."""
+    found = find_phones(text)
+    i = text.find(found[0]) if found else -1
+    return (i, i + len(found[0])) if i >= 0 else None
+
+
+# Hàm định vị chỗ lỗi cho mẫu của audit (J-28): trả về (đầu, cuối) hoặc None. Lỗi không có ở đây thì mẫu lấy đầu đoạn.
+HIT_LOCATORS: dict[str, Callable[[str], tuple[int, int] | None]] = {
+    "journal_header": lambda t: (m.start(), m.end()) if (m := _JOURNAL_HEADER.search(t)) else None,
+    "email": lambda t: (m.start(), m.end()) if (m := EMAIL.search(t)) else None,
+    "phone": _locate_phone,
+    "hyphen_lost": lambda t: (m.start(), m.end()) if (m := _HYPHEN_LOST.search(unicodedata.normalize("NFC", t))) else None,
+    "lost_letters": lambda t: (m.start(), m.end()) if (m := _HYPHEN_LOST.search(unicodedata.normalize("NFC", t))) else None,
+}
+
+
+def excerpt_of(text: str, name: str = "", width: int = 100) -> str:
+    """Trích đoạn để đọc: quanh chỗ lỗi `name` (HIT_LOCATORS) ±`width` ký tự, không có thì 240 ký tự đầu."""
+    loc = HIT_LOCATORS.get(name, lambda t: None)(text)
+    if loc is None:
+        return text[:240]
+    return "…" + text[max(0, loc[0] - width):loc[1] + width].replace("\n", " | ") + "…"
 
 
 def error_flags(row: dict) -> list[str]:
@@ -151,15 +177,15 @@ def audit_rows(rows: list[dict], min_group: int = 20, factor: float = 3.0, min_r
             if v["dropped_rate"] > factor * med and v["dropped_rate"] >= min_rate:
                 anomalies.append({"level": level, "key": k, "chunks": v["chunks"], "dropped_rate": v["dropped_rate"], "median": round(med, 4), "top_reasons": v["top_reasons"]})
 
-    def pick(pool: list[dict]) -> list[dict]:
-        """Mẫu ngẫu nhiên để đọc."""
-        return [{"doc_id": r["doc_id"], "journal": meta_of(r).get("journal_slug"), "year": meta_of(r).get("year"), "excerpt": r["text"][:240]}
+    def pick(pool: list[dict], name: str = "") -> list[dict]:
+        """Mẫu ngẫu nhiên để đọc; với lỗi có định vị được (HIT_LOCATORS) thì trích quanh chỗ lỗi thay vì đầu đoạn."""
+        return [{"doc_id": r["doc_id"], "journal": meta_of(r).get("journal_slug"), "year": meta_of(r).get("year"), "excerpt": excerpt_of(r["text"], name)}
                 for r in rng.sample(pool, min(samples, len(pool)))]
 
     return {"chunks": len(rows), "kept": len(kept), "dropped": len(dropped),
             "error_counts": dict(counts), "error_rates": {k: round(v / len(kept), 4) for k, v in counts.items()} if kept else {},
             "single_rule_drops": dict(single.most_common()), "groups": groups, "anomalies": anomalies,
-            "samples": {**{f"kept:{k}": pick(v) for k, v in found.items()}, **{f"dropped_only_by:{k}": pick(v) for k, v in single_rows.items()}}}
+            "samples": {**{f"kept:{k}": pick(v, k) for k, v in found.items()}, **{f"dropped_only_by:{k}": pick(v, k) for k, v in single_rows.items()}}}
 
 
 def audit_run(run_dir: Path, out_dir: Path | None = None, **kwargs) -> Path:

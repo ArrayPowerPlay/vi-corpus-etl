@@ -64,7 +64,7 @@ def test_danh_sach_toi_thieu_khong_con_doanh_va_cung_va_chu_dung_khong_bi_co():
     assert unaccented_ratio(ECON)[0] == 0.0
     assert page_signals(ECON) == []
     lost = "Cua nhung nguoi nghien cuu duoc cung cap " * 10 + ECON[:200]
-    assert unaccented_ratio(lost)[0] > 0.2
+    assert unaccented_ratio(lost)[0] > 0.1  # J-28: mỗi từ chỉ tính tối đa 3 lần nên tỷ lệ thấp hơn bản cũ (>0,2) với đoạn lặp một câu
 
 
 def test_sinh_danh_sach_tu_khong_dau_tu_du_lieu_loai_tu_dung_va_tu_nuoc_ngoai():
@@ -82,10 +82,11 @@ def test_sinh_danh_sach_tu_khong_dau_tu_du_lieu_loai_tu_dung_va_tu_nuoc_ngoai():
 def test_dung_danh_sach_sinh_ra_trong_bo_do_va_dau_vet_phien_ban(tmp_path):
     """load_unaccented đọc file; page_signals dùng danh sách truyền vào; unaccented_tag đổi khi danh sách đổi."""
     path = tmp_path / "unaccented.json"
-    save_unaccented(path, {"words": ["toi", "ban"], "docs": 1})
+    bare = "toi ban anh chi em ong ba co chu bac con cau".split()
+    save_unaccented(path, {"words": bare, "docs": 1})
     words = load_unaccented(path)
-    assert words == frozenset({"toi", "ban"}) and load_unaccented(tmp_path / "khong_co.json") is None
-    text = ("toi ban " + vi_text(4, 3) + " ") * 10
+    assert words == frozenset(bare) and load_unaccented(tmp_path / "khong_co.json") is None
+    text = (" ".join(bare) + " " + vi_text(4, 3) + " ") * 10
     assert "nodiac" in page_signals(text, unaccented=words) and "nodiac" not in page_signals(text)
     assert unaccented_tag(words) != unaccented_tag(frozenset({"toi"})) and unaccented_tag(None) == ""
     v = vx.version_for(None, words)

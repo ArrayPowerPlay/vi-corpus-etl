@@ -33,6 +33,7 @@ import hashlib
 import json
 import re
 import unicodedata
+from collections import Counter
 from collections.abc import Sequence
 from pathlib import Path
 from typing import NamedTuple
@@ -77,11 +78,24 @@ REASON_DOC = "garbled_doc"  # trang bình thường nhưng bài có >= GARBLED_D
 # J-25 A: đã bỏ "doanh" ("doanh nghiệp") và "cung" ("cung cấp") vì đó là từ đúng không dấu, làm loại oan 102 đoạn kinh tế của vjol_10k_v3.
 UNACCENTED_WORDS = frozenset("cua nhung duoc khong nguoi nhieu mot voi hoac nghien cuu viec hoat thuc trien".split())
 
+# J-28: từ chức năng tiếng Anh mà tiếng Việt viết trần gần như không có ("the", "in", "to", "can", "may", "be", "that" bị loại vì trùng "thế", "ín", "tô", "căn",
+# "máy", "bé", "thật"). Văn bản có >= ENGLISH_SHARE từ loại này là tiếng Anh, không đo mất dấu (điểm khởi đầu: tiếng Anh thường 10-15%, chưa đo trên bài thật).
+ENGLISH_WORDS = frozenset("of and is are was were with for from which by have has been not or as this these those their also will".split())
+ENGLISH_SHARE = 0.04
+# J-28: mỗi từ trong danh sách chỉ tính tối đa UNACCENTED_CAP lần mỗi đoạn. Chữ trần thật mất dấu có hàng chục từ khác nhau; còn thuật ngữ đúng như "dở dang"
+# (kế toán), "cao su", "axit lactic toan" lặp một từ hàng chục lần thì không thể làm đoạn bị loại.
+UNACCENTED_CAP = 3
+# Đường dẫn, email, DOI và "slug" nối bằng >= 3 dấu gạch ("Trung-Quoc-dang-tranh-chap" của URL bị ngắt dòng): bỏ khỏi phép đo mất dấu.
+_URL_SPAN = re.compile(r"(?:https?://|www\.)\S+|\S+@\S+\.\S+|\bdoi:\s*\S+|\w+(?:-\w+){3,}", re.IGNORECASE)
+
 # Font mất ư / ơ: phụ âm đầu + "-" + nguyên âm có móc (đ-ợc, ng-ời, tr-ờng) hoặc + khoảng trắng (th- viện, h- ớng). Chỉ nhận phụ âm đầu thật của
 # tiếng Việt đứng đầu từ để "e-mail", "x-ray", "k-means", "co-operate" không khớp; "N-acetyl" (chữ đơn + nguyên âm thường) không khớp vì nhánh
 # nguyên âm chỉ nhận ơ ờ ớ ở ỡ ợ ư ừ ứ ử ữ ự.
-_HYPHEN_ONSET = r"(?:ngh|ng|nh|ch|kh|th|tr|gh|gi|ph|qu|[bcdđghklmnpqrstvx])"
-_HYPHEN_LOST = re.compile(rf"(?<![\w-]){_HYPHEN_ONSET}-(?=[ơờớởỡợưừứửữự]|\s+[a-zà-ỹ])", re.IGNORECASE)
+# J-28: nhánh "khoảng trắng + chữ thường" chỉ nhận phụ âm đơn viết THƯỜNG ("c- dân", "h- ớng"), vì "C- section", "N- TiO2" (chữ hoa đơn + gạch nối) là tiếng Anh / hoá học đúng.
+_HYPHEN_MULTI = r"(?:ngh|ng|nh|ch|kh|th|tr|gh|gi|ph|qu)"
+_HYPHEN_SINGLE = r"[bcdđghklmnpqrstvx]"
+_HYPHEN_LOST = re.compile(
+    rf"(?<![\w-])(?:(?:{_HYPHEN_MULTI}|{_HYPHEN_SINGLE})-(?=[ơờớởỡợưừứửữự])|{_HYPHEN_MULTI}-(?=\s+[a-zà-ỹ])|(?-i:{_HYPHEN_SINGLE})-(?=\s+[a-zà-ỹ]))", re.IGNORECASE)
 
 # Dấu thanh (NFD): huyền, sắc, ngã, hỏi, nặng. Dấu mũ / trăng / râu không phải dấu thanh.
 _TONES = frozenset("̣̀́̃̉")
@@ -202,14 +216,22 @@ def unaccented_ratio(text: str, words: frozenset[str] | None = None) -> tuple[fl
     """
     Tỷ lệ từ Latinh (chữ thường, NFC) thuộc `words` (mặc định UNACCENTED_WORDS): tiếng Việt bị mất dấu ("cua", "nhung", "duoc" thay cho "của", "những", "được").
 
+    J-28: đường dẫn / email / DOI được bỏ trước khi đếm (tên bài trong URL báo "Trung-Quoc-dang-tranh-chap" không phải chữ mất dấu), và văn bản tiếng Anh
+    (tỷ lệ từ chức năng tiếng Anh >= ENGLISH_SHARE) trả về tỷ lệ 0 vì "day", "mat", "hon" ... trùng chữ trần của tiếng Việt nhưng là tiếng Anh đúng. Trên
+    vjol_10k_v4a hai nguyên nhân này làm loại oan khoảng hai phần ba trong 476 đoạn bị mã lost_diacritics.
+
     Returns:
-        (tỷ lệ, số từ Latinh); tỷ lệ là 0.0 khi không có từ nào.
+        (tỷ lệ, số từ Latinh); tỷ lệ là 0.0 khi không có từ nào hoặc văn bản là tiếng Anh. Số từ Latinh tính sau khi bỏ đường dẫn.
     """
     lexicon = UNACCENTED_WORDS if words is None else words
-    toks = [w for w in _LETTERS.findall(unicodedata.normalize("NFC", text).lower()) if _LATIN_WORD.fullmatch(w)]
+    text = _URL_SPAN.sub(" ", unicodedata.normalize("NFC", text))
+    toks = [w for w in _LETTERS.findall(text.lower()) if _LATIN_WORD.fullmatch(w)]
     if not toks:
         return 0.0, 0
-    return sum(w in lexicon for w in toks) / len(toks), len(toks)
+    if sum(w in ENGLISH_WORDS for w in toks) / len(toks) >= ENGLISH_SHARE:
+        return 0.0, len(toks)
+    hits = Counter(w for w in toks if w in lexicon)
+    return sum(min(c, UNACCENTED_CAP) for c in hits.values()) / len(toks), len(toks)
 
 
 def hyphen_lost(text: str) -> tuple[float, int, int]:

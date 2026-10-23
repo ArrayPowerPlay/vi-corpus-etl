@@ -29,6 +29,7 @@
 | S-12 | VJOL: trích text mẫu 3.000 bài (4 GPU) rồi chạy pipeline 10.000 đoạn | J-05 (số liệu để ước giờ cả kho VJOL, tỉ lệ trang scan / flagged / baseline) | CHẠY NGAY | trích text: vài giờ (chưa đo); pipeline: ~1 giờ | 4 |
 | S-14 | VJOL: đo nguồn chữ đảo ngược / producer / tốc độ embed, rồi chạy `vjol_10k_v3` và so với `v2` | J-22, J-23 | CHẠY SAU S-13 | trích lại ~3 giờ đồng hồ (4 GPU), pipeline ~1 giờ | 4 |
 | S-15 | VJOL: đo gốc trên `vjol_10k_v3`, sinh danh sách từ không dấu, chạy lại pipeline từ checkpoint cũ (`vjol_10k_v4a`) | J-25, J-26, J-27 | CHẠY SAU S-14 | CPU vài chục phút; pipeline ~1 giờ + perplexity vài phút GPU | 1 |
+| S-16 | VJOL: chạy lại sau sửa J-28 (`vjol_10k_v4b`), lập bộ gán nhãn và tập chữ đúng, đo lại trang nghi | J-28 | CHẠY SAU S-15 | pipeline ~10 phút (checkpoint có sẵn) + CPU vài phút | 1 |
 
 Thứ tự khuyến nghị: S-10 (VJOL ưu tiên cao nhất, R-15) → S-0 → S-1 → S-2 → S-3 (có đủ số để tính giờ OCR) → S-4 → S-5. S-6 đến S-9 và S-11 làm sau phiên code (S-11 cần script `scripts/dedup_pairs_sample.py`, viết ở gói G-05 bước 2).
 
@@ -402,6 +403,37 @@ tar czf vjol_s15.tar.gz data/processed/ocr_bakeoff/unaccented.json data/processe
 ```
 
 **Báo lại cho Claude**: gói `vjol_s15.tar.gz`. Claude (1) đọc 400 đoạn của `labeling_sample.md` và điền nhãn (cột `label`; chia hai nửa theo bài: tune để chỉnh ngưỡng, holdout chỉ để kiểm), (2) so `audit.json` của v3 và v4a với tiêu chí nghiệm thu J-25 (0 cờ lên tập chữ đúng; 102 đoạn bị loại oan được trả lại; `econst` hết bất thường; tiêu đề trang < 0,2%; ...), (3) xem `producers_chunks.csv` để quyết quy tắc D2, (4) chốt ngưỡng `hyphen`, `ODD_SOFT`, `PPL_HIGH`, độ chính xác nhãn tham khảo (>= 95% mới được loại hẳn). Sau đó mới có lượt trích lại một lần và mẫu mới (J-26).
+
+## S-16. VJOL: chạy lại sau sửa J-28 (`vjol_10k_v4b`)  [CHẠY SAU S-15]
+
+**Mục đích**: J-28 sửa ba lỗi đo (mất dấu bắt nhầm tiếng Anh / đường dẫn, che số điện thoại nhầm số liệu bảng, gạch nối bắt nhầm "C- section"). Chưa trích lại text. Chạy lại pipeline từ checkpoint cũ ra `vjol_10k_v4b` (cùng mẫu với v4a để so), rồi lập bộ gán nhãn từ chính v4b. **Chép CẢ khối lệnh bên dưới cùng một lần** (S-15 hỏng vì thiếu dòng gán biến).
+
+```bash
+cd /home/jovyan/dinh/vi-corpus-etl
+git fetch origin && git checkout worktree-vjol-pipeline && git pull
+source /home/jovyan/dinh/env.sh
+uv sync --group curator --group viz --group ocr
+uv run pytest -q                                   # kỳ vọng 270 test qua
+V4B=data/processed/pipeline_runs/vjol_10k_v4b
+# 1) số trang bị nghi sau sửa nodiac (so với S-15: 4.185 trang, 1.001 bài, 4.944 trang OCR lại)
+uv run python scripts/vjol/check_garbled.py --data-root data
+uv run python scripts/vjol/diagnose.py --data-root data producers
+# 2) pipeline mới (ingest chạy lại vì INGEST_VERSION 3), không còn tiến trình vLLM nào
+nvidia-smi
+uv run --group curator --group viz python scripts/run_pipeline.py --data-root data --mix vjol=10000 --total 10000 \
+    --run-name vjol_10k_v4b --embed-device cuda --cluster-space umap10 --perplexity-model Qwen/Qwen3-0.6B
+# 3) kiểm, bộ gán nhãn, tập chữ đúng, producer
+uv run python scripts/vjol/audit_run.py --run-dir $V4B
+uv run python scripts/vjol/groundtruth.py sample --run-dir $V4B --n 400
+uv run python scripts/vjol/groundtruth.py clean-set --run-dir $V4B --n 300
+uv run python scripts/vjol/groundtruth.py check-clean --clean-set $V4B/groundtruth/clean_set.jsonl --data-root data   # phải "0 bị gắn cờ nhầm"
+uv run python scripts/vjol/diagnose.py --data-root data chunks-by-producer --run-dir $V4B
+# 4) gói gửi lại (04_quality.parquet để Claude đọc đoạn thật)
+tar czf vjol_s16.tar.gz data/processed/ocr_bakeoff/unaccented.json data/processed/vjol_diagnose data/processed/vjol_garbled_check \
+    $V4B/{manifest.json,04_quality.parquet,audit,groundtruth}
+```
+
+**Báo lại cho Claude**: gói `vjol_s16.tar.gz`. Claude so v4b với v4a (kỳ vọng: `lost_diacritics` khoảng 195 thay vì 476, không còn `<PHONE>` trên số liệu bảng), đọc 400 đoạn gán nhãn (nửa tune chỉnh ngưỡng, nửa holdout chỉ kiểm), rồi chốt D2 theo producer, lần trích lại một lần và mẫu 3.000 bài hạt giống khác (J-26).
 
 ---
 

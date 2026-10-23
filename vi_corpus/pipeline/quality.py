@@ -41,11 +41,12 @@ from vi_corpus.pipeline.config import RunConfig, SourceProfile
 from vi_corpus.pipeline.language import UNDETERMINED, is_mixed, vi_diacritic_ratio
 from vi_corpus.pipeline.spans import math_share, strip_math_code
 
-QUALITY_VERSION = "6"  # 2 = thêm low_lang_score, mixed_language, low_diacritic; 3 = dup_line bỏ dòng không có chữ
+QUALITY_VERSION = "7"  # 2 = thêm low_lang_score, mixed_language, low_diacritic; 3 = dup_line bỏ dòng không có chữ
 # cái (F-01), số đo hình dạng trên văn xuôi, miễn cho văn bản toàn công thức / code (F-03), lang_unknown (F-07);
 # 4 = thêm số đo garbled và mã cứng garbled_font (J-10); 5 = private_use_chars, math_font_junk, lost_diacritics, reversed_text,
 # odd_words, reference_list (J-22, J-23); 6 = J-25: lost_letters (font mất ư / ơ), reference_list nhận theo mẫu đầu dòng, từ lạ đếm theo tạp chí,
-# perplexity (high_perplexity), danh sách từ không dấu sinh từ dữ liệu
+# perplexity (high_perplexity), danh sách từ không dấu sinh từ dữ liệu; 7 = J-28: lost_diacritics bỏ đường dẫn / văn bản tiếng Anh và tính mỗi từ tối đa 3 lần,
+# lost_letters không khớp "C- section"
 MIN_VI_DIACRITIC = 0.05  # tiếng Việt có dấu bình thường ~0,2-0,3 chữ có dấu / chữ cái
 # F-03, ngưỡng khởi điểm chưa đo: văn xuôi < MATH_PROSE_WORDS từ và math_share >= MATH_SHARE_MIN thì miễn MATH_EXEMPT
 MATH_PROSE_WORDS = 20
