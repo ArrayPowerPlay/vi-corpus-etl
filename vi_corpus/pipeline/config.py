@@ -49,7 +49,10 @@ PROFILES: dict[str, SourceProfile] = {
     "sea_lion_pile_v1": SourceProfile(web_checks=True, cross_line_clean=True),
     "sea_instruct_2602": SourceProfile(split_long=False, min_words=5, min_alpha=0.4, in_doc_line_clean=False,
                                        dedup_group="sft"),
-    "stbook": SourceProfile(chunked=True, min_words=80),
+    # chỉ giữ tiếng Việt và tiếng Anh (O-30 mục 1); đoạn có ngôn ngữ chính khác (Lào, Nga, Tây Ban Nha ...) bị loại
+    # ở stage quality bằng mã lang_not_allowed. Lọc theo đoạn (~2 trang), nên cuốn ngoại ngữ bị loại gần hết còn
+    # trang ngoại ngữ lẻ trong sách tiếng Việt chỉ mất khi cả đoạn là ngoại ngữ.
+    "stbook": SourceProfile(chunked=True, min_words=80, allowed_langs=("vi", "en")),
     # giữ sách tiếng Anh (P-08); ngưỡng lang_score thấp hơn vì giáo trình hay trộn Việt - Anh
     "giao_trinh": SourceProfile(chunked=True, min_words=80, allowed_langs=("vi", "en"), min_lang_score=0.5),
 }
