@@ -71,6 +71,7 @@ DEFAULT_THRESHOLDS = Thresholds()
 # Mã lý do ghi trên trang bị đưa đi OCR vì lỗi font.
 REASON_PAGE = "garbled_text_layer"  # chính trang này bị nghi
 REASON_DOC = "garbled_doc"  # trang bình thường nhưng bài có >= GARBLED_DOC_SHARE số trang bị nghi
+REASON_PRODUCER = "old_ocr_producer"  # J-29 (D2): PDF do phần mềm OCR đời cũ tạo, lớp chữ không đáng tin dù không trúng tín hiệu nào
 
 # Từ chức năng / thông dụng của tiếng Việt viết KHÔNG dấu ("của" -> "cua") mà tiếng Anh gần như không dùng; chữ có dấu đúng thì hầu như không
 # có từ nào trong tập này (J-23, điểm khởi đầu chưa đo trên bài thật). Không đưa tên riêng hay tên đệm (Thanh, Hien, Cong, Quoc, Gia ...) vào

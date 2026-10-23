@@ -30,6 +30,7 @@
 | S-14 | VJOL: đo nguồn chữ đảo ngược / producer / tốc độ embed, rồi chạy `vjol_10k_v3` và so với `v2` | J-22, J-23 | CHẠY SAU S-13 | trích lại ~3 giờ đồng hồ (4 GPU), pipeline ~1 giờ | 4 |
 | S-15 | VJOL: đo gốc trên `vjol_10k_v3`, sinh danh sách từ không dấu, chạy lại pipeline từ checkpoint cũ (`vjol_10k_v4a`) | J-25, J-26, J-27 | CHẠY SAU S-14 | CPU vài chục phút; pipeline ~1 giờ + perplexity vài phút GPU | 1 |
 | S-16 | VJOL: chạy lại sau sửa J-28 (`vjol_10k_v4b`), lập bộ gán nhãn và tập chữ đúng, đo lại trang nghi | J-28 | CHẠY SAU S-15 | pipeline ~10 phút (checkpoint có sẵn) + CPU vài phút | 1 |
+| S-17 | VJOL: trích lại một lần (cache OCR đã nạp) rồi chạy pipeline `vjol_10k_v5` | J-29 | CHẠY SAU S-16 | trích lại vài chục phút trên 4 GPU (3.652 trang nghi + 27 bài ScanGate, nhiều trang có sẵn trong cache); pipeline ~10 phút | 4 |
 
 Thứ tự khuyến nghị: S-10 (VJOL ưu tiên cao nhất, R-15) → S-0 → S-1 → S-2 → S-3 (có đủ số để tính giờ OCR) → S-4 → S-5. S-6 đến S-9 và S-11 làm sau phiên code (S-11 cần script `scripts/dedup_pairs_sample.py`, viết ở gói G-05 bước 2).
 
@@ -434,6 +435,34 @@ tar czf vjol_s16.tar.gz data/processed/ocr_bakeoff/unaccented.json data/processe
 ```
 
 **Báo lại cho Claude**: gói `vjol_s16.tar.gz`. Claude so v4b với v4a (kỳ vọng: `lost_diacritics` khoảng 195 thay vì 476, không còn `<PHONE>` trên số liệu bảng), đọc 400 đoạn gán nhãn (nửa tune chỉnh ngưỡng, nửa holdout chỉ kiểm), rồi chốt D2 theo producer, lần trích lại một lần và mẫu 3.000 bài hạt giống khác (J-26).
+
+## S-17. VJOL: trích lại một lần và chạy `vjol_10k_v5`  [CHẠY SAU S-16]
+
+**Mục đích**: mọi sửa phía trích text (gạch nối `đ-ợc` -> OCR, chữ trần đã bỏ nhầm tiếng Anh / đường dẫn, quy tắc producer ABBYY + ScanGate, J-29) chỉ có tác dụng khi trích lại. Đổi danh sách từ không dấu làm `extract_version` đổi nên TOÀN BỘ 2.937 checkpoint được làm lại; bước đọc lớp chữ rất nhanh, chỉ trang nghi mới OCR và trang đã có trong `interim/vjol_ocr_cache/` (nạp ở S-15) không OCR lại. Sao lưu checkpoint cũ trước. Dùng đúng `SAMPLE_DOCS=3000 SEED=0` như các lần trước để giữ cùng tập bài.
+
+```bash
+cd /home/jovyan/dinh/vi-corpus-etl
+git fetch origin && git checkout worktree-vjol-pipeline && git pull
+source /home/jovyan/dinh/env.sh
+uv sync --group curator --group viz --group ocr
+uv run pytest -q                                   # kỳ vọng 271 test qua
+nvidia-smi                                         # không còn tiến trình vLLM nào
+cp -r data/interim/vjol_text data/interim/vjol_text_v3_backup
+date; DATA_ROOT=data VLLM_BIN=$(which vllm) SAMPLE_DOCS=3000 ./scripts/vjol/run_extract_vlm.sh; date
+uv run python scripts/vjol/extract.py --data-root data --status
+V5=data/processed/pipeline_runs/vjol_10k_v5
+uv run --group curator --group viz python scripts/run_pipeline.py --data-root data --mix vjol=10000 --total 10000 \
+    --run-name vjol_10k_v5 --embed-device cuda --cluster-space umap10 --perplexity-model Qwen/Qwen3-0.6B
+uv run python scripts/vjol/audit_run.py --run-dir $V5
+uv run python scripts/vjol/groundtruth.py sample --run-dir $V5 --n 400
+uv run python scripts/vjol/groundtruth.py clean-set --run-dir $V5 --n 300
+uv run python scripts/vjol/groundtruth.py check-clean --clean-set $V5/groundtruth/clean_set.jsonl --data-root data   # phải "0 bị gắn cờ nhầm"
+uv run python scripts/vjol/check_garbled.py --data-root data
+tar czf vjol_s17.tar.gz data/processed/ocr_bakeoff/syllables.json data/processed/ocr_bakeoff/unaccented.json data/processed/vjol_garbled_check \
+    data/logs/vjol_extract_gpu*.out $V5/{manifest.json,04_quality.parquet,audit,groundtruth}
+```
+
+**Báo lại cho Claude**: giờ trích (hai dòng `date`), dòng `--status`, và gói `vjol_s17.tar.gz`. Claude so v5 với v4b (kỳ vọng: `lost_letters` về gần 0, `NCNN` 2003 hết band A rác, `tcdantochocvatongiaohoc` hết bất thường), rồi đo tỷ lệ âm tiết lạ cho họ lỗi đọc font `tvu` bằng `syllables.json`.
 
 ---
 

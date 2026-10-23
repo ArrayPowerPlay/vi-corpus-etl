@@ -29,11 +29,11 @@ ghép dòng thành đoạn) để dùng khi ghép các trang thành một văn b
 """
 
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 
 import pymupdf
 
-from vi_corpus.common.garbled import DEFAULT_THRESHOLDS, Thresholds, page_signals, plan_garbled
+from vi_corpus.common.garbled import DEFAULT_THRESHOLDS, REASON_PRODUCER, Thresholds, page_signals, plan_garbled
 
 # Khoảng trống giữa 2 ký tự lớn hơn tỉ lệ này của cỡ chữ thì coi là có dấu cách.
 SPACE_GAP_RATIO = 0.15
@@ -110,9 +110,17 @@ def tcvn3_to_unicode(text: str) -> str:
     return "".join(_TCVN3.get(c, c) for c in text)
 
 
+def _producer_matches(meta: dict | None, rules: Sequence[tuple[str, str]]) -> bool:
+    """True nếu metadata PDF (producer, creator) khớp một quy tắc (đầu producer, chuỗi con creator); quy tắc rỗng không khớp gì."""
+    producer = ((meta or {}).get("producer") or "").strip()
+    creator = ((meta or {}).get("creator") or "").strip()
+    return any(producer.startswith(p) and c in creator for p, c in rules)
+
+
 def extract_pdf(path, get_ocr: Callable[[], object | None], detect_garbled: bool = False,
                 garbled_vocab: frozenset[str] | None = None, garbled_th: Thresholds = DEFAULT_THRESHOLDS,
-                garbled_unaccented: frozenset[str] | None = None, ocr_cache=None) -> list[dict]:
+                garbled_unaccented: frozenset[str] | None = None, ocr_cache=None,
+                ocr_all_producers: Sequence[tuple[str, str]] = ()) -> list[dict]:
     """
     Trích text từng trang của một PDF.
 
@@ -129,6 +137,8 @@ def extract_pdf(path, get_ocr: Callable[[], object | None], detect_garbled: bool
         garbled_unaccented: Danh sách từ không dấu cho tín hiệu "nodiac" (None = garbled.UNACCENTED_WORDS, J-25 A).
         ocr_cache: vi_corpus.common.ocr_cache.OcrCache của PDF này (J-25 Bước 2): trang đã có kết quả OCR trong cache thì không OCR lại và get_ocr
                  không được gọi nếu mọi trang cần OCR đều có sẵn; kết quả OCR mới được ghi vào cache (save) khi xong cả lô. None = không dùng cache.
+        ocr_all_producers: Các cặp (đầu của `producer`, chuỗi con của `creator`) trong metadata PDF; PDF khớp một cặp thì MỌI trang có chữ đi OCR (lý do
+                 REASON_PRODUCER), vì lớp chữ do phần mềm OCR đời cũ tạo ra (J-29, D2). Chỉ có tác dụng khi detect_garbled bật.
 
     Returns:
         Danh sách {"text": ..., "method": ...} theo thứ tự trang (method xem đầu file). Trang lỗi font có thêm "reason",
@@ -166,6 +176,8 @@ def extract_pdf(path, get_ocr: Callable[[], object | None], detect_garbled: bool
         reasons: dict[int, str] = {}  # trang chữ bị lỗi font -> lý do (J-10), cũng đi OCR như trang scan
         if detect_garbled:
             reasons = {i: r for i, r in enumerate(plan_garbled(layer, garbled_th, vocab=garbled_vocab, unaccented=garbled_unaccented)) if r}
+            if _producer_matches(doc.metadata, ocr_all_producers):
+                reasons.update({i: reasons.get(i, REASON_PRODUCER) for i, t in enumerate(layer) if t is not None})
             for i in reasons:
                 pages[i] = None
         todo = sorted([*scan_idx, *reasons])

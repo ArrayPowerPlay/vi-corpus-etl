@@ -43,6 +43,10 @@ from vi_corpus.ocr_bakeoff.cascade import EngineUnavailable, ServerDown
 logger = logging.getLogger("vi_corpus")
 
 TEXT_DIR = "interim/vjol_text"
+# J-29 (D2): PDF do phần mềm OCR đời cũ tạo thì cả bài đi OCR VLM, dù lớp chữ không trúng tín hiệu nào. Cặp (đầu producer, chuỗi con creator). Căn cứ số đo
+# vjol_10k_v4b (27 bài / 2.937): perplexity trung bình 161 so với 24-42 ở nhóm khác, tỷ lệ từ lạ 0,052 so với 0,006. Không đưa vào "Kirtas" (đã trúng tín hiệu
+# unknown/tone, 356/383 trang đi OCR) và "HARU ... ScanGate" (chất lượng bình thường).
+OCR_ALL_PRODUCERS = (("ABBYY FineReader 11", "ScanGate"),)
 # Phiên bản cách trích text VJOL, ghi vào checkpoint; đổi số này thì lần chạy sau làm lại mọi checkpoint cũ hơn. 1 = bản đầu (chưa có
 # trường extract_version); 2 = J-10: trang lỗi font cũng đi OCR; 3 = J-23: thêm tín hiệu nodiac (mất dấu tiếng Việt), J-24: xoay thử trang scan nghi bị xoay. Không dùng PARSER_VERSION vì nó dùng chung với giáo trình.
 # 4 = J-25: tín hiệu hyphen (font mất ư / ơ), danh sách từ không dấu sinh từ kho chữ sạch (bỏ "doanh", "cung"), bộ nhớ đệm OCR.
@@ -190,7 +194,7 @@ def extract_file(path: Path, get_ocr: Callable[[], object | None], vocab: frozen
             signature = getattr(get_ocr, "signature", None)
             cache = OcrCache.for_pdf(cache_root, file_sha256(path), signature()) if cache_root is not None and callable(signature) else None
             out["pages"] = extract_pdf(path, get_ocr, detect_garbled=True, garbled_vocab=vocab, garbled_th=th, garbled_unaccented=unaccented,
-                                       ocr_cache=cache)
+                                       ocr_cache=cache, ocr_all_producers=OCR_ALL_PRODUCERS)
         except (ServerDown, EngineUnavailable):
             raise
         except Exception as exc:  # noqa: BLE001 — một PDF lỗi không được dừng cả lô

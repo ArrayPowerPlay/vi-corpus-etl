@@ -61,3 +61,29 @@ def test_mau_audit_trich_quanh_cho_loi():
     assert "Tạp chí Kinh tế số 12" in excerpt_of(text, "journal_header") and excerpt_of(text, "journal_header").startswith("…")
     assert excerpt_of(text, "khong_biet") == text[:240]
     assert "0903 123 456" in excerpt_of("x " * 200 + "Mobile: 0903 123 456 " + "y " * 200, "phone")
+
+
+def test_producer_ocr_cu_thi_ca_bai_di_ocr(tmp_path):
+    """J-29 (D2): PDF có producer "ABBYY FineReader 11" + creator "ScanGate" thì mọi trang có chữ đi OCR (lý do old_ocr_producer) dù chữ trông bình thường; producer khác thì không."""
+    import pymupdf
+    from tests.test_garbled import mixed_pdf, ocr_engine
+    from tests.test_pipeline import vi_text
+    from vi_corpus.common import garbled as g
+    from vi_corpus.common.pdf_text import extract_pdf
+    from vi_corpus.vjol.extract import OCR_ALL_PRODUCERS
+
+    def build(name: str, producer: str, creator: str):
+        """Tạo PDF 3 trang chữ tốt với metadata cho trước."""
+        pdf = tmp_path / name
+        mixed_pdf(pdf, [vi_text(4, k) for k in range(3)])
+        with pymupdf.open(pdf) as d:
+            d.set_metadata({"producer": producer, "creator": creator})
+            d.saveIncr()
+        return pdf
+
+    seen: list = []
+    old = extract_pdf(build("old.pdf", "ABBYY FineReader 11", "ScanGate V2.53"), ocr_engine(seen), detect_garbled=True, ocr_all_producers=OCR_ALL_PRODUCERS)
+    assert [p["reason"] for p in old] == [g.REASON_PRODUCER] * 3 and len(seen) == 3
+    seen2: list = []
+    other = extract_pdf(build("new.pdf", "ABBYY FineReader 14", "ABBYY FineReader 14"), ocr_engine(seen2), detect_garbled=True, ocr_all_producers=OCR_ALL_PRODUCERS)
+    assert all("reason" not in p for p in other) and not seen2
