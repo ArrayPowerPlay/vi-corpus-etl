@@ -108,6 +108,41 @@ def ensure_rec_weights(url: str) -> str:
     return str(path)
 
 
+HEADLESS_ALIASES = {"opencv-contrib-python": "opencv-contrib-python-headless"}  # gói paddlex đòi -> gói thật được cài (J-20, J-31)
+
+
+def alias_headless_opencv() -> bool:
+    """
+    Cho paddlex coi `opencv-contrib-python-headless` là `opencv-contrib-python` khi kiểm thư viện phụ thuộc.
+
+    Repo cố ý chỉ cài bản OpenCV headless (không cần libGL của hệ điều hành, J-20) và loại bản thường bằng override của uv. Nhưng paddlex
+    kiểm bằng TÊN GÓI (importlib.metadata) nên báo "opencv-contrib-python not available" rồi từ chối dựng bộ detect, dù cả hai gói cùng
+    cung cấp module `cv2`. Hàm này vá `get_dep_version` của paddlex để tên gói thường rơi về tên gói headless khi gói thường không có.
+
+    Returns:
+        True nếu đã vá, False nếu không có paddlex (không làm gì). Gọi nhiều lần vẫn an toàn.
+    """
+    try:
+        from paddlex.utils import deps
+    except ImportError:
+        return False
+    if getattr(deps.get_dep_version, "_headless_aliased", False):
+        return True
+    original = deps.get_dep_version
+
+    def get_dep_version(dep):
+        """Phiên bản của gói `dep`; gói thường của OpenCV không có thì lấy phiên bản gói headless."""
+        version = original(dep)
+        if version is None and dep in HEADLESS_ALIASES:
+            return original(HEADLESS_ALIASES[dep])
+        return version
+
+    get_dep_version._headless_aliased = True
+    deps.get_dep_version = get_dep_version
+    deps.is_dep_available.cache_clear()  # kết quả "không có" có thể đã được nhớ
+    return True
+
+
 class PageOcr:
     """Bộ OCR một trang: nạp mô hình detect + nhận dạng một lần, dùng lại cho mọi trang."""
 
@@ -128,6 +163,7 @@ class PageOcr:
         from vietocr.tool.config import Cfg
         from vietocr.tool.predictor import Predictor
 
+        alias_headless_opencv()
         if device == "cuda" and paddle.device.is_compiled_with_cuda():
             self.det = TextDetection(model_name=DET_MODEL, device="gpu:0")
         else:

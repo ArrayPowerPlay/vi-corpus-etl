@@ -413,9 +413,8 @@ tar czf vjol_s15.tar.gz data/processed/ocr_bakeoff/unaccented.json data/processe
 cd /home/jovyan/dinh/vi-corpus-etl
 git fetch origin && git checkout worktree-vjol-pipeline && git pull
 source /home/jovyan/dinh/env.sh
-apt-get install -y libgl1 libglib2.0-0                # engine baseline cần libGL; server khởi động lại thì mất (J-30)
 uv sync --group curator --group viz --group ocr
-uv run --no-sync python -c "import cv2" && echo cv2_ok   # phải in cv2_ok
+CUDA_VISIBLE_DEVICES=0 uv run --no-sync python -c "from vi_corpus.common.ocr import PageOcr; PageOcr(device='cuda'); print('baseline_ok')" 2>&1 | tail -3   # phải in baseline_ok (mất 1-3 phút)
 uv run pytest -q                                   # kỳ vọng 272 test qua
 nvidia-smi                                         # không còn tiến trình vLLM nào
 [ -d data/interim/vjol_text_v3_backup ] || cp -r data/interim/vjol_text data/interim/vjol_text_v3_backup   # chỉ sao lưu một lần
@@ -433,7 +432,7 @@ tar czf vjol_s17.tar.gz data/processed/ocr_bakeoff/syllables.json data/processed
     data/logs/vjol_extract_gpu*.out $V5/{manifest.json,04_quality.parquet,audit,groundtruth}
 ```
 
-Các lệnh sau bước trích nối bằng `&&`: trích text lỗi thì dừng, không chạy pipeline trên bản trích cũ (lần đầu chạy S-17 bị đúng chuyện này, J-30). Nếu `import cv2` báo `libGL.so.1`, `apt-get install` ở trên là cách sửa; lỗi môi trường engine baseline giờ lộ ra trong vài giây, trước khi bật vLLM.
+Các lệnh sau bước trích nối bằng `&&`: trích text lỗi thì dừng, không chạy pipeline trên bản trích cũ (lần đầu chạy S-17 bị đúng chuyện này, J-30). Lỗi môi trường của engine baseline giờ lộ ra trước khi bật vLLM; dòng `baseline_ok` ở trên kiểm trước một mình. Nguyên nhân lần hỏng trước: paddlex đòi gói `opencv-contrib-python` mà repo chỉ cài bản headless (J-31).
 
 **Báo lại cho Claude**: gói `vjol_s16.tar.gz`. Claude so v4b với v4a (kỳ vọng: `lost_diacritics` khoảng 195 thay vì 476, không còn `<PHONE>` trên số liệu bảng), đọc 400 đoạn gán nhãn (nửa tune chỉnh ngưỡng, nửa holdout chỉ kiểm), rồi chốt D2 theo producer, lần trích lại một lần và mẫu 3.000 bài hạt giống khác (J-26).
 
