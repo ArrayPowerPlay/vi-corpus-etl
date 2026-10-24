@@ -135,7 +135,8 @@ def main() -> int:
                              retry_skipped=args.retry_skipped, sample_docs=args.sample_docs, seed=args.seed,
                              syllables=args.syllables, unaccented_path=args.unaccented)
     except (ServerDown, EngineUnavailable) as exc:
-        log.error("%s. Dừng cả lượt (không loại trang âm thầm); sửa server / môi trường rồi chạy lại đúng lệnh cũ.", exc)
+        # exc_info: ghi cả chuỗi nguyên nhân (vd DependencyError của paddlex nằm sau RuntimeError), nếu không log chỉ còn dòng bọc ngoài
+        log.error("%s. Dừng cả lượt (không loại trang âm thầm); sửa server / môi trường rồi chạy lại đúng lệnh cũ.", exc, exc_info=True)
         return 1
     finally:
         getter.close()
