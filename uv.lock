@@ -29,7 +29,7 @@ resolution-markers = [
 
 [manifest]
 overrides = [
-    { name = "opencv-contrib-python", marker = "sys_platform == 'never'" },
+    { name = "opencv-contrib-python", directory = "third_party/opencv-contrib-python-shim" },
     { name = "opencv-python", marker = "sys_platform == 'never'" },
 ]
 
@@ -4283,12 +4283,13 @@ wheels = [
 [[package]]
 name = "opencv-contrib-python"
 version = "4.10.0.84"
-source = { registry = "https://pypi.org/simple" }
+source = { directory = "third_party/opencv-contrib-python-shim" }
 dependencies = [
-    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
-    { name = "numpy", version = "2.3.5", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+    { name = "opencv-contrib-python-headless" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/1d/33/7b8ec6c4d45e678b26297e4a5e76464a93033a9adcc8c17eac01097065f6/opencv-contrib-python-4.10.0.84.tar.gz", hash = "sha256:4a3eae0ed9cadf1abe9293a6938a25a540e2fd6d7fc308595caa5896c8b36a0c", size = 150433857, upload-time = "2024-06-17T18:30:50.217Z" }
+
+[package.metadata]
+requires-dist = [{ name = "opencv-contrib-python-headless", specifier = ">=4.10,<5" }]
 
 [[package]]
 name = "opencv-contrib-python-headless"
@@ -4502,7 +4503,7 @@ wheels = [
 [package.optional-dependencies]
 ocr-core = [
     { name = "imagesize" },
-    { name = "opencv-contrib-python", marker = "sys_platform == 'never'" },
+    { name = "opencv-contrib-python" },
     { name = "pyclipper" },
     { name = "pypdfium2" },
     { name = "python-bidi" },

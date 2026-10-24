@@ -68,11 +68,16 @@ viz = [
 [tool.uv]
 default-groups = ["dev", "curator", "viz"]
 # paddlex (paddleocr) và imgaug (vietocr) kéo bản OpenCV có giao diện đồ hoạ, cần libGL.so.1 mà server GPU không có.
-# Loại hai gói đó (điều kiện không bao giờ đúng) và dùng opencv-contrib-python-headless trong group ocr thay vào.
+# Loại `opencv-python` (điều kiện không bao giờ đúng) và dùng opencv-contrib-python-headless trong group ocr thay vào.
+# `opencv-contrib-python` thì thay bằng gói giả (third_party/opencv-contrib-python-shim, J-31): paddlex kiểm thư viện bằng TÊN GÓI nên không
+# chịu dựng bộ detect nếu thiếu tên đó, dù bản headless đã cung cấp cùng module cv2. Gói giả chỉ kéo bản headless.
 override-dependencies = [
     "opencv-python ; sys_platform == 'never'",
-    "opencv-contrib-python ; sys_platform == 'never'",
+    "opencv-contrib-python",
 ]
+
+[tool.uv.sources]
+opencv-contrib-python = { path = "third_party/opencv-contrib-python-shim" }
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
