@@ -45,4 +45,7 @@ for f in "$STATUS_DIR"/*; do
 done
 "${PY[@]}" scripts/vjol/extract.py --data-root "$DATA_ROOT" --export-only
 "${PY[@]}" scripts/vjol/extract.py --data-root "$DATA_ROOT" --status
+if [ "$rc" != 0 ]; then
+  echo "!!! TRÍCH TEXT CHƯA XONG (có tiến trình lỗi): đừng chạy pipeline lúc này, nó sẽ đọc bản trích cũ. Sửa lỗi ở trên rồi chạy lại đúng lệnh cũ."
+fi
 exit $rc

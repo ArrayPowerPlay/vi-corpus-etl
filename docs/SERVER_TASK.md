@@ -413,26 +413,27 @@ tar czf vjol_s15.tar.gz data/processed/ocr_bakeoff/unaccented.json data/processe
 cd /home/jovyan/dinh/vi-corpus-etl
 git fetch origin && git checkout worktree-vjol-pipeline && git pull
 source /home/jovyan/dinh/env.sh
+apt-get install -y libgl1 libglib2.0-0                # engine baseline cần libGL; server khởi động lại thì mất (J-30)
 uv sync --group curator --group viz --group ocr
-uv run pytest -q                                   # kỳ vọng 270 test qua
-V4B=data/processed/pipeline_runs/vjol_10k_v4b
-# 1) số trang bị nghi sau sửa nodiac (so với S-15: 4.185 trang, 1.001 bài, 4.944 trang OCR lại)
-uv run python scripts/vjol/check_garbled.py --data-root data
-uv run python scripts/vjol/diagnose.py --data-root data producers
-# 2) pipeline mới (ingest chạy lại vì INGEST_VERSION 3), không còn tiến trình vLLM nào
-nvidia-smi
+uv run --no-sync python -c "import cv2" && echo cv2_ok   # phải in cv2_ok
+uv run pytest -q                                   # kỳ vọng 272 test qua
+nvidia-smi                                         # không còn tiến trình vLLM nào
+[ -d data/interim/vjol_text_v3_backup ] || cp -r data/interim/vjol_text data/interim/vjol_text_v3_backup   # chỉ sao lưu một lần
+date; DATA_ROOT=data VLLM_BIN=$(which vllm) SAMPLE_DOCS=3000 ./scripts/vjol/run_extract_vlm.sh && date && \
+V5=data/processed/pipeline_runs/vjol_10k_v5 && \
+uv run python scripts/vjol/extract.py --data-root data --status && \
 uv run --group curator --group viz python scripts/run_pipeline.py --data-root data --mix vjol=10000 --total 10000 \
-    --run-name vjol_10k_v4b --embed-device cuda --cluster-space umap10 --perplexity-model Qwen/Qwen3-0.6B
-# 3) kiểm, bộ gán nhãn, tập chữ đúng, producer
-uv run python scripts/vjol/audit_run.py --run-dir $V4B
-uv run python scripts/vjol/groundtruth.py sample --run-dir $V4B --n 400
-uv run python scripts/vjol/groundtruth.py clean-set --run-dir $V4B --n 300
-uv run python scripts/vjol/groundtruth.py check-clean --clean-set $V4B/groundtruth/clean_set.jsonl --data-root data   # phải "0 bị gắn cờ nhầm"
-uv run python scripts/vjol/diagnose.py --data-root data chunks-by-producer --run-dir $V4B
-# 4) gói gửi lại (04_quality.parquet để Claude đọc đoạn thật)
-tar czf vjol_s16.tar.gz data/processed/ocr_bakeoff/unaccented.json data/processed/vjol_diagnose data/processed/vjol_garbled_check \
-    $V4B/{manifest.json,04_quality.parquet,audit,groundtruth}
+    --run-name vjol_10k_v5 --embed-device cuda --cluster-space umap10 --perplexity-model Qwen/Qwen3-0.6B && \
+uv run python scripts/vjol/audit_run.py --run-dir $V5 && \
+uv run python scripts/vjol/groundtruth.py sample --run-dir $V5 --n 400 && \
+uv run python scripts/vjol/groundtruth.py clean-set --run-dir $V5 --n 300 && \
+uv run python scripts/vjol/groundtruth.py check-clean --clean-set $V5/groundtruth/clean_set.jsonl --data-root data && \
+uv run python scripts/vjol/check_garbled.py --data-root data && \
+tar czf vjol_s17.tar.gz data/processed/ocr_bakeoff/syllables.json data/processed/ocr_bakeoff/unaccented.json data/processed/vjol_garbled_check \
+    data/logs/vjol_extract_gpu*.out $V5/{manifest.json,04_quality.parquet,audit,groundtruth}
 ```
+
+Các lệnh sau bước trích nối bằng `&&`: trích text lỗi thì dừng, không chạy pipeline trên bản trích cũ (lần đầu chạy S-17 bị đúng chuyện này, J-30). Nếu `import cv2` báo `libGL.so.1`, `apt-get install` ở trên là cách sửa; lỗi môi trường engine baseline giờ lộ ra trong vài giây, trước khi bật vLLM.
 
 **Báo lại cho Claude**: gói `vjol_s16.tar.gz`. Claude so v4b với v4a (kỳ vọng: `lost_diacritics` khoảng 195 thay vì 476, không còn `<PHONE>` trên số liệu bảng), đọc 400 đoạn gán nhãn (nửa tune chỉnh ngưỡng, nửa holdout chỉ kiểm), rồi chốt D2 theo producer, lần trích lại một lần và mẫu 3.000 bài hạt giống khác (J-26).
 

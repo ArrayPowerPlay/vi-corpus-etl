@@ -11,7 +11,8 @@ và (sau này) giáo trình.
   hoặc bị loại sẽ được xoay thử 180 / 90 / 270 độ và chạy lại chuỗi; bản xoay chỉ thắng khi tỷ lệ âm tiết hợp lệ cao hơn rõ rệt
   (ROTATE_MIN_GAIN, ROTATE_MIN_RATE). Không có vocab thì không xoay (giữ hành vi cũ cho stbook, giáo trình).
 - CascadeOcrGetter: hàm `get_ocr` nạp lười. Chỉ khi gặp trang scan đầu tiên mới dựng server vLLM (nếu --serve), chờ server
-  sẵn sàng và dựng chuỗi engine; tài liệu toàn trang có chữ không tốn thời gian khởi động GPU. Lỗi dựng bị nhớ lại và ném lại
+  sẵn sàng và dựng chuỗi engine; tài liệu toàn trang có chữ không tốn thời gian khởi động GPU. Engine baseline được dựng thử TRƯỚC khi bật server
+  (lỗi môi trường lộ ra trong vài giây, không phải sau 9 phút chờ vLLM). Lỗi dựng bị nhớ lại và ném lại
   dưới dạng EngineUnavailable (dừng cả lượt, không loại trang âm thầm, O-24).
 """
 
@@ -239,10 +240,28 @@ class CascadeOcrGetter:
                 raise self._error from exc
         return self._ocr
 
+    def _preflight(self) -> None:
+        """
+        Dựng trước mọi engine không phải VLM (baseline Paddle + VietOCR) để lỗi môi trường (thiếu libGL, thư viện, mô hình) lộ ra NGAY,
+        trước khi bật server vLLM (khởi động mất cỡ 9 phút mỗi GPU). Engine dựng xong được giữ lại, lần gọi đầu không dựng lại.
+
+        Raises:
+            EngineUnavailable: một engine không dựng được (kèm tên engine và lỗi gốc).
+        """
+        for tier in self.tiers:
+            if tier.cfg.get("type") == "openai":
+                continue
+            try:
+                tier.engine()
+            except Exception as exc:  # noqa: BLE001 — mọi lỗi nạp đều là lỗi hệ thống, không phải lỗi của một trang
+                raise EngineUnavailable(f"Không dựng được engine {tier.name}: {type(exc).__name__}: {exc}") from exc
+            logger.info("Engine %s dựng được (kiểm trước khi bật server)", tier.name)
+
     def _build(self) -> CascadePageOcr:
-        """Dựng server (nếu cần), chờ sẵn sàng rồi dựng CascadeOcr."""
+        """Kiểm các engine không phải VLM, dựng server (nếu cần), chờ sẵn sàng rồi dựng CascadeOcr."""
         from vi_corpus.ocr_bakeoff.engines import start_server, wait_ready
 
+        self._preflight()
         vlm = next((t for t in self.tiers if t.cfg.get("type") == "openai"), None)
         if vlm is not None:
             if self.serve:

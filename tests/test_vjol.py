@@ -402,6 +402,34 @@ def test_getter_nap_luoi_nho_loi_va_tat_server(tmp_path, monkeypatch):
     assert events.count("wait") == 1  # lỗi được nhớ, không chờ lại cho từng file
 
 
+def test_getter_kiem_baseline_truoc_khi_bat_server(tmp_path, monkeypatch):
+    """Engine baseline không dựng được (vd thiếu libGL) thì getter ném EngineUnavailable NGAY, không bật server vLLM; dựng được thì giữ lại dùng tiếp."""
+    from vi_corpus.ocr_bakeoff import engines
+
+    events = []
+    monkeypatch.setattr(engines, "start_server", lambda cfg, run_dir, gpu, vllm_bin: events.append("start") or "PROC")
+    monkeypatch.setattr(engines, "stop_server", lambda proc: None)
+    monkeypatch.setattr(engines, "wait_ready", lambda *a: events.append("ready"))
+
+    def broken():
+        """Nhà máy engine giả: thư viện hệ thống thiếu."""
+        raise RuntimeError("A dependency error occurred during predictor creation")
+
+    tiers = make_cascade(lambda im: ok(), lambda im: ok(), serial_last=True).tiers
+    tiers[0].cfg.update({"base_url": "http://127.0.0.1:1/v1", "serve": ["vllm", "serve", "M"]})
+    good_factory = tiers[-1].factory
+    tiers[-1].factory = broken
+    getter = CascadeOcrGetter(tiers, serve=True, gpu="0", vllm_bin="/x/vllm", state_dir=tmp_path / "w")
+    with pytest.raises(EngineUnavailable, match="baseline.*predictor creation"):
+        getter()
+    assert events == []  # chưa bật server
+
+    tiers[-1].factory = good_factory
+    ok_getter = CascadeOcrGetter(tiers, serve=True, gpu="0", vllm_bin="/x/vllm", state_dir=tmp_path / "w2")
+    ok_getter()
+    assert events == ["start", "ready"]
+
+
 # --------------------------------------------------------------------------------------------------------------------
 # Bản ghi, metadata, pipeline
 # --------------------------------------------------------------------------------------------------------------------
