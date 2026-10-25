@@ -10,6 +10,8 @@ Mỗi trang đi theo đường rẻ nhất còn cho ra text:
                   "status" ("ok" | "blank" | "flagged"); trang flagged có text rỗng, văn bản bị loại nằm ở "rejected_text".
     "needs_ocr" : trang scan (hoặc trang lỗi font, xem dưới) nhưng lần chạy này không OCR được (tắt OCR / chưa cài nhóm ocr).
     "empty"     : trang trắng.
+Trang không có lớp chữ và không có ảnh nhúng chưa chắc là trang trắng (ảnh nằm trong form XObject, trang vẽ bằng nét): với extract_pdf(rescue_empty=True)
+(VJOL dùng, J-33 B) trang như vậy được vẽ ra thử, vẽ ra có nội dung thì OCR như trang lỗi font (reason "no_text_layer"), vẽ ra trắng thì "empty" kèm reason "blank_page".
 
 Trang lỗi font (J-10, chỉ khi extract_pdf(detect_garbled=True), VJOL dùng): lớp chữ toàn chữ Latinh có dấu nhưng sai ("Baỷng, hieọu"),
 phát hiện bằng vi_corpus.common.garbled; trang đó (và cả bài nếu >= 30% trang có chữ bị nghi) được OCR lại như trang scan, vẽ lại cả
@@ -33,7 +35,9 @@ from collections.abc import Callable, Sequence
 
 import pymupdf
 
-from vi_corpus.common.garbled import DEFAULT_THRESHOLDS, REASON_PRODUCER, Thresholds, page_signals, plan_garbled
+from vi_corpus.common.garbled import (DEFAULT_THRESHOLDS, REASON_BLANK, REASON_NO_TEXT, REASON_PRODUCER, Thresholds, page_signals,
+                                      plan_garbled)
+from vi_corpus.common.ocr_noise import strip_vlm_noise
 
 # Khoảng trống giữa 2 ký tự lớn hơn tỉ lệ này của cỡ chữ thì coi là có dấu cách.
 SPACE_GAP_RATIO = 0.15
@@ -60,6 +64,10 @@ _DIGITS_ONLY = re.compile(r"\d+")
 _SENTENCE_END = (".", ":", "?", "!", ";")
 _BULLETS = ("-", "•", "–")
 TCVN3_MIN_RATIO = 0.05  # đo trên mẫu: tài liệu TCVN3 ~12%, tài liệu Unicode <= 1,3%
+# Kiểm trang có nội dung hay không (J-33 B): vẽ ra ảnh xám tỉ lệ PROBE_ZOOM, pixel tối hơn PROBE_DARK chiếm >= PROBE_MIN_INK thì có nội dung.
+PROBE_ZOOM = 0.5
+PROBE_DARK = 230
+PROBE_MIN_INK = 0.001
 
 
 def page_text(page: pymupdf.Page, tcvn3_all: bool = False) -> str:
@@ -117,10 +125,38 @@ def _producer_matches(meta: dict | None, rules: Sequence[tuple[str, str]]) -> bo
     return any(producer.startswith(p) and c in creator for p, c in rules)
 
 
+def _scrub_vlm(entry: dict) -> dict:
+    """
+    Lọc câu "nói về chính ảnh" của OCR VLM khỏi một kết quả OCR (vi_corpus.common.ocr_noise, J-33 C); không sửa `entry` (có thể là mục của bộ nhớ đệm).
+    Trang chỉ còn câu đó thì text rỗng và status "blank"; số câu đã bỏ ghi ở "vlm_noise_removed".
+    """
+    if entry.get("method") != "ocr_vlm" or not entry.get("text"):
+        return entry
+    text, n = strip_vlm_noise(entry["text"])
+    if not n:
+        return entry
+    out = {**entry, "text": text, "vlm_noise_removed": n}
+    if not text.strip() and out.get("status") == "ok":
+        out["status"] = "blank"
+    return out
+
+
+def page_has_ink(page: pymupdf.Page) -> bool:
+    """
+    True nếu trang vẽ ra có nội dung: có ảnh thật sự được vẽ lên trang (kể cả ảnh nằm trong form XObject mà page.get_images() không thấy) hoặc ảnh xám thu nhỏ
+    có đủ pixel tối (PROBE_*). Dùng cho trang không có lớp chữ để phân biệt trang ảnh / nét vẽ cần OCR với trang trắng (J-33 B).
+    """
+    if page.get_image_info():
+        return True
+    pix = page.get_pixmap(matrix=pymupdf.Matrix(PROBE_ZOOM, PROBE_ZOOM), colorspace=pymupdf.csGRAY, alpha=False)
+    samples = pix.samples
+    return bool(samples) and sum(b < PROBE_DARK for b in samples) / len(samples) >= PROBE_MIN_INK
+
+
 def extract_pdf(path, get_ocr: Callable[[], object | None], detect_garbled: bool = False,
                 garbled_vocab: frozenset[str] | None = None, garbled_th: Thresholds = DEFAULT_THRESHOLDS,
                 garbled_unaccented: frozenset[str] | None = None, ocr_cache=None,
-                ocr_all_producers: Sequence[tuple[str, str]] = ()) -> list[dict]:
+                ocr_all_producers: Sequence[tuple[str, str]] = (), rescue_empty: bool = False) -> list[dict]:
     """
     Trích text từng trang của một PDF.
 
@@ -139,6 +175,8 @@ def extract_pdf(path, get_ocr: Callable[[], object | None], detect_garbled: bool
                  không được gọi nếu mọi trang cần OCR đều có sẵn; kết quả OCR mới được ghi vào cache (save) khi xong cả lô. None = không dùng cache.
         ocr_all_producers: Các cặp (đầu của `producer`, chuỗi con của `creator`) trong metadata PDF; PDF khớp một cặp thì MỌI trang có chữ đi OCR (lý do
                  REASON_PRODUCER), vì lớp chữ do phần mềm OCR đời cũ tạo ra (J-29, D2). Chỉ có tác dụng khi detect_garbled bật.
+        rescue_empty: True thì trang không có chữ và không có ảnh nhúng được vẽ ra thử (page_has_ink): có nội dung thì OCR (REASON_NO_TEXT), trắng thì
+                 method "empty" kèm reason REASON_BLANK (J-33 B). Mặc định tắt, giáo trình chạy y như trước.
 
     Returns:
         Danh sách {"text": ..., "method": ...} theo thứ tự trang (method xem đầu file). Trang lỗi font có thêm "reason",
@@ -159,12 +197,17 @@ def extract_pdf(path, get_ocr: Callable[[], object | None], detect_garbled: bool
         if tcvn3:  # font TCVN3 không mang tên .Vn...: đổi mọi span (đọc lại, tránh đổi 2 lần)
             texts = [page_text(page, tcvn3_all=True) for page in doc]
         pages: list[dict | None] = []
+        no_text: set[int] = set()  # trang không có lớp chữ nhưng vẽ ra có nội dung (rescue_empty)
         scan_idx: list[int] = []
         layer: list[str | None] = []  # text lớp chữ của trang chữ (None cho trang scan / trang trắng), để dò chữ hỏng
         for i, (page, text) in enumerate(zip(doc, texts)):
             if len("".join(text.split())) >= MIN_TEXT_CHARS or not page.get_images():
                 if not text.strip():
-                    pages.append({"text": "", "method": "empty"})
+                    if rescue_empty and page_has_ink(page):  # J-33 B: có nội dung nhưng không có lớp chữ nào: OCR vẽ lại cả trang
+                        pages.append(None)
+                        no_text.add(i)
+                    else:
+                        pages.append({"text": "", "method": "empty", **({"reason": REASON_BLANK} if rescue_empty else {})})
                     layer.append(None)
                 else:
                     pages.append({"text": text, "method": "tcvn3" if tcvn3 else "text"})
@@ -180,6 +223,7 @@ def extract_pdf(path, get_ocr: Callable[[], object | None], detect_garbled: bool
                 reasons.update({i: reasons.get(i, REASON_PRODUCER) for i, t in enumerate(layer) if t is not None})
             for i in reasons:
                 pages[i] = None
+        reasons.update({i: REASON_NO_TEXT for i in no_text})
         todo = sorted([*scan_idx, *reasons])
         if todo:
             cached = {i: ocr_cache.get(i, i in reasons) for i in todo} if ocr_cache is not None else {}
@@ -201,9 +245,11 @@ def extract_pdf(path, get_ocr: Callable[[], object | None], detect_garbled: bool
                 entry = cached.get(i) or fresh.get(i)
                 if entry is None:  # không OCR được (tắt OCR / chưa cài nhóm ocr) và cache cũng không có
                     pages[i] = {"text": texts[i], "method": "needs_ocr", **({"reason": reasons[i]} if i in reasons else {})}
+                elif i in no_text:
+                    pages[i] = {**_scrub_vlm(entry), "reason": REASON_NO_TEXT}
                 else:
-                    pages[i] = ({**entry, "reason": reasons[i], "signals": page_signals(texts[i], garbled_th, garbled_vocab, garbled_unaccented),
-                                 "garbled_text": texts[i]} if i in reasons else entry)
+                    pages[i] = ({**_scrub_vlm(entry), "reason": reasons[i], "signals": page_signals(texts[i], garbled_th, garbled_vocab, garbled_unaccented),
+                                 "garbled_text": texts[i]} if i in reasons else _scrub_vlm(entry))
         return pages
 
 

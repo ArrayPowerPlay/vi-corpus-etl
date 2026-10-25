@@ -21,8 +21,9 @@ def main() -> int:
     p.add_argument("--min-group", type=int, default=20, help="Nhóm tạp chí (x năm) ít đoạn hơn ngần này thì bỏ qua.")
     p.add_argument("--factor", type=float, default=3.0, help="Bất thường nếu tỷ lệ loại > factor x trung vị...")
     p.add_argument("--min-rate", type=float, default=0.15, help="... và >= mức này.")
+    p.add_argument("--syllables", type=Path, default=None, help="Tập âm tiết để đo họ lỗi đọc font (J-33 H); mặc định <data-root>/processed/ocr_bakeoff/syllables.json.")
     args = p.parse_args()
-    out = audit_run(args.run_dir, min_group=args.min_group, factor=args.factor, min_rate=args.min_rate)
+    out = audit_run(args.run_dir, min_group=args.min_group, factor=args.factor, min_rate=args.min_rate, syllables=args.syllables)
     res = json.loads((out / "audit.json").read_text(encoding="utf-8"))
     print(f"Ghi {out}: giữ {res['kept']}/{res['chunks']} đoạn; lỗi còn lọt {res['error_rates']}; {len(res['anomalies'])} nhóm bị loại bất thường")
     return 1 if res["anomalies"] else 0

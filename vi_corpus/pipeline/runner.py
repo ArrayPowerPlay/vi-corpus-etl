@@ -72,7 +72,7 @@ def _digest(obj) -> str:
 
 # Trường SourceProfile mà mỗi stage đọc: vân tay của stage chỉ băm các trường này, để chỉnh ngưỡng chất lượng (R-11)
 # không làm chạy lại prepare / language (tokenizer, fastText trên mọi bản ghi).
-PROFILE_FIELDS = {"ingest": ("chunked",), "prepare": ("chunked", "split_long", "in_doc_line_clean", "cross_line_clean"),
+PROFILE_FIELDS = {"ingest": ("chunked",), "prepare": ("chunked", "split_long", "in_doc_line_clean", "cross_line_clean", "keep_table_cells"),
                   "quality": ("min_words", "max_words", "min_alpha", "web_checks", "allowed_langs", "min_lang_score",
                               "odd_words", "perplexity"),
                   "dedup": ("dedup_group",)}

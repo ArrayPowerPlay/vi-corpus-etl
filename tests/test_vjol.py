@@ -221,9 +221,9 @@ def test_bo_trang_bia_va_muc_luc():
     body = " ".join(["từ"] * 120)
     pages = ["TẠP CHÍ KHOA HỌC\nSố 3 - 2019", "MỤC LỤC\n1. Giới thiệu 3", body, toc_leaders]
     out, st = drop_front_matter(pages)
-    assert out[0] == "" and out[1] == "" and out[2] == body and st == {"cover_pages": 1, "toc_pages": 1}
+    assert out[0] == "" and out[1] == "" and out[2] == body and st == {"cover_pages": 1, "toc_pages": 1, "editorial_pages": 0}
     assert is_toc_page(toc_leaders) and not is_toc_page(body)
-    assert drop_front_matter(["Tiêu đề ngắn", body])[1] == {"cover_pages": 0, "toc_pages": 0}  # bài 2 trang: không coi là bìa
+    assert drop_front_matter(["Tiêu đề ngắn", body])[1] == {"cover_pages": 0, "toc_pages": 0, "editorial_pages": 0}  # bài 2 trang: không coi là bìa
     out, st = clean_paper_pages(pages)
     assert (st["cover_pages"], st["toc_pages"], st["reference_lines"]) == (1, 1, 0)
 

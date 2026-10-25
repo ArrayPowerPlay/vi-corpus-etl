@@ -90,9 +90,10 @@ def test_dung_danh_sach_sinh_ra_trong_bo_do_va_dau_vet_phien_ban(tmp_path):
     assert "nodiac" in page_signals(text, unaccented=words) and "nodiac" not in page_signals(text)
     assert unaccented_tag(words) != unaccented_tag(frozenset({"toi"})) and unaccented_tag(None) == ""
     v = vx.version_for(None, words)
-    assert v == f"4+unacc{unaccented_tag(words)}" and vx.version_is_current(v) and vx.version_is_current("4+vocab") and not vx.version_is_current("3+vocab")
+    ver = vx.EXTRACT_VERSION
+    assert v == f"{ver}+unacc{unaccented_tag(words)}" and vx.version_is_current(v) and vx.version_is_current(f"{ver}+vocab") and not vx.version_is_current("3+vocab")
     assert v + "+vocab" in vx.accepted_versions(frozenset({"a"}), words) and v in vx.accepted_versions(None, words)
-    assert "4" not in vx.accepted_versions(frozenset({"a"}), words)  # danh sách khác thì checkpoint cũ bị làm lại
+    assert ver not in vx.accepted_versions(frozenset({"a"}), words)  # danh sách khác thì checkpoint cũ bị làm lại
 
 
 # ---------------------------------------------------------------------------------------------------------------- B: font mất ư / ơ
@@ -233,7 +234,7 @@ def test_extract_file_dung_cache_theo_sha_khi_getter_co_chu_ky(tmp_path):
     write_json_atomic(ckpt, {**data, "extract_version": "3+vocab"})  # giả như checkpoint của phiên bản cũ
     assert vx.run_extract(raw, tmp_path, _getter(None, calls)) == 0
     assert len(calls) == 2  # cache trúng, không OCR lại
-    assert json.loads(ckpt.read_text(encoding="utf-8"))["extract_version"].startswith("4")
+    assert json.loads(ckpt.read_text(encoding="utf-8"))["extract_version"].startswith(vx.EXTRACT_VERSION)
 
 
 def test_nap_cache_tu_checkpoint_cu_bo_trang_co_the_chua_xoay_thu(tmp_path):

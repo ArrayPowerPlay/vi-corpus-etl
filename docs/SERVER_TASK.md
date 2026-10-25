@@ -31,6 +31,7 @@
 | S-15 | VJOL: đo gốc trên `vjol_10k_v3`, sinh danh sách từ không dấu, chạy lại pipeline từ checkpoint cũ (`vjol_10k_v4a`) | J-25, J-26, J-27 | CHẠY SAU S-14 | CPU vài chục phút; pipeline ~1 giờ + perplexity vài phút GPU | 1 |
 | S-16 | VJOL: chạy lại sau sửa J-28 (`vjol_10k_v4b`), lập bộ gán nhãn và tập chữ đúng, đo lại trang nghi | J-28 | CHẠY SAU S-15 | pipeline ~10 phút (checkpoint có sẵn) + CPU vài phút | 1 |
 | S-17 | VJOL: trích lại một lần (cache OCR đã nạp) rồi chạy pipeline `vjol_10k_v5` | J-29 | CHẠY SAU S-16 | trích lại vài chục phút trên 4 GPU (3.652 trang nghi + 27 bài ScanGate, nhiều trang có sẵn trong cache); pipeline ~10 phút | 4 |
+| S-18 | VJOL: trích lại một lần sau sửa J-33 (khôi phục "ư", trang không lớp chữ, câu rác VLM, năm 1970 ...) rồi chạy pipeline `vjol_10k_v6` và so với `v5` | J-34 | CHẠY SAU S-17 | trích lại vài chục phút trên 4 GPU (chỉ vài trăm trang mới phải OCR, phần còn lại có trong cache); pipeline ~10 phút | 4 |
 
 Thứ tự khuyến nghị: S-10 (VJOL ưu tiên cao nhất, R-15) → S-0 → S-1 → S-2 → S-3 (có đủ số để tính giờ OCR) → S-4 → S-5. S-6 đến S-9 và S-11 làm sau phiên code (S-11 cần script `scripts/dedup_pairs_sample.py`, viết ở gói G-05 bước 2).
 
@@ -463,6 +464,52 @@ tar czf vjol_s17.tar.gz data/processed/ocr_bakeoff/syllables.json data/processed
 ```
 
 **Báo lại cho Claude**: giờ trích (hai dòng `date`), dòng `--status`, và gói `vjol_s17.tar.gz`. Claude so v5 với v4b (kỳ vọng: `lost_letters` về gần 0, `NCNN` 2003 hết band A rác, `tcdantochocvatongiaohoc` hết bất thường), rồi đo tỷ lệ âm tiết lạ cho họ lỗi đọc font `tvu` bằng `syllables.json`.
+
+## S-18. VJOL: trích lại sau sửa J-33 và chạy `vjol_10k_v6`  [CHẠY SAU S-17]
+
+**Mục đích**: J-34 code các việc A-H, J của J-33. Phía trích text đổi (`EXTRACT_VERSION` 4 -> 5: trang không lớp chữ được vẽ ra thử và OCR nếu có nội dung, trang trắng ghi `blank_page`, câu "There is no text in the image" bị lọc) nên TOÀN BỘ 2.937 checkpoint được làm lại; đọc lớp chữ rất nhanh, trang đã OCR nằm trong `interim/vjol_ocr_cache/` không OCR lại, chỉ trang `no_text_layer` mới (dự kiến vài trăm, phần lớn trong 302 trang `empty` của v5) cần GPU. Các sửa còn lại (khôi phục "ư", bỏ trang ban biên tập, cắt tiêu đề tạp chí ở mọi vị trí, năm 1970, ô bảng) chạy lúc sinh bản ghi nên không cần trích lại, nhưng `syllables.json` PHẢI có (thiếu thì bước khôi phục "ư" bị bỏ, log ghi cảnh báo). Dùng đúng `SAMPLE_DOCS=3000 SEED=0` như các lần trước.
+
+```bash
+cd /home/jovyan/dinh/vi-corpus-etl
+git fetch origin && git checkout worktree-vjol-pipeline && git pull
+source /home/jovyan/dinh/env.sh
+uv sync --group curator --group viz --group ocr
+CUDA_VISIBLE_DEVICES=0 uv run --no-sync python -c "from vi_corpus.common.ocr import PageOcr; PageOcr(device='cuda'); print('baseline_ok')" 2>&1 | tail -3   # phải in baseline_ok
+uv run pytest -q                                   # kỳ vọng 291 test qua
+nvidia-smi                                         # không còn tiến trình vLLM nào
+ls -l data/processed/ocr_bakeoff/syllables.json    # phải có file này
+
+# (1 phút, tuỳ chọn) J-33 (A): xem ảnh trang 244006_217600.pdf có thật sự in "-" thay cho "ư" không; gửi /tmp/p1.png và dòng in ra
+uv run python - <<'PY'
+import glob, pymupdf
+path = glob.glob("data/raw/vjol/*/244006_217600.pdf")[0]
+doc = pymupdf.open(path); page = doc[1]
+page.get_pixmap(dpi=110).save("/tmp/p1.png")
+print(path, "| font:", [f[3] for f in page.get_fonts()], "| mẫu lớp chữ:", page.get_text()[:300].replace("\n", " "))
+PY
+
+[ -d data/interim/vjol_text_s17_backup ] || cp -r data/interim/vjol_text data/interim/vjol_text_s17_backup   # sao lưu một lần
+date; DATA_ROOT=data VLLM_BIN=$(which vllm) SAMPLE_DOCS=3000 ./scripts/vjol/run_extract_vlm.sh && date && \
+V5=data/processed/pipeline_runs/vjol_10k_v5 && V6=data/processed/pipeline_runs/vjol_10k_v6 && \
+uv run python scripts/vjol/extract.py --data-root data --status && \
+uv run --group curator --group viz python scripts/run_pipeline.py --data-root data --mix vjol=10000 --total 10000 \
+    --run-name vjol_10k_v6 --embed-device cuda --cluster-space umap10 --perplexity-model Qwen/Qwen3-0.6B && \
+uv run python scripts/vjol/audit_run.py --run-dir $V5 ; \
+uv run python scripts/vjol/audit_run.py --run-dir $V6 && \
+uv run python scripts/vjol/compare_runs.py --old $V5 --new $V6 | tee $V6/compare_v5_v6.txt && \
+uv run python scripts/vjol/groundtruth.py sample --run-dir $V6 --n 400 && \
+uv run python scripts/vjol/groundtruth.py clean-set --run-dir $V6 --n 300 && \
+uv run python scripts/vjol/groundtruth.py check-clean --clean-set $V6/groundtruth/clean_set.jsonl --data-root data && \
+uv run python scripts/vjol/check_garbled.py --data-root data && \
+tar czf vjol_s18.tar.gz data/processed/ocr_bakeoff/syllables.json data/processed/vjol_garbled_check data/logs/vjol_extract_gpu*.out \
+    $V6/{manifest.json,report.html,04_quality.parquet,05_dedup.parquet,audit,groundtruth,compare_v5_v6.txt} /tmp/p1.png
+```
+
+Dấu `;` sau `audit_run.py --run-dir $V5` cố ý: v5 có thể không còn `04_quality.parquet` hợp lệ thì lệnh đó báo lỗi mà không dừng chuỗi (lúc đó `compare_runs.py` sẽ báo thiếu audit của v5 và dừng; dùng số v5 ở J-32 để so).
+
+**Báo lại cho Claude**: hai dòng `date`, dòng `--status` (phải có `no_text_layer`, `blank_page`, số bài không có chữ), gói `vjol_s18.tar.gz` (CÙNG MỘT lần chạy: `report.html`, `manifest.json`, `04_quality.parquet`, `audit/`, `groundtruth/` đều của v6), và cho biết lệnh nào lỗi (nếu có). **Chủ dự án**: gán nhãn cột `label` của `$V6/groundtruth/labeling_sample.csv` (J-33 I; nửa `tune` chỉnh ngưỡng, nửa `holdout` đo độ chính xác thật).
+
+**Kỳ vọng so với v5** (J-33 "cách đo xong"): giữ 9.375 / 10.000 -> cao hơn (khoảng 385 đoạn `lost_letters` quay lại band A); `lost_letters` 387 -> gần 0; `year=1970` 330 đoạn -> 0 (`missing` tăng tương ứng); "There is no text" 4 đoạn lọt -> 0; `journal_header` 4,6% -> thấp hơn; số bài không vào ingest 25 -> chỉ còn bài thật sự trắng (log "VJOL: ... checkpoint không thành bản ghi"); `font_misread` trong `audit.md` cho biết có cần xử lý ê -> ấ / ờ (J-33 H, ngưỡng 0,5%); `dropped_rate_macro` so với `dropped_rate_micro` cho biết mẫu lệch tạp chí ảnh hưởng thế nào (J-33 J).
 
 ---
 

@@ -18,7 +18,12 @@ J-25 (sửa theo nguyên nhân gốc, chạy lúc sinh bản ghi nên không ph�
   không phụ thuộc tên tạp chí trong metadata (vốn là tên tiếng Anh nên không khớp tiêu đề tiếng Việt in trên trang). Regex theo metadata giữ làm phần bổ sung.
 - E: tiêu đề tham khảo chấp nhận dạng song ngữ "TÀI LIỆU THAM KHẢO/ REFERENCES"; strip_trailing_references đi ngược từ cuối bài để cắt khối mục tham khảo không có tiêu đề
   (nhận mục theo mẫu đầu dòng, vi_corpus.common.references).
-- F: dòng khuôn mẫu "ngày + động từ + ngày tháng" nói chung ("Ngày phản biện: 12/05/2015"), số điện thoại có mã nước không có dấu + ("84-983226880") có kiểm đầu số
+J-33 (chạy lúc sinh bản ghi, không phải trích lại):
+- A: restore_u_in_pages khôi phục "ư" cho trang font gạch nối ("tr-ờng" -> "trường"), kiểm bằng tập âm tiết (vi_corpus.vjol.hyphen_fix).
+- C: strip_vlm_noise bỏ câu "There is no text in the image" của OCR VLM (vi_corpus.common.ocr_noise).
+- E: strip_running_headers học tiêu đề từ các trang lặp rồi bỏ nó ở MỌI vị trí trong dòng (đầu trang đầu bài không lặp, giữa đoạn do thứ tự khối chữ), không chỉ ở đầu / cuối dòng.
+- F: drop_front_matter nhận trang ban biên tập / bìa mục lục (chức danh, hội đồng biên tập, ISSN) ở vài trang đầu và trang cuối.
+- F (J-25): dòng khuôn mẫu "ngày + động từ + ngày tháng" nói chung ("Ngày phản biện: 12/05/2015"), số điện thoại có mã nước không có dấu + ("84-983226880") có kiểm đầu số
   và loại số liệu bảng.
 """
 
@@ -26,7 +31,9 @@ import math
 import re
 import unicodedata
 
+from vi_corpus.common.ocr_noise import strip_vlm_noise
 from vi_corpus.common.references import is_reference_entry, reference_flags
+from vi_corpus.vjol.hyphen_fix import restore_u_in_pages
 
 # Tiêu đề phần tài liệu tham khảo (đã chuẩn hoá bằng heading_key). Chỉ khớp CẢ DÒNG, nên câu văn nhắc tới "tài liệu tham khảo" an toàn.
 REF_HEADINGS = frozenset({
@@ -57,6 +64,17 @@ TAIL_REF_MIN_SHARE = 0.6
 TAIL_REF_MIN_POS = 0.5
 TOC_LEADER_FRAC = 0.5  # trang có >= tỉ lệ này số dòng kết thúc bằng "......... 12" là trang mục lục
 TOC_MIN_LINES = 5
+# Trang ban biên tập / bìa mục lục (J-33 F): chứa >= EDITORIAL_MIN_MARKERS loại chức danh / mục khác nhau (EDITORIAL_MARKERS) và ngắn (<= EDITORIAL_MAX_WORDS từ), ở TOC_SCAN_PAGES trang đầu
+# hoặc EDITORIAL_TAIL_PAGES trang cuối. Điểm khởi đầu chưa đo; trang bài thật dài hơn nhiều ngưỡng từ nên không bị cắt nhầm.
+EDITORIAL_MARKERS = (
+    r"tổng biên tập", r"hội đồng biên tập", r"ban biên tập", r"hội đồng khoa học", r"thư ký (?:tòa soạn|toà soạn|hội đồng|biên tập|tạp chí)", r"trị sự",
+    r"(?:tòa|toà) soạn", r"giấy phép xuất bản", r"chủ tịch hội đồng", r"(?:uỷ|ủy) viên", r"editor[- ]in[- ]chief", r"editorial board", r"managing editor", r"issn\b",
+    r"chịu trách nhiệm xuất bản", r"cơ quan chủ quản",
+)
+_EDITORIAL = tuple(re.compile(rf"(?<!\w){m}", re.IGNORECASE) for m in EDITORIAL_MARKERS)
+EDITORIAL_MIN_MARKERS = 3
+EDITORIAL_MAX_WORDS = 350
+EDITORIAL_TAIL_PAGES = 1
 COVER_MAX_WORDS = 40  # trang đầu ít hơn ngần ấy từ (bài >= COVER_MIN_PAGES trang) là trang bìa
 COVER_MIN_PAGES = 3
 
@@ -117,17 +135,26 @@ def is_toc_page(text: str) -> bool:
     return len(lines) >= TOC_MIN_LINES and sum(bool(_LEADER.search(ln)) for ln in lines) / len(lines) >= TOC_LEADER_FRAC
 
 
+def is_editorial_page(text: str) -> bool:
+    """Trang ban biên tập / bìa mục lục (J-33 F): ngắn (<= EDITORIAL_MAX_WORDS từ) và có >= EDITORIAL_MIN_MARKERS loại chức danh / mục khác nhau (EDITORIAL_MARKERS)."""
+    if len(text.split()) > EDITORIAL_MAX_WORDS:
+        return False
+    flat = unicodedata.normalize("NFC", text)
+    return sum(bool(rx.search(flat)) for rx in _EDITORIAL) >= EDITORIAL_MIN_MARKERS
+
+
 def drop_front_matter(pages: list[str]) -> tuple[list[str], dict]:
     """
-    Bỏ trang bìa (trang đầu rất ngắn, bài từ COVER_MIN_PAGES trang) và trang mục lục (trong TOC_SCAN_PAGES trang đầu).
+    Bỏ trang bìa (trang đầu rất ngắn, bài từ COVER_MIN_PAGES trang), trang mục lục và trang ban biên tập (TOC_SCAN_PAGES trang đầu; trang ban biên tập còn xét cả
+    EDITORIAL_TAIL_PAGES trang cuối, J-33 F).
 
     Trang bị bỏ thành chuỗi rỗng (giữ nguyên số trang). Trang rỗng sẵn không tính là bị bỏ.
 
     Returns:
-        (các trang sau khi bỏ, {"cover_pages": n, "toc_pages": n}).
+        (các trang sau khi bỏ, {"cover_pages": n, "toc_pages": n, "editorial_pages": n}).
     """
     out = list(pages)
-    stats = {"cover_pages": 0, "toc_pages": 0}
+    stats = {"cover_pages": 0, "toc_pages": 0, "editorial_pages": 0}
     for i, text in enumerate(pages[:TOC_SCAN_PAGES]):
         if not text.strip():
             continue
@@ -135,6 +162,12 @@ def drop_front_matter(pages: list[str]) -> tuple[list[str], dict]:
             out[i], stats["cover_pages"] = "", stats["cover_pages"] + 1
         elif is_toc_page(text):
             out[i], stats["toc_pages"] = "", stats["toc_pages"] + 1
+        elif is_editorial_page(text):
+            out[i], stats["editorial_pages"] = "", stats["editorial_pages"] + 1
+    if len(pages) >= COVER_MIN_PAGES:  # trang cuối: chỉ nhận ban biên tập, không nhận bìa / mục lục (bài ngắn có thể kết thúc bằng trang rất ngắn)
+        for i in range(max(TOC_SCAN_PAGES, len(pages) - EDITORIAL_TAIL_PAGES), len(pages)):
+            if out[i].strip() and is_editorial_page(out[i]):
+                out[i], stats["editorial_pages"] = "", stats["editorial_pages"] + 1
     return out, stats
 
 
@@ -198,6 +231,9 @@ def strip_running_headers(pages: list[str]) -> tuple[list[str], int]:
     "số 4 - 2005" trùng nhau. Tiền tố / hậu tố dài nhất (HEADER_MIN_TOKENS .. HEADER_MAX_TOKENS từ) lặp ở ít nhất max(HEADER_MIN_PAGES, HEADER_MIN_SHARE số trang) trang thì bị cắt khỏi
     mọi dòng mang nó; lặp tối đa HEADER_ROUNDS lượt cho trường hợp trang chẵn / lẻ khác tiêu đề. Bài dưới HEADER_MIN_PAGES trang giữ nguyên.
 
+    J-33 E: sau các lượt trên, mỗi tiêu đề đã học còn bị cắt ở MỌI vị trí trong dòng của mọi trang (tiêu đề dính giữa đoạn do thứ tự khối chữ của PDF, hoặc ở trang đầu bài
+    vốn không có tiêu đề lặp nên lượt đầu / cuối không thấy). Chuỗi từ khớp nguyên (>= HEADER_MIN_TOKENS từ, chữ số thành "#") nên câu trích dẫn tên tạp chí có dấu câu khác không bị cắt.
+
     Returns:
         (các trang sau khi bỏ, số dòng đã bị cắt).
     """
@@ -207,6 +243,7 @@ def strip_running_headers(pages: list[str]) -> tuple[list[str], int]:
         return out, 0
     need = max(HEADER_MIN_PAGES, math.ceil(HEADER_MIN_SHARE * n_pages))
     cut = 0
+    learned: list[tuple[str, ...]] = []
     for _ in range(HEADER_ROUNDS):
         counts: dict[tuple[str, tuple[str, ...]], set[int]] = {}
         for pi, text in enumerate(out):
@@ -223,6 +260,7 @@ def strip_running_headers(pages: list[str]) -> tuple[list[str], int]:
         if best is None:
             break
         _, side, gram = best
+        learned.append(gram)
         n = len(gram)
         for pi, text in enumerate(out):
             lines = text.splitlines()
@@ -236,7 +274,42 @@ def strip_running_headers(pages: list[str]) -> tuple[list[str], int]:
                     lines[i] = line[toks[n - 1][2]:].strip() if side == "head" else line[:toks[-n][1]].strip()
                     cut += 1
             out[pi] = "\n".join(lines)
+    for gram in learned:  # J-33 E: cắt tiêu đề đã học ở mọi vị trí còn sót
+        for pi, text in enumerate(out):
+            lines = text.splitlines()
+            for i, line in enumerate(lines):
+                lines[i], n_cut = _cut_gram_anywhere(line, gram)
+                cut += n_cut
+            out[pi] = "\n".join(lines)
     return out, cut
+
+
+def _cut_gram_anywhere(line: str, gram: tuple[str, ...]) -> tuple[str, int]:
+    """
+    Cắt mọi chỗ chuỗi từ `gram` (khoá từ của _token_keys) xuất hiện trong `line`, kể cả giữa dòng; phần còn lại nối bằng một dấu cách.
+
+    Returns:
+        (dòng mới, số chỗ đã cắt); dòng không chứa gram trả về nguyên văn và 0.
+    """
+    toks = _token_keys(line)
+    keys = [k for k, _, _ in toks]
+    n = len(gram)
+    spans, i = [], 0
+    while i <= len(keys) - n:
+        if tuple(keys[i:i + n]) == gram:
+            spans.append((toks[i][1], toks[i + n - 1][2]))
+            i += n
+        else:
+            i += 1
+    if not spans:
+        return line, 0
+    text = unicodedata.normalize("NFC", line)
+    out, last = [], 0
+    for a, b in spans:
+        out.append(text[last:a])
+        last = b
+    out.append(text[last:])
+    return re.sub(r"[ \t]{2,}", " ", " ".join(x.strip() for x in out if x.strip())), len(spans)
 
 
 def strip_references(pages: list[str]) -> tuple[list[str], int]:
@@ -355,18 +428,28 @@ def strip_boilerplate(pages: list[str], journal_title: str | None = None) -> tup
     return out, stats
 
 
-def clean_paper_pages(pages: list[str], journal_title: str | None = None) -> tuple[list[str], dict]:
+def clean_paper_pages(pages: list[str], journal_title: str | None = None, vocab: frozenset[str] | None = None) -> tuple[list[str], dict]:
     """
-    Bỏ trang bìa, mục lục, tiêu đề / chân trang lặp, phần tài liệu tham khảo và khuôn mẫu tạp chí của một bài báo.
+    Bỏ trang bìa, mục lục, trang ban biên tập, tiêu đề / chân trang lặp, phần tài liệu tham khảo và khuôn mẫu tạp chí của một bài báo; khôi phục "ư" cho trang font gạch nối
+    và bỏ câu rác của OCR VLM trước tiên (J-33 A, C).
 
     Args:
         pages:         Text từng trang.
         journal_title: Tên tạp chí trong metadata (để bỏ tiêu đề trang tạp chí dính giữa dòng); None thì không bỏ.
+        vocab:         Tập âm tiết thật để kiểm khi khôi phục "ư" (vi_corpus.vjol.hyphen_fix); None thì bỏ bước khôi phục.
 
     Returns:
-        (các trang đã làm sạch, {"cover_pages", "toc_pages", "running_headers", "reference_lines", và các số đếm của strip_boilerplate}).
+        (các trang đã làm sạch, {"hyphen_restored", "vlm_noise_removed", "cover_pages", "toc_pages", "editorial_pages", "running_headers", "reference_lines", và các số đếm của strip_boilerplate}).
     """
-    pages, stats = drop_front_matter(pages)
+    pages, restored = restore_u_in_pages(pages, vocab)
+    noise = 0
+    cleaned = []
+    for text in pages:
+        text, n = strip_vlm_noise(text)
+        cleaned.append(text)
+        noise += n
+    pages, stats = drop_front_matter(cleaned)
+    stats = {"hyphen_restored": restored, "vlm_noise_removed": noise, **stats}
     pages, stats["running_headers"] = strip_running_headers(pages)
     pages, stats["reference_lines"] = strip_references(pages)
     pages, tail = strip_trailing_references(pages)

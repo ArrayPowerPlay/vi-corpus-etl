@@ -47,6 +47,11 @@ def format_report(rep: dict) -> str:
                      f"tỷ lệ flagged {rep['flagged_rate']:.2%}, trang baseline {rep['ocr_tier'].get('baseline', 0)}")
     if rep["garbled_pages"]:
         lines.append(f"[vjol] Lỗi font (J-10): {rep['garbled_docs']} bài, trang theo lý do {rep['garbled_pages']}, tín hiệu {rep['garbled_signals']}")
+    if rep["no_text_layer_pages"] or rep["blank_pages"] or rep["empty_pages_no_reason"] or rep["empty_docs"]:
+        lines.append(f"[vjol] Trang không có lớp chữ (J-33 B): {rep['no_text_layer_pages']} trang có nội dung được OCR (no_text_layer), {rep['blank_pages']} trang trắng (blank_page), "
+                     f"{rep['empty_pages_no_reason']} trang empty chưa ghi lý do (checkpoint cũ); {rep['empty_docs']} bài không có chữ nào")
+    if rep["vlm_noise_pages"]:
+        lines.append(f"[vjol] {rep['vlm_noise_pages']} trang bị lọc câu rác của VLM (\"There is no text in the image\", J-33 C)")
     if rep["without_vocab"]:
         lines.append(f"[vjol] CẢNH BÁO: {rep['without_vocab']} checkpoint dò chữ hỏng khi thiếu tập âm tiết (syllables.json); thêm file rồi chạy lại đúng lệnh cũ (các checkpoint này tự bị làm lại)")
     if rep["old_version"]:

@@ -15,12 +15,13 @@ import logging
 from collections.abc import Iterator
 from pathlib import Path
 
+from vi_corpus.common.garbled import GARBLED_REASONS, REASON_NO_TEXT, load_vocab
 from vi_corpus.common.pdf_text import clean_pages
 from vi_corpus.common.registry import SourceSpec
 from vi_corpus.common.schema import make_doc_id, text_sha256
 from vi_corpus.common.state import read_json
 from vi_corpus.vjol.clean import clean_paper_pages
-from vi_corpus.vjol.extract import PDF_STEM, TEXT_DIR
+from vi_corpus.vjol.extract import PDF_STEM, SYLLABLES_REL, TEXT_DIR
 
 logger = logging.getLogger("vi_corpus")
 
@@ -31,6 +32,20 @@ META_FIELDS = ("journal_slug", "journal_title", "year", "language", "doi", "titl
 # Trường `language` của metadata là nhãn của tạp chí, gần như luôn "en" cho cả bài tiếng Việt (J-22), nên đổi tên khi ghi vào meta để không ai dùng nhầm.
 META_RENAMES = {"language": "journal_language_raw"}
 META_OUT = tuple(META_RENAMES.get(k, k) for k in META_FIELDS)
+# Năm hợp lệ của một bài báo. 1970 là mốc 0 của Unix (R-25, J-33 D): giá trị mặc định khi thiếu ngày, không phải năm xuất bản, nên coi là thiếu.
+YEAR_MIN, YEAR_MAX = 1900, 2100
+DEFAULT_YEARS = frozenset({1970})
+
+
+def normalize_year(value: object) -> int | None:
+    """
+    Năm xuất bản hợp lệ từ giá trị của metadata hoặc tên thư mục năm; None nếu thiếu, không phải số, ngoài [YEAR_MIN, YEAR_MAX] hoặc là năm mặc định (DEFAULT_YEARS).
+    """
+    try:
+        year = int(str(value).strip())
+    except (TypeError, ValueError):
+        return None
+    return None if year in DEFAULT_YEARS or not YEAR_MIN <= year <= YEAR_MAX else year
 
 
 def load_metadata(path: Path, stems: set[str]) -> dict[str, dict]:
@@ -91,12 +106,23 @@ def iter_records(spec: SourceSpec, data_root: Path, limit_files: int | None = No
         with_meta:     Thêm khoá "meta" (JSON): article_id, galley_id, journal_slug, journal_title, year, journal_language_raw, doi, title, keywords,
                        có/không metadata, số trang lỗi font phải OCR lại (J-10), số trang / dòng bị bỏ (bìa, mục lục, tài liệu tham khảo, tiêu đề chạy).
         metadata_path: File metadata (mặc định <data-root>/<spec.path>/metadata/vjol_merged.jsonl); chỉ đọc khi with_meta.
+
+    Cuối lượt ghi log số bài bị bỏ theo lý do (lỗi / bỏ qua / không có chữ), để bài không mất im lặng trước ingest (J-33 B).
+    Tập âm tiết (<data-root>/processed/ocr_bakeoff/syllables.json) dùng để khôi phục "ư" bị font vẽ thành "-" (vi_corpus.vjol.hyphen_fix, J-33 A); thiếu file thì bỏ bước đó (ghi cảnh báo).
     """
     checkpoints = []
+    dropped = {"error": 0, "skipped": 0, "no_text": 0}
+    vocab = load_vocab(data_root / SYLLABLES_REL)
+    if vocab is None:
+        logger.warning("Không thấy tập âm tiết %s: bỏ bước khôi phục \"ư\" cho trang font gạch nối (J-33 A)", data_root / SYLLABLES_REL)
     for path in sorted((data_root / TEXT_DIR).glob("*.json"))[:limit_files]:
         done = read_json(path)
-        if done and not done.get("error") and not done.get("skipped"):
-            checkpoints.append(done)
+        if not done:
+            continue
+        if done.get("error") or done.get("skipped"):
+            dropped["error" if done.get("error") else "skipped"] += 1
+            continue
+        checkpoints.append(done)
     meta_rows: dict[str, dict] = {}
     if with_meta:
         stems = {Path(d["paths"][0]).stem for d in checkpoints}
@@ -104,10 +130,11 @@ def iter_records(spec: SourceSpec, data_root: Path, limit_files: int | None = No
     for done in checkpoints:
         pages = ["" if p["method"] == "needs_ocr" else p["text"] for p in done["pages"]]  # giữ chỉ số trang cho heuristic bìa
         md = meta_rows.get(Path(done["paths"][0]).stem)
-        pages, clean_stats = clean_paper_pages(pages, (md or {}).get("journal_title"))
+        pages, clean_stats = clean_paper_pages(pages, (md or {}).get("journal_title"), vocab)
         page_stats: dict = {}
         text = clean_pages(pages, stats=page_stats)
         if not text:
+            dropped["no_text"] += 1
             continue
         rec = {
             "doc_id": make_doc_id(spec.key, done["sha256"], 0),
@@ -126,13 +153,16 @@ def iter_records(spec: SourceSpec, data_root: Path, limit_files: int | None = No
             "dedup_family_id": None,
         }
         if with_meta:
-            year = (md or {}).get("year") or done.get("year_dir")
+            year = normalize_year((md or {}).get("year")) or normalize_year(done.get("year_dir"))  # J-33 D: 1970 (mặc định khi thiếu ngày) coi là thiếu
             rec["meta"] = json.dumps({
                 "article_id": done.get("article_id"), "galley_id": done.get("galley_id"),
                 **({k: md[k] for k in META_OUT if k != "year"} if md else {k: None for k in META_OUT if k != "year"}),
                 "year": year, "year_dir": done.get("year_dir"), "metadata_found": md is not None,
                 "galley_match": bool(md and md["galley_match"]), "pages": len(done["pages"]),
-                "garbled_pages": sum(bool(p.get("reason")) for p in done["pages"]),
+                "garbled_pages": sum(p.get("reason") in GARBLED_REASONS for p in done["pages"]),
+                "no_text_layer_pages": sum(p.get("reason") == REASON_NO_TEXT for p in done["pages"]),
                 "page_lines_removed": page_stats.get("lines_removed", 0), **clean_stats,
             }, ensure_ascii=False)
         yield rec
+    if any(dropped.values()):
+        logger.info("VJOL: %d checkpoint không thành bản ghi (lỗi trích %d, bỏ qua %d, không có chữ sau khi làm sạch %d)", sum(dropped.values()), dropped["error"], dropped["skipped"], dropped["no_text"])

@@ -26,7 +26,8 @@ logger = logging.getLogger("vi_corpus")
 
 # Phiên bản code của stage ingest, nằm trong vân tay stage (F-04): nâng khi đổi iter_records / row_to_record / cột meta
 # để 01_ingest.parquet cũ tự chạy lại. 2 = lần đầu đưa vào vân tay (meta stbook có page_lines_removed, commit 24bc92a).
-INGEST_VERSION = "3"  # 3 = J-28: VJOL che số điện thoại chỉ khi đúng dạng số điện thoại (không che số liệu bảng)
+INGEST_VERSION = "4"  # 3 = J-28: VJOL che số điện thoại chỉ khi đúng dạng số điện thoại (không che số liệu bảng)
+# 4 = J-33: VJOL khôi phục "ư" (font gạch nối), lọc câu rác VLM, bỏ trang ban biên tập, cắt tiêu đề tạp chí ở mọi vị trí, năm 1970 coi là thiếu
 
 
 def _sample_parquet(path: Path, col: str, k: int, rng: random.Random) -> list[tuple[int, dict]]:
@@ -128,10 +129,11 @@ def input_files(spec: SourceSpec, data_root: Path, chunked: bool) -> list[Path]:
         from vi_corpus.giao_trinh.extract import TEXT_DIR
         return sorted((data_root / TEXT_DIR).glob("*.json"))
     if spec.key == "vjol":
-        from vi_corpus.vjol.extract import TEXT_DIR
+        from vi_corpus.vjol.extract import SYLLABLES_REL, TEXT_DIR
         from vi_corpus.vjol.records import METADATA_REL
         metadata = data_root / spec.path / METADATA_REL
-        return sorted((data_root / TEXT_DIR).glob("*.json")) + ([metadata] if metadata.is_file() else [])
+        syllables = data_root / SYLLABLES_REL  # tập âm tiết quyết định chỗ nào khôi phục được "ư" (J-33 A)
+        return sorted((data_root / TEXT_DIR).glob("*.json")) + [p for p in (metadata, syllables) if p.is_file()]
     return []
 
 

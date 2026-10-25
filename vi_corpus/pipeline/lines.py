@@ -28,8 +28,10 @@ from collections import Counter
 
 from vi_corpus.pipeline.config import RunConfig
 
-LINES_VERSION = "5"  # 2 = miễn mục A cho văn bản có code / bảng (C-07); 3 = nhận diện code / bảng chặt hơn;
-# 4 = mục C không bỏ thụt lề dòng đầu (C-09); 5 = in_doc_line_clean, miễn dòng dẫn ":", top_removed theo nguồn (F-01)
+LINES_VERSION = "6"  # 2 = miễn mục A cho văn bản có code / bảng (C-07); 3 = nhận diện code / bảng chặt hơn;
+# 4 = mục C không bỏ thụt lề dòng đầu (C-09); 5 = in_doc_line_clean, miễn dòng dẫn ":", top_removed theo nguồn (F-01);
+# 6 = keep_table_cells: miễn dòng ngắn lặp nằm cạnh dòng ngắn khác (ô bảng VJOL, J-33 G)
+CELL_MAX_WORDS = 6  # keep_table_cells: dòng lặp và dòng kề nó phải có không quá ngần này từ thì mới coi là ô bảng
 TOP_REMOVED = 30  # số dòng bị xoá nhiều nhất của mỗi nguồn ghi vào thống kê
 _PAGE_NUMBER = re.compile(r"^(?:[-–—]\s*)?(?:(?:trang|page|tr\.)\s*)?\d{1,4}(?:\s*/\s*\d{1,4})?(?:\s*[-–—])?$",
                           re.IGNORECASE)
@@ -143,9 +145,22 @@ def strip_page_labels(text: str) -> tuple[str, list[str]]:
     return "\n".join(ln for ln in lines if not _PAGE_LABEL.match(ln.strip())), removed
 
 
-def clean_lines_in_doc(text: str, short_words: int = 10, repeat_min: int = 3) -> tuple[str, list[str]]:
+def _cell_like(lines: list[str]) -> set[int]:
+    """
+    Chỉ số các dòng trông như ô bảng (J-33 G): dòng không rỗng có không quá CELL_MAX_WORDS từ và dòng không rỗng liền trước hoặc liền sau nó cũng vậy.
+    Bảng trích từ PDF thành mỗi ô một đoạn (cách nhau dòng trống), nên các ô giống nhau ("Tự túc lương thực.", "Long Nh.") nằm giữa các ô ngắn khác; tiêu đề mục lặp thì kề đoạn dài.
+    """
+    idx = [i for i, ln in enumerate(lines) if ln]
+    short = [len(lines[i].split()) <= CELL_MAX_WORDS for i in idx]
+    return {i for k, i in enumerate(idx) if short[k] and ((k > 0 and short[k - 1]) or (k + 1 < len(idx) and short[k + 1]))}
+
+
+def clean_lines_in_doc(text: str, short_words: int = 10, repeat_min: int = 3, keep_cells: bool = False) -> tuple[str, list[str]]:
     """
     Xoá dòng lặp trong một văn bản (mục A, xem docstring module).
+
+    Args:
+        keep_cells: True thì dòng ngắn lặp nằm cạnh dòng ngắn khác (_cell_like) được giữ, vì là ô bảng (J-33 G); vẫn gộp hai dòng giống hệt liền nhau và vẫn bỏ số trang.
 
     Returns:
         (text mới, danh sách dòng bị xoá theo thứ tự). Dòng trống liên tiếp sinh ra do xoá được gộp lại.
@@ -155,15 +170,16 @@ def clean_lines_in_doc(text: str, short_words: int = 10, repeat_min: int = 3) ->
     out: list[str] = []
     removed: list[str] = []
     seen_short: set[str] = set()
+    cells = _cell_like(lines) if keep_cells else set()
     prev = None
-    for ln in lines:
+    for pos, ln in enumerate(lines):
         if not ln:
             if out and out[-1] != "":
                 out.append("")
             prev = None
             continue
         short = len(ln.split()) < short_words
-        repeated = short and counts[ln] >= repeat_min and ln in seen_short and not is_lead_in(ln)
+        repeated = short and counts[ln] >= repeat_min and ln in seen_short and not is_lead_in(ln) and pos not in cells
         if ln == prev or _PAGE_NUMBER.match(ln) or repeated:
             removed.append(ln)
             continue
@@ -250,7 +266,7 @@ def clean_rows(rows: list[dict], cfg: RunConfig) -> tuple[list[dict], dict]:
             protected.add(id(row))
             new, removed = strip_page_labels(text)
         else:
-            new, removed = clean_lines_in_doc(text, cfg.line_short_words, cfg.line_repeat_min)
+            new, removed = clean_lines_in_doc(text, cfg.line_short_words, cfg.line_repeat_min, prof.keep_table_cells)
         row["text"] = new
         _mark_removed(row, removed, counter)
         st["in_doc_lines"] += len(removed)

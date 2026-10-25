@@ -72,6 +72,9 @@ DEFAULT_THRESHOLDS = Thresholds()
 REASON_PAGE = "garbled_text_layer"  # chính trang này bị nghi
 REASON_DOC = "garbled_doc"  # trang bình thường nhưng bài có >= GARBLED_DOC_SHARE số trang bị nghi
 REASON_PRODUCER = "old_ocr_producer"  # J-29 (D2): PDF do phần mềm OCR đời cũ tạo, lớp chữ không đáng tin dù không trúng tín hiệu nào
+REASON_NO_TEXT = "no_text_layer"  # J-33 B: trang không có lớp chữ và không có ảnh nhúng nhưng vẽ ra nội dung (ảnh trong form XObject, nét vẽ): OCR vẽ lại cả trang
+REASON_BLANK = "blank_page"  # J-33 B: trang không có chữ và vẽ ra trang trắng (method "empty"): ghi lý do để bài rỗng không mất im lặng
+GARBLED_REASONS = frozenset({REASON_PAGE, REASON_DOC, REASON_PRODUCER})  # lý do thuộc lỗi lớp chữ (khác REASON_NO_TEXT / REASON_BLANK: trang không có lớp chữ)
 
 # Từ chức năng / thông dụng của tiếng Việt viết KHÔNG dấu ("của" -> "cua") mà tiếng Anh gần như không dùng; chữ có dấu đúng thì hầu như không
 # có từ nào trong tập này (J-23, điểm khởi đầu chưa đo trên bài thật). Không đưa tên riêng hay tên đệm (Thanh, Hien, Cong, Quoc, Gia ...) vào

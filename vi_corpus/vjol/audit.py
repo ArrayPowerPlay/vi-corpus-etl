@@ -6,6 +6,8 @@ Công cụ đo cho pipeline VJOL (J-25 Bước 0, chạy CPU, đọc kết quả
   là loại tín hiệu mà không công cụ nào báo trước đây.
 - Bộ đáp án (make_labeling_sample, evaluate_labels): lấy ~400 đoạn để đọc và gán nhãn (LABELS), chia hai nửa THEO BÀI (tune: chỉnh ngưỡng; holdout: chỉ để kiểm), rồi đo độ chính xác / độ bao phủ
   của từng bộ dò theo nhãn. Hạn chế đã biết: nhãn do người đọc gán nên chỉ đo được lỗi mà người đọc thấy.
+- J-33: journal_balance (tỷ lệ bị loại theo từng tạp chí và trung bình theo tạp chí, vì một tạp chí có thể chiếm hơn 1/4 mẫu), year_checks (đoạn thiếu năm, năm mặc định 1970, năm nào chỉ có ở bài không có
+  metadata) và font_misread (chữ có dấu bị đọc thành chữ có dấu khác: "NGHIấN", "nghiờn", "nhõn", "Khỏnh"; cần tập âm tiết) để quyết định có cần sửa họ lỗi này không (J-33 H).
 - Tập chữ đúng (make_clean_set, check_clean_set): đoạn kinh tế / luật / y học có dấu đầy đủ; bộ dò nào gắn cờ lên tập này là lỗi (tiêu chí nghiệm thu "0 cờ").
 """
 
@@ -20,7 +22,7 @@ from collections import Counter, defaultdict
 from collections.abc import Callable
 from pathlib import Path
 
-from vi_corpus.common.garbled import _HYPHEN_LOST, DEFAULT_THRESHOLDS, hyphen_lost, page_signals
+from vi_corpus.common.garbled import _HYPHEN_LOST, DEFAULT_THRESHOLDS, hyphen_lost, latin_tokens, load_vocab, page_signals
 from vi_corpus.common.state import write_json_atomic
 from vi_corpus.pipeline import quality as Q
 from vi_corpus.pipeline.config import PROFILES
@@ -34,6 +36,10 @@ LABELS = ("clean", "lost_diacritics", "hyphen_font", "font_misread", "old_ocr", 
 _JOURNAL_HEADER = re.compile(r"Tạp chí[^\n]{3,70}?\bsố\s*\d+", re.IGNORECASE)
 CLEAN_KEYWORDS = ("kinh tế", "doanh nghiệp", "ngân hàng", "tài chính", "pháp luật", "điều luật", "luật", "bệnh nhân", "điều trị", "lâm sàng", "thuế")
 HARD_CODES = Q.HARD_REASONS | {"garbled_font"}
+# Họ lỗi đọc font (J-25 (3), J-33 H): chữ có dấu bị thay bằng chữ có dấu khác. Khoá = ký tự sai, giá trị = ký tự đúng ("NGHIấN" -> "NGHIÊN", "nghiờn" -> "nghiên", "nhõn" -> "nhân", "Khỏnh" -> "Khánh").
+MISREAD_MAP = {"ấ": "ê", "ờ": "ê", "õ": "â", "ỏ": "á"}
+MISREAD_MIN_HITS = 2  # đoạn có ít nhất ngần ấy từ sửa được bằng MISREAD_MAP mới tính là đoạn lỗi (một tên riêng lẻ tẻ không tính)
+MISREAD_REPORT_RATE = 0.005  # J-33 H: tỷ lệ đoạn giữ lại vượt mức này thì nên thêm tín hiệu / bản đồ sửa
 
 
 def metrics_of(row: dict) -> dict:
@@ -60,6 +66,19 @@ def suspicious(row: dict) -> list[str]:
     if EMAIL.search(row["text"]) or find_phones(row["text"]):
         why.append("pii")
     return why
+
+
+def misread_hits(text: str, vocab: frozenset[str]) -> int:
+    """
+    Số từ trong `text` KHÔNG thuộc tập âm tiết `vocab` nhưng thành âm tiết thật khi đổi MỘT ký tự theo MISREAD_MAP (họ lỗi đọc font ê -> ấ / ờ, â -> õ, á -> ỏ; J-33 H).
+    """
+    hits = 0
+    for tok in latin_tokens(text):
+        low = tok.lower()
+        if low in vocab:
+            continue
+        hits += any(c in MISREAD_MAP and low[:i] + MISREAD_MAP[c] + low[i + 1:] in vocab for i, c in enumerate(low))
+    return hits
 
 
 def _lines(text: str) -> list[str]:
@@ -119,7 +138,54 @@ def _hard_reasons(row: dict) -> list[str]:
     return [c for c in row.get("reason_codes") or [] if c in HARD_CODES]
 
 
-def audit_rows(rows: list[dict], min_group: int = 20, factor: float = 3.0, min_rate: float = 0.15, samples: int = 5, seed: int = 0) -> dict:
+def journal_balance(rows: list[dict], journals: dict[str, dict], min_group: int = 20) -> dict:
+    """
+    Độ lệch của mẫu theo tạp chí và tỷ lệ bị loại tính theo từng tạp chí (J-33 J): một tạp chí chiếm hơn 1/4 mẫu (vjol_10k_v5: `tcdantochocvatongiaohoc` 26,6%) làm tỷ lệ bị loại chung
+    thiên về tạp chí đó, nên báo thêm trung bình theo tạp chí (macro), không chỉ trung bình theo đoạn (micro).
+
+    Args:
+        rows:      Bản ghi vjol đã qua stage quality.
+        journals:  Kết quả group_stats theo tạp chí ({slug: {"chunks", "dropped_rate", ...}}).
+        min_group: Tạp chí ít đoạn hơn ngần này không đưa vào trung bình theo tạp chí (số nhỏ không đáng tin).
+
+    Returns:
+        {"journals", "top": [[slug, tỷ lệ đoạn]] (5 tạp chí lớn nhất), "max_share", "dropped_rate_micro", "dropped_rate_macro" (trung bình theo tạp chí đủ min_group đoạn), "macro_journals"}.
+    """
+    total = len(rows)
+    ranked = sorted(journals.items(), key=lambda kv: -kv[1]["chunks"])
+    big = [v["dropped_rate"] for _, v in ranked if v["chunks"] >= min_group]
+    dropped = sum(r["quality_band"] not in KEPT_BANDS for r in rows)
+    return {"journals": len(journals), "top": [[k, round(v["chunks"] / total, 4)] for k, v in ranked[:5]] if total else [],
+            "max_share": round(ranked[0][1]["chunks"] / total, 4) if ranked and total else 0.0,
+            "dropped_rate_micro": round(dropped / total, 4) if total else 0.0,
+            "dropped_rate_macro": round(statistics.mean(big), 4) if big else None, "macro_journals": len(big)}
+
+
+def year_checks(rows: list[dict], top: int = 5) -> dict:
+    """
+    Kiểm cột năm của meta (J-33 D): số đoạn thiếu năm, số đoạn mang năm mặc định 1970 (phải bằng 0 sau khi sửa), các năm chiếm nhiều đoạn nhất và năm nào có nhiều bài không tìm thấy metadata.
+
+    Returns:
+        {"missing": số đoạn năm None, "default_1970": số đoạn có year hoặc year_dir 1970 (year_dir 1970 là bình thường: năm lấy từ thư mục chỉ mang tính tên thư mục), "year_1970": số đoạn có year 1970,
+         "top_years": [[năm, tỷ lệ]], "no_metadata_years": {năm: tỷ lệ đoạn không có metadata} (chỉ năm có >= 20 đoạn và tỷ lệ >= 0,5)}.
+    """
+    metas = [meta_of(r) for r in rows]
+    years = Counter(m.get("year") for m in metas)
+    per_year_total: Counter = Counter()
+    per_year_nometa: Counter = Counter()
+    for m in metas:
+        y = m.get("year_dir") if m.get("year_dir") is not None else m.get("year")
+        per_year_total[y] += 1
+        per_year_nometa[y] += not m.get("metadata_found", True)
+    n = len(rows)
+    return {"missing": years.get(None, 0), "year_1970": years.get(1970, 0), "default_1970": sum(m.get("year") == 1970 or m.get("year_dir") == 1970 for m in metas),
+            "top_years": [[y, round(c / n, 4)] for y, c in years.most_common(top)] if n else [],
+            "no_metadata_years": {str(y): round(per_year_nometa[y] / t, 3) for y, t in sorted(per_year_total.items(), key=lambda kv: str(kv[0]))
+                                  if t >= 20 and per_year_nometa[y] / t >= 0.5}}
+
+
+def audit_rows(rows: list[dict], min_group: int = 20, factor: float = 3.0, min_rate: float = 0.15, samples: int = 5, seed: int = 0,
+               vocab: frozenset[str] | None = None) -> dict:
     """
     Kiểm một danh sách bản ghi VJOL đã qua stage quality (xem audit_run).
 
@@ -129,10 +195,12 @@ def audit_rows(rows: list[dict], min_group: int = 20, factor: float = 3.0, min_r
         factor:    Tỷ lệ bị loại phải lớn hơn factor x trung vị các nhóm...
         min_rate:  ... và ít nhất mức này thì nhóm bị báo bất thường.
         samples:   Số mẫu mỗi loại lỗi / luật.
+        vocab:     Tập âm tiết thật; có thì đo thêm họ lỗi đọc font "font_misread" (misread_hits, J-33 H).
 
     Returns:
         {"chunks", "kept", "dropped", "error_rates": {lỗi: tỷ lệ trên đoạn giữ}, "error_counts", "single_rule_drops": {mã: số đoạn chỉ bị mã đó}, "groups": {"journal"|"journal_year": {...}},
-         "anomalies": [{"level", "key", "chunks", "dropped_rate", "median", "top_reasons"}], "samples": {tên: [{doc_id, journal, year, excerpt}]}}.
+         "anomalies": [{"level", "key", "chunks", "dropped_rate", "median", "top_reasons"}], "samples": {tên: [{doc_id, journal, year, excerpt}]},
+         "journal_balance": xem journal_balance, "year_checks": xem year_checks}.
     """
     rng = random.Random(seed)
     kept = [r for r in rows if r["quality_band"] in KEPT_BANDS]
@@ -140,7 +208,10 @@ def audit_rows(rows: list[dict], min_group: int = 20, factor: float = 3.0, min_r
     counts: Counter = Counter()
     found: dict[str, list[dict]] = defaultdict(list)
     for r in kept:
-        for name in error_flags(r):
+        flags = error_flags(r)
+        if vocab is not None and misread_hits(r["text"], vocab) >= MISREAD_MIN_HITS:
+            flags.append("font_misread")
+        for name in flags:
             counts[name] += 1
             found[name].append(r)
     single: Counter = Counter()
@@ -185,12 +256,17 @@ def audit_rows(rows: list[dict], min_group: int = 20, factor: float = 3.0, min_r
     return {"chunks": len(rows), "kept": len(kept), "dropped": len(dropped),
             "error_counts": dict(counts), "error_rates": {k: round(v / len(kept), 4) for k, v in counts.items()} if kept else {},
             "single_rule_drops": dict(single.most_common()), "groups": groups, "anomalies": anomalies,
+            "journal_balance": journal_balance(rows, groups["journal"], min_group), "year_checks": year_checks(rows),
             "samples": {**{f"kept:{k}": pick(v, k) for k, v in found.items()}, **{f"dropped_only_by:{k}": pick(v, k) for k, v in single_rows.items()}}}
 
 
-def audit_run(run_dir: Path, out_dir: Path | None = None, **kwargs) -> Path:
+def audit_run(run_dir: Path, out_dir: Path | None = None, syllables: Path | None = None, **kwargs) -> Path:
     """
     Kiểm một lần chạy pipeline: đọc 04_quality.parquet (nguồn vjol), ghi audit.json, audit_journals.csv và audit.md (đọc nhanh) vào <run_dir>/audit/.
+
+    Args:
+        syllables: File tập âm tiết cho phép đo họ lỗi đọc font (J-33 H); mặc định <data-root>/processed/ocr_bakeoff/syllables.json với data-root suy ra từ run_dir
+                   (<data-root>/processed/pipeline_runs/<tên>), thiếu file thì bỏ phép đo đó.
 
     Returns:
         Thư mục kết quả.
@@ -198,7 +274,9 @@ def audit_run(run_dir: Path, out_dir: Path | None = None, **kwargs) -> Path:
     rows = [r for r in read_rows(run_dir / "04_quality.parquet") if r["source_key"] == "vjol"]
     out = out_dir or run_dir / OUT_SUBDIR
     out.mkdir(parents=True, exist_ok=True)
-    res = audit_rows(rows, **kwargs)
+    default = run_dir.resolve().parents[2] / "processed" / "ocr_bakeoff" / "syllables.json" if len(run_dir.resolve().parents) > 2 else None
+    vocab = load_vocab(syllables or default) if (syllables or default) else None
+    res = audit_rows(rows, vocab=vocab, **kwargs)
     write_json_atomic(out / "audit.json", res)
     with open(out / "audit_journals.csv", "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
@@ -208,6 +286,16 @@ def audit_run(run_dir: Path, out_dir: Path | None = None, **kwargs) -> Path:
                 w.writerow([level, k, v["chunks"], v["dropped_rate"], "; ".join(f"{c}:{n}" for c, n in v["top_reasons"])])
     lines = [f"# Kiểm {run_dir.name}", "", f"- {res['chunks']} đoạn vjol: giữ {res['kept']}, loại {res['dropped']}", "", "## Lỗi còn lọt trong đoạn được giữ (tỷ lệ)"]
     lines += [f"- {k}: {res['error_counts'][k]} ({v:.2%})" for k, v in sorted(res["error_rates"].items(), key=lambda kv: -kv[1])]
+    jb, yc = res["journal_balance"], res["year_checks"]
+    lines += ["", "## Độ lệch theo tạp chí (J-33 J)",
+              f"- {jb['journals']} tạp chí; lớn nhất {jb['top']}; bị loại: theo đoạn {jb['dropped_rate_micro']:.2%}, trung bình theo {jb['macro_journals']} tạp chí (>= {kwargs.get('min_group', 20)} đoạn) "
+              f"{'-' if jb['dropped_rate_macro'] is None else format(jb['dropped_rate_macro'], '.2%')}"]
+    lines += ["", "## Năm (J-33 D)", f"- thiếu năm {yc['missing']} đoạn; year=1970 {yc['year_1970']} đoạn (phải 0); year hoặc year_dir 1970 {yc['default_1970']}; năm nhiều đoạn nhất {yc['top_years']}; "
+              f"năm có hơn nửa đoạn không có metadata {yc['no_metadata_years']}"]
+    if vocab is None:
+        lines += ["", "(Không có tập âm tiết: bỏ phép đo font_misread, J-33 H)"]
+    elif res["error_rates"].get("font_misread", 0.0) >= MISREAD_REPORT_RATE:
+        lines += ["", f"## CHÚ Ý (J-33 H): font_misread {res['error_rates']['font_misread']:.2%} >= {MISREAD_REPORT_RATE:.1%} đoạn giữ lại: nên thêm tín hiệu hoặc bản đồ sửa cho họ lỗi ê -> ấ / ờ"]
     lines += ["", "## Đoạn bị loại chỉ vì một luật duy nhất"] + [f"- {k}: {v}" for k, v in res["single_rule_drops"].items()]
     lines += ["", "## Nhóm bị loại bất thường"] + [f"- [{a['level']}] {a['key']}: {a['dropped_rate']:.0%} ({a['chunks']} đoạn, trung vị {a['median']:.0%}), {a['top_reasons']}" for a in res["anomalies"]]
     lines += ["", "## Mẫu"]
@@ -216,6 +304,40 @@ def audit_run(run_dir: Path, out_dir: Path | None = None, **kwargs) -> Path:
         lines += [f"- `{s['doc_id']}` ({s['journal']}, {s['year']}): {s['excerpt']!r}" for s in items]
     (out / "audit.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
     return out
+
+
+def compare_audits(old: dict, new: dict, old_name: str = "cũ", new_name: str = "mới") -> str:
+    """
+    So hai kết quả audit_rows (audit.json) thành bảng văn bản: số đoạn giữ / loại, từng lỗi còn lọt, đoạn bị loại chỉ vì một luật, năm và độ lệch tạp chí (J-33 "cách đo xong").
+
+    Returns:
+        Bảng nhiều dòng "chỉ số | cũ | mới | đổi"; chỉ số thiếu ở một bên ghi "-".
+    """
+    def fmt(v) -> str:
+        """Số hiển thị: tỷ lệ nhỏ hơn 1 dạng %, số nguyên giữ nguyên, thiếu là "-"."""
+        if v is None:
+            return "-"
+        return f"{v:.2%}" if isinstance(v, float) and abs(v) < 1 else str(v)
+
+    def delta(a, b) -> str:
+        """Hiệu mới - cũ (cùng đơn vị với fmt) hoặc "-"."""
+        if a is None or b is None:
+            return "-"
+        d = b - a
+        return f"{d:+.2%}" if isinstance(d, float) and abs(a) < 1 and abs(b) < 1 else f"{d:+}"
+
+    rows: list[tuple[str, object, object]] = [("đoạn", old["chunks"], new["chunks"]), ("giữ", old["kept"], new["kept"]), ("loại", old["dropped"], new["dropped"])]
+    rows += [(f"lỗi lọt: {k}", old["error_rates"].get(k), new["error_rates"].get(k)) for k in sorted(set(old["error_rates"]) | set(new["error_rates"]))]
+    rows += [(f"chỉ bị loại bởi: {k}", old["single_rule_drops"].get(k), new["single_rule_drops"].get(k)) for k in sorted(set(old["single_rule_drops"]) | set(new["single_rule_drops"]))]
+    for key, label in (("missing", "năm: thiếu"), ("year_1970", "năm: year=1970")):
+        rows.append((label, old.get("year_checks", {}).get(key), new.get("year_checks", {}).get(key)))
+    for key, label in (("max_share", "tạp chí: tỷ lệ lớn nhất"), ("dropped_rate_micro", "tạp chí: loại theo đoạn"), ("dropped_rate_macro", "tạp chí: loại theo tạp chí")):
+        rows.append((label, old.get("journal_balance", {}).get(key), new.get("journal_balance", {}).get(key)))
+    rows.append(("nhóm tạp chí bất thường", len(old["anomalies"]), len(new["anomalies"])))
+    width = max(len(r[0]) for r in rows)
+    lines = [f"{'chỉ số':<{width}} | {old_name:>10} | {new_name:>10} | đổi"]
+    lines += [f"{name:<{width}} | {fmt(a):>10} | {fmt(b):>10} | {delta(a, b)}" for name, a, b in rows]
+    return "\n".join(lines)
 
 
 # ---------------------------------------------------------------------------------------------------------------- bộ đáp án

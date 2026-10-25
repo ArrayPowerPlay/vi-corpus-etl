@@ -33,7 +33,8 @@ from pathlib import Path
 
 from vi_corpus.common.batch_extract import checkpoint_path as _checkpoint_path
 from vi_corpus.common.batch_extract import file_sha256, run_batch
-from vi_corpus.common.garbled import DEFAULT_THRESHOLDS, Thresholds, load_unaccented, load_vocab, unaccented_tag
+from vi_corpus.common.garbled import (DEFAULT_THRESHOLDS, GARBLED_REASONS, REASON_BLANK, REASON_NO_TEXT, Thresholds, load_unaccented, load_vocab,
+                                      unaccented_tag)
 from vi_corpus.common.ocr_cache import OcrCache
 from vi_corpus.common.parsers import PARSER_VERSION, detect_format
 from vi_corpus.common.pdf_text import extract_pdf
@@ -50,7 +51,8 @@ OCR_ALL_PRODUCERS = (("ABBYY FineReader 11", "ScanGate"),)
 # Phiên bản cách trích text VJOL, ghi vào checkpoint; đổi số này thì lần chạy sau làm lại mọi checkpoint cũ hơn. 1 = bản đầu (chưa có
 # trường extract_version); 2 = J-10: trang lỗi font cũng đi OCR; 3 = J-23: thêm tín hiệu nodiac (mất dấu tiếng Việt), J-24: xoay thử trang scan nghi bị xoay. Không dùng PARSER_VERSION vì nó dùng chung với giáo trình.
 # 4 = J-25: tín hiệu hyphen (font mất ư / ơ), danh sách từ không dấu sinh từ kho chữ sạch (bỏ "doanh", "cung"), bộ nhớ đệm OCR.
-EXTRACT_VERSION = "4"
+# 5 = J-33 B, C: trang không có lớp chữ và không có ảnh nhúng được vẽ ra thử (có nội dung thì OCR, trắng thì reason "blank_page"), câu "There is no text in the image" của VLM bị lọc.
+EXTRACT_VERSION = "5"
 VOCAB_TAG = "+vocab"  # hậu tố extract_version khi bộ dò có tín hiệu âm tiết lạ (J-16)
 UNACC_TAG = "+unacc"  # hậu tố (kèm băm nội dung) khi bộ dò dùng danh sách từ không dấu sinh từ dữ liệu thay cho danh sách tối thiểu (J-25 A)
 CLAIM_DIR = "state/vjol_extract/claims"
@@ -194,7 +196,7 @@ def extract_file(path: Path, get_ocr: Callable[[], object | None], vocab: frozen
             signature = getattr(get_ocr, "signature", None)
             cache = OcrCache.for_pdf(cache_root, file_sha256(path), signature()) if cache_root is not None and callable(signature) else None
             out["pages"] = extract_pdf(path, get_ocr, detect_garbled=True, garbled_vocab=vocab, garbled_th=th, garbled_unaccented=unaccented,
-                                       ocr_cache=cache, ocr_all_producers=OCR_ALL_PRODUCERS)
+                                       ocr_cache=cache, ocr_all_producers=OCR_ALL_PRODUCERS, rescue_empty=True)
         except (ServerDown, EngineUnavailable):
             raise
         except Exception as exc:  # noqa: BLE001 — một PDF lỗi không được dừng cả lô
@@ -250,12 +252,14 @@ def report(root: Path | None, data_root: Path) -> dict:
          "ocr_status": {ok | blank | flagged: số trang}, "flagged_rate": tỷ lệ trang flagged trên trang OCR VLM,
          "seconds": tổng giây trích text, "pages_per_doc": số trang trung bình mỗi bài, "old_version": số checkpoint ghi bởi bản
          trích text cũ (sẽ bị làm lại), "garbled_pages": {lý do: số trang lỗi font}, "garbled_docs": số bài có trang lỗi font, "garbled_signals": {tín hiệu: số trang}, "without_vocab": số checkpoint
-         dò chữ hỏng khi thiếu tập âm tiết (extract_version không có "+vocab")}.
+         dò chữ hỏng khi thiếu tập âm tiết (extract_version không có "+vocab"), "no_text_layer_pages": số trang không có lớp chữ được OCR (J-33 B), "blank_pages": số trang trắng có lý do,
+         "empty_pages_no_reason": số trang "empty" của checkpoint cũ chưa ghi lý do, "empty_docs": số bài không có chữ nào (trích xong, không lỗi), "vlm_noise_pages": số trang bị lọc câu rác của VLM (J-33 C)}.
     """
     info = {"pdfs_in_raw": sum(len(v) for v in list_pdfs_by_year(root).values()) if root and root.is_dir() else None,
             "checkpoints": 0, "errors": 0, "skipped": 0, "seconds": 0.0}
     methods, tiers, statuses, garbled = Counter(), Counter(), Counter(), Counter()
     garbled_docs = old_version = without_vocab = 0
+    no_text_pages = blank_pages = empty_no_reason = empty_docs = vlm_noise_pages = 0
     signals = Counter()
     for ckpt in sorted((data_root / TEXT_DIR).glob("*.json")):
         done = read_json(ckpt)
@@ -266,13 +270,19 @@ def report(root: Path | None, data_root: Path) -> dict:
         info["skipped"] += bool(done.get("skipped"))
         info["seconds"] += done.get("seconds") or 0.0
         old_version += not version_is_current(done.get("extract_version"))
-        reasons = [p["reason"] for p in done["pages"] if p.get("reason")]
+        reasons = [p["reason"] for p in done["pages"] if p.get("reason") in GARBLED_REASONS]
         garbled.update(reasons)
         garbled_docs += bool(reasons)
         without_vocab += not str(done.get("extract_version")).endswith(VOCAB_TAG)
         signals.update(sig for p in done["pages"] for sig in p.get("signals", []))
+        if not done.get("error") and not done.get("skipped") and not any(p["text"].strip() for p in done["pages"]):
+            empty_docs += 1
         for page in done["pages"]:
             methods[page["method"]] += 1
+            no_text_pages += page.get("reason") == REASON_NO_TEXT
+            blank_pages += page.get("reason") == REASON_BLANK
+            empty_no_reason += page["method"] == "empty" and not page.get("reason")
+            vlm_noise_pages += bool(page.get("vlm_noise_removed"))
             if page["method"] == "ocr_vlm":
                 statuses[page["status"]] += 1
                 if page["status"] == "ok":
@@ -281,5 +291,6 @@ def report(root: Path | None, data_root: Path) -> dict:
     return {**info, "seconds": round(info["seconds"], 1), "pages": dict(methods), "ocr_tier": dict(tiers),
             "ocr_status": dict(statuses), "old_version": old_version, "garbled_pages": dict(garbled),
             "garbled_docs": garbled_docs, "garbled_signals": dict(signals), "without_vocab": without_vocab,
-            "flagged_rate": statuses["flagged"] / n_vlm if n_vlm else None,
+            "no_text_layer_pages": no_text_pages, "blank_pages": blank_pages, "empty_pages_no_reason": empty_no_reason, "empty_docs": empty_docs,
+            "vlm_noise_pages": vlm_noise_pages, "flagged_rate": statuses["flagged"] / n_vlm if n_vlm else None,
             "pages_per_doc": sum(methods.values()) / info["checkpoints"] if info["checkpoints"] else None}
