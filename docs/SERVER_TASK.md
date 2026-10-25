@@ -32,6 +32,7 @@
 | S-16 | VJOL: chạy lại sau sửa J-28 (`vjol_10k_v4b`), lập bộ gán nhãn và tập chữ đúng, đo lại trang nghi | J-28 | CHẠY SAU S-15 | pipeline ~10 phút (checkpoint có sẵn) + CPU vài phút | 1 |
 | S-17 | VJOL: trích lại một lần (cache OCR đã nạp) rồi chạy pipeline `vjol_10k_v5` | J-29 | CHẠY SAU S-16 | trích lại vài chục phút trên 4 GPU (3.652 trang nghi + 27 bài ScanGate, nhiều trang có sẵn trong cache); pipeline ~10 phút | 4 |
 | S-18 | VJOL: trích lại một lần sau sửa J-33 (khôi phục "ư", trang không lớp chữ, câu rác VLM, năm 1970 ...) rồi chạy pipeline `vjol_10k_v6` và so với `v5` | J-34 | CHẠY SAU S-17 | trích lại vài chục phút trên 4 GPU (chỉ vài trăm trang mới phải OCR, phần còn lại có trong cache); pipeline ~10 phút | 4 |
+| S-19 | VJOL: chạy lại pipeline `vjol_10k_v7` sau sửa J-35 (không trích lại) và so với `v6` | J-35 | CHẠY SAU S-18 | pipeline ~10 phút | 1 |
 
 Thứ tự khuyến nghị: S-10 (VJOL ưu tiên cao nhất, R-15) → S-0 → S-1 → S-2 → S-3 (có đủ số để tính giờ OCR) → S-4 → S-5. S-6 đến S-9 và S-11 làm sau phiên code (S-11 cần script `scripts/dedup_pairs_sample.py`, viết ở gói G-05 bước 2).
 
@@ -510,6 +511,31 @@ Dấu `;` sau hai lệnh `audit_run.py` là cố ý: `audit_run.py` thoát mã 1
 **Báo lại cho Claude**: hai dòng `date`, dòng `--status` (phải có `no_text_layer`, `blank_page`, số bài không có chữ), gói `vjol_s18.tar.gz` (CÙNG MỘT lần chạy: `report.html`, `manifest.json`, `04_quality.parquet`, `audit/`, `groundtruth/` đều của v6), và cho biết lệnh nào lỗi (nếu có). **Chủ dự án**: gán nhãn cột `label` của `$V6/groundtruth/labeling_sample.csv` (J-33 I; nửa `tune` chỉnh ngưỡng, nửa `holdout` đo độ chính xác thật).
 
 **Kỳ vọng so với v5** (J-33 "cách đo xong"): giữ 9.375 / 10.000 -> cao hơn (khoảng 385 đoạn `lost_letters` quay lại band A); `lost_letters` 387 -> gần 0; `year=1970` 330 đoạn -> 0 (`missing` tăng tương ứng); "There is no text" 4 đoạn lọt -> 0; `journal_header` 4,6% -> thấp hơn; số bài không vào ingest 25 -> chỉ còn bài thật sự trắng (log "VJOL: ... checkpoint không thành bản ghi"); `font_misread` trong `audit.md` cho biết có cần xử lý ê -> ấ / ờ (J-33 H, ngưỡng 0,5%); `dropped_rate_macro` so với `dropped_rate_micro` cho biết mẫu lệch tạp chí ảnh hưởng thế nào (J-33 J).
+
+## S-19. VJOL: chạy lại pipeline `vjol_10k_v7` sau sửa J-35  [CHẠY SAU S-18]
+
+**Mục đích**: J-35 sửa hai chỗ chạy lúc sinh bản ghi (khôi phục "ư" thêm dạng, cắt tiêu đề "Tạp chí X số N - năm"), nên KHÔNG trích lại, KHÔNG cần vLLM; chỉ chạy lại pipeline từ checkpoint của S-18. Không sinh lại mẫu gán nhãn (giữ `labeling_sample.csv` của v6 để chủ dự án gán nhãn tiếp).
+
+```bash
+cd /home/jovyan/dinh/vi-corpus-etl
+git pull
+source /home/jovyan/dinh/env.sh
+uv sync --group curator --group viz --group ocr
+uv run pytest -q                                   # kỳ vọng 293 test qua
+nvidia-smi                                         # không còn tiến trình vLLM nào
+V6=data/processed/pipeline_runs/vjol_10k_v6; V7=data/processed/pipeline_runs/vjol_10k_v7
+date
+uv run --group curator --group viz python scripts/run_pipeline.py --data-root data --mix vjol=10000 --total 10000 \
+    --run-name vjol_10k_v7 --embed-device cuda --cluster-space umap10 --perplexity-model Qwen/Qwen3-0.6B
+date
+uv run python scripts/vjol/audit_run.py --run-dir $V7
+uv run python scripts/vjol/compare_runs.py --old $V6 --new $V7 | tee $V7/compare_v6_v7.txt
+tar czf vjol_s19.tar.gz $V7/{manifest.json,report.html,04_quality.parquet,audit,compare_v6_v7.txt}
+```
+
+Các lệnh viết từng dòng riêng (không nối `&&`) vì `audit_run.py` thoát mã 1 khi còn nhóm tạp chí bất thường.
+
+**Báo lại cho Claude**: gói `vjol_s19.tar.gz` và cho biết lệnh nào lỗi. **Kỳ vọng so với v6**: `hyphen_lost` 1,75% -> khoảng 0,4% (phần còn lại là ký hiệu thật như `t- Statistics`), `journal_header` 4,42% -> khoảng 3,2%, giữ >= 9.768, `lost_letters` vẫn ~3.
 
 ---
 

@@ -21,6 +21,7 @@ J-25 (sửa theo nguyên nhân gốc, chạy lúc sinh bản ghi nên không ph�
 J-33 (chạy lúc sinh bản ghi, không phải trích lại):
 - A: restore_u_in_pages khôi phục "ư" cho trang font gạch nối ("tr-ờng" -> "trường"), kiểm bằng tập âm tiết (vi_corpus.vjol.hyphen_fix).
 - C: strip_vlm_noise bỏ câu "There is no text in the image" của OCR VLM (vi_corpus.common.ocr_noise).
+- E (J-35): GENERIC_HEADER bỏ tiêu đề trang tiếng Việt dạng "Tạp chí X số N - năm" ở mọi vị trí trong dòng (kể cả số trang đứng sau), vì tiêu đề nằm ngoài 3 dòng đầu / cuối của trang thì strip_running_headers không học được.
 - E: strip_running_headers học tiêu đề từ các trang lặp rồi bỏ nó ở MỌI vị trí trong dòng (đầu trang đầu bài không lặp, giữa đoạn do thứ tự khối chữ), không chỉ ở đầu / cuối dòng.
 - F: drop_front_matter nhận trang ban biên tập / bìa mục lục (chức danh, hội đồng biên tập, ISSN) ở vài trang đầu và trang cuối.
 - F (J-25): dòng khuôn mẫu "ngày + động từ + ngày tháng" nói chung ("Ngày phản biện: 12/05/2015"), số điện thoại có mã nước không có dấu + ("84-983226880") có kiểm đầu số
@@ -93,6 +94,11 @@ _REF_SUFFIX = r"(?:chính|chủ yếu|chọn lọc|bổ sung|tiếng việt|ti�
 _REF_STUCK = re.compile(r"^(?P<h>{heads})(?:\s+{suf})*(?:\s+\[?1[\].):]?(?:\s.*)?)?$".format(
     heads="|".join(sorted((re.escape(h) for h in REF_HEADINGS), key=len, reverse=True)), suf=_REF_SUFFIX))
 
+# Tiêu đề trang tạp chí tiếng Việt in sẵn trên trang, không cần tên trong metadata (J-35): "Tạp chí Dân tộc học số 3 - 2004", "Tạp chí Dân tộc học - Số 2 - 1994", có thể kèm số trang đứng ngay sau năm.
+# Chỉ khớp dạng "số N - năm" (gạch nối giữa số và năm); câu trích dẫn "Tạp chí Dân chủ và Pháp luật Kỳ 2 (Số 407), tháng 6/2024" hay "Tạp chí X, số 3 (2005)" có dấu câu nên không khớp.
+GENERIC_HEADER = re.compile(r"Tạp chí\s+[^\n.,;:()\[\]]{3,60}?\s*(?:[-–]\s*)?số\s*\d+\s*[-–]\s*(?:19|20)\d{2}(?:\s+\d{1,3}(?=\s|$))?", re.IGNORECASE)
+# Dạng viết hoa toàn bộ ("TẠP CHÍ THÔNG TIN KHOA HỌC & CÔNG NGHỆ QUẢNG BÌNH - SỐ 5/2016"): phân biệt hoa thường để câu trích dẫn không khớp.
+GENERIC_HEADER_UPPER = re.compile(r"TẠP CHÍ\s+[A-ZÀ-Ỹ&\s]{5,80}?\s*(?:[-–]\s*)?SỐ\s*\d+\s*[/-]\s*(?:19|20)\d{2}(?:\s+\d{1,3}(?=\s|$))?")
 AUTHOR_BLOCK_LINES = 40  # khối tác giả chỉ tìm trong ngần ấy dòng không rỗng đầu bài
 # dòng khuôn mẫu của tạp chí; dòng ngắn (<= BOILER_MAX_WORDS từ) mới bị bỏ để câu văn nhắc tới "email" không mất
 BOILER_MAX_WORDS = 25
@@ -413,10 +419,14 @@ def strip_boilerplate(pages: list[str], journal_title: str | None = None) -> tup
             if len(line.split()) <= AUTHOR_LINE_MAX_WORDS and seen <= AUTHOR_BLOCK_LINES and EMAIL.search(line):
                 stats["author_block_lines"] += 1
                 continue
-            if header is not None:
-                line, n = header.subn(" ", line)
+            n = 0
+            for pattern in (header, GENERIC_HEADER, GENERIC_HEADER_UPPER):
+                if pattern is not None:
+                    line, k = pattern.subn(" ", line)
+                    n += k
+            if n:
                 stats["journal_headers"] += n
-                if n and not re.search(r"\w", line):
+                if not re.search(r"\w", line):
                     continue
                 line = re.sub(r"[ \t]{2,}", " ", line).strip()
             line, n_mail = EMAIL.subn("<EMAIL>", line)

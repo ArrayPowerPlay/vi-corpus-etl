@@ -53,14 +53,30 @@ def test_chi_sua_khi_ket_qua_la_am_tiet_that():
     assert restore_u_in_text("tr-ờng", VOCAB)[0] == "trường"
 
 
-def test_chi_sua_khi_ca_bai_co_du_cho():
-    """Bài chỉ có 1-2 chỗ lẻ (gạch nối thật) không bị sửa; bài có từ 3 chỗ trở lên (font hỏng) được sửa ở mọi trang, kể cả trang chỉ có 1 chỗ."""
-    few = ["Cuộc sống ở tr-ờng học.", "Nội dung khác."]
-    assert restore_u_in_pages(few, VOCAB) == (few, 0)
+def test_dang_lien_chu_sua_luon_dang_cach_chi_sua_khi_bai_co_du_cho():
+    """Dạng liền chữ ("tr-ờng") sửa ngay cả khi cả bài chỉ có một chỗ; dạng có khoảng trắng ("t- liệu") chỉ sửa khi cả bài có từ 2 chỗ sửa được; thiếu tập âm tiết thì bỏ."""
+    glued = ["Cuộc sống ở tr-ờng học.", "Nội dung khác."]
+    assert restore_u_in_pages(glued, VOCAB) == (["Cuộc sống ở trường học.", "Nội dung khác."], 1)
+    one_spaced = ["Quan trọng là t- liệu gốc.", "Nội dung khác."]
+    assert restore_u_in_pages(one_spaced, VOCAB) == (one_spaced, 0)
+    two_spaced = ["Quan trọng là t- liệu gốc.", "Và c- dân sống ở đó."]
+    out, n = restore_u_in_pages(two_spaced, VOCAB)
+    assert n == 2 and out == ["Quan trọng là tư liệu gốc.", "Và cư dân sống ở đó."]
     many = ["Môi tr-ờng sống của con ng-ời.", "Điều này đ-ợc nêu rõ.", "Nh-ng tr-ờng hợp khác."]
     out, n = restore_u_in_pages(many, VOCAB | {"đ" + "ược"})
     assert n == 5 and out[0] == "Môi trường sống của con người." and out[2] == "Nhưng trường hợp khác."
     assert restore_u_in_pages(many, None) == (many, 0)  # thiếu tập âm tiết thì bỏ bước
+
+
+def test_khoi_phuc_cac_dang_con_sot_o_vjol_10k_v6():
+    """Các dạng còn sót ở vjol_10k_v6 (S-18): "t-ướng", "s-ở", "đ- ược", "nh- ở", "m- u", "ng-ời5", "ph- ương"; thống kê / hoá học ("t- Statistics", "n- butan", "k- số") giữ nguyên."""
+    vocab = VOCAB | {"tướng", "sở", "được", "như", "ở", "mưu", "phương", "xướng", "thủ", "sinh", "hoạt", "động", "thức"}
+    cases = {"Thủ t-ướng": "Thủ tướng", "bếp s-ở": "bếp sở", "từ đây đ- ược sát sinh": "từ đây được sát sinh", "tai nạn nh- ở Sesevo": "tai nạn như ở Sesevo",
+             "hoạt động m- u sinh": "hoạt động mưu sinh", "1.770 ng-ời5 thuộc": "1.770 người5 thuộc", "theo ph- ương thức": "theo phương thức", "khởi x-ướng": "khởi xướng"}
+    for src, want in cases.items():
+        assert restore_u_in_text(src, vocab) == (want, 1), (src, restore_u_in_text(src, vocab))
+    for keep in ("Hệ số chuẩn hóa t- Statistics Sig.", "n- butan với halogen", "k- số sóng và h- độ sâu", "a- Điabas, b- Aplit", "f'c- t (C40)", "1572/KH- DHQB"):
+        assert restore_u_in_text(keep, vocab) == (keep, 0), keep
 
 
 def test_clean_paper_pages_khoi_phuc_va_dem():
@@ -162,6 +178,18 @@ def test_ban_ghi_khong_gan_nam_1970(tmp_path):
 
 
 # ---------------------------------------------------------------------------------------------------------------- E: tiêu đề chen giữa câu
+
+
+def test_tieu_de_tieng_viet_chen_giua_cau_bi_cat():
+    """GENERIC_HEADER cắt tiêu đề "Tạp chí X số N - năm" ở mọi vị trí kể cả số trang theo sau; câu trích dẫn có dấu câu giữ nguyên (mẫu thật của audit v6)."""
+    from vi_corpus.vjol.clean import strip_boilerplate
+    pages, st = strip_boilerplate(["đề nghị lối Tạp chí Dân tộc học số 3 - 2004 39 của chính phủ Malaysia", "Tạp chí Dân tộc học - Số 2 - 1994 Chỉ ở đây là 3,30%",
+                                   "Tạp chí Dân tộc học - số 2 - 1997 VÀI VẤN ĐỀ CHÍNH SÁCH", "(Nguồn: Tạp chí Dân chủ và Pháp luật Kỳ 2 (Số 407), tháng 6/2024)",
+                                   "Xem Tạp chí Dân tộc học, số 3 (2005), tr. 12."])
+    assert pages[0] == "đề nghị lối của chính phủ Malaysia" and pages[1] == "Chỉ ở đây là 3,30%" and pages[2] == "VÀI VẤN ĐỀ CHÍNH SÁCH"
+    assert "Kỳ 2 (Số 407)" in pages[3] and "số 3 (2005)" in pages[4] and st["journal_headers"] == 3
+    pages, st = strip_boilerplate(["bộ. 28 TẠP CHÍ THÔNG TIN KHOA HỌC & CÔNG NGHỆ QUẢNG BÌNH - SỐ 5/2016 Thứ ba, Thực hiện", "Xem Tạp chí Nghiên cứu Tôn giáo, số 4/2000, tr. 5."])
+    assert pages[0] == "bộ. 28 Thứ ba, Thực hiện" and "số 4/2000" in pages[1] and st["journal_headers"] == 1
 
 
 def test_cat_tieu_de_hoc_duoc_o_moi_vi_tri():
