@@ -495,7 +495,7 @@ uv run python scripts/vjol/extract.py --data-root data --status && \
 uv run --group curator --group viz python scripts/run_pipeline.py --data-root data --mix vjol=10000 --total 10000 \
     --run-name vjol_10k_v6 --embed-device cuda --cluster-space umap10 --perplexity-model Qwen/Qwen3-0.6B && \
 uv run python scripts/vjol/audit_run.py --run-dir $V5 ; \
-uv run python scripts/vjol/audit_run.py --run-dir $V6 && \
+uv run python scripts/vjol/audit_run.py --run-dir $V6 ; \
 uv run python scripts/vjol/compare_runs.py --old $V5 --new $V6 | tee $V6/compare_v5_v6.txt && \
 uv run python scripts/vjol/groundtruth.py sample --run-dir $V6 --n 400 && \
 uv run python scripts/vjol/groundtruth.py clean-set --run-dir $V6 --n 300 && \
@@ -505,7 +505,7 @@ tar czf vjol_s18.tar.gz data/processed/ocr_bakeoff/syllables.json data/processed
     $V6/{manifest.json,report.html,04_quality.parquet,05_dedup.parquet,audit,groundtruth,compare_v5_v6.txt} /tmp/p1.png
 ```
 
-Dấu `;` sau `audit_run.py --run-dir $V5` cố ý: v5 có thể không còn `04_quality.parquet` hợp lệ thì lệnh đó báo lỗi mà không dừng chuỗi (lúc đó `compare_runs.py` sẽ báo thiếu audit của v5 và dừng; dùng số v5 ở J-32 để so).
+Dấu `;` sau hai lệnh `audit_run.py` là cố ý: `audit_run.py` thoát mã 1 khi còn nhóm tạp chí bị loại bất thường (không phải lỗi), và `&&` sẽ dừng cả chuỗi ở đó (lần chạy S-18 đầu bị đúng chuyện này, không ra `vjol_s18.tar.gz`). Với $V5: v5 có thể không còn `04_quality.parquet` hợp lệ thì lệnh đó báo lỗi mà không dừng chuỗi (lúc đó `compare_runs.py` sẽ báo thiếu audit của v5 và dừng; dùng số v5 ở J-32 để so).
 
 **Báo lại cho Claude**: hai dòng `date`, dòng `--status` (phải có `no_text_layer`, `blank_page`, số bài không có chữ), gói `vjol_s18.tar.gz` (CÙNG MỘT lần chạy: `report.html`, `manifest.json`, `04_quality.parquet`, `audit/`, `groundtruth/` đều của v6), và cho biết lệnh nào lỗi (nếu có). **Chủ dự án**: gán nhãn cột `label` của `$V6/groundtruth/labeling_sample.csv` (J-33 I; nửa `tune` chỉnh ngưỡng, nửa `holdout` đo độ chính xác thật).
 
