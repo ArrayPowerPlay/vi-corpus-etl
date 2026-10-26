@@ -27,6 +27,11 @@ A1-A3 thuộc nhóm dạng có khoảng trắng nên cũng cần MIN_DOC_HITS ch
 - tail là chữ o / ó / ố thay cho ơ / ớ: "nư óc" -> "nước", "lư ối" -> "lưới", "tư ong" -> "tương" (không áp cho "như", "sư", "ngư", "thư" vì "như ong", "sư ông", "ngư ông", "ung thư ống" là câu thật; không ghép tail có dấu khác như ồ / ô vì không biết dấu thật: "tư ông" là tương hay tướng);
 - ư lặp trước nguyên âm đôi ươ + ng: "hư ưởng" -> "hưởng" (không ghép "tư ứng", "như ứng", "tư ước": câu thật).
 KHÔNG ghép "phư ng", "tư ng", "trư c" ...: đó là chữ ơ / ợ / ứ bị mất (ph-ương, tư-ợng), ghép thành "phưng" là sai chữ; để lỗi lost_letters / quality xử lý.
+
+J-42 (5), P6 — chỉ sửa khi phép sửa xác định: ngoài điều kiện "mọi chữ ra là âm tiết thật", phép sửa còn phải KHÔNG có cách đọc khác. Khi phần sau là "ơ" KHÔNG dấu (ơng, ơc ...) thì dấu thanh của nó đã
+mất cùng chữ ư, và "M- ơng" đọc được cả "Mương" lẫn "Mường": nếu đổi dấu thanh của "ơ" thành ờ / ớ / ở / ỡ / ợ cho một âm tiết thật khác trong tập âm tiết thì KHÔNG sửa (để nguyên chữ hỏng, đoạn bị
+`lost_letters` loại hoặc bài đi OCR; sửa im lặng thành chữ sai nghĩa nguy hiểm hơn chữ hỏng thấy được, J-41 (4)). Các dạng có dấu thanh rõ ("tr-ờng", "h- ớng", "đ- ược") không bị ảnh hưởng. Số chỗ bỏ qua vì
+mơ hồ đếm vào `stats["ambiguous"]`.
 """
 
 import re
@@ -62,6 +67,8 @@ _SPLIT_DUP = re.compile(r"ư[ơờớởỡợ]ng")
 _SPLIT_O = re.compile(r"(?:[oó](?:ng|c|i)|ối)")  # ơ bị đọc thành o / ó / ố: ong, oi, óc, óng, ối ...; dấu thanh khác (ồ, ộ, ô ...) không dùng vì không biết dấu thật ("tư ông" có thể là tương hay tướng)
 _O_TO_HORN = {"o": "ơ", "ó": "ớ", "ố": "ớ"}
 _SPLIT_O_SKIP = frozenset({"như", "sư", "ngư", "thư"})  # "như ong", "sư ong", "ngư ông", "ung thư óc / ống" là câu thật
+_TONED_HORN = "ờớởỡợ"  # "ơ" đã mang dấu thanh: đổi "ơ" trần thành các chữ này cho ra các cách đọc khác (J-42 P6)
+AMBIGUOUS = object()  # giá trị trả về của các hàm _restore_*: phép sửa ra âm tiết thật nhưng có cách đọc khác, nên bỏ qua (khác None = không áp dụng quy tắc)
 MIN_DOC_HITS = 2  # dạng có khoảng trắng chỉ sửa khi cả bài có ít nhất ngần ấy chỗ sửa được (tránh sửa nhầm cách viết thật lẻ tẻ)
 
 
@@ -84,6 +91,17 @@ def _upper_u(tail: str) -> str:
     return "Ư" if letters and all(c.isupper() for c in letters) else "ư"
 
 
+def _guard(word: str, vocab: frozenset[str]) -> "str | object":
+    """
+    `word` nếu phép sửa xác định, AMBIGUOUS nếu không (J-42 P6): `word` có "ơ" không dấu mà đổi nó thành ờ / ớ / ở / ỡ / ợ cho một âm tiết thật khác trong `vocab` ("Mương" / "Mường").
+    """
+    low = unicodedata.normalize("NFC", word).lower()
+    for i, c in enumerate(low):
+        if c == "ơ" and any(low[:i] + t + low[i + 1:] in vocab for t in _TONED_HORN):
+            return AMBIGUOUS
+    return word
+
+
 def _valid(word: str, vocab: frozenset[str]) -> bool:
     """True nếu `word` (NFC, chữ thường) là âm tiết thật trong `vocab`."""
     return unicodedata.normalize("NFC", word).lower() in vocab
@@ -99,9 +117,9 @@ def _restore_glued(m: re.Match, vocab: frozenset[str]) -> str | None:
         return None
     fixed = lead + _upper_u(tail) + tail
     if _valid(fixed, vocab):
-        return fixed
+        return _guard(fixed, vocab)
     joined = lead + tail
-    return joined if tail[0].lower() in _HORN_O | _HORN_U and _valid(joined, vocab) else None
+    return _guard(joined, vocab) if tail[0].lower() in _HORN_O | _HORN_U and _valid(joined, vocab) else None
 
 
 def _restore_spaced(m: re.Match, vocab: frozenset[str]) -> str | None:
@@ -116,11 +134,11 @@ def _restore_spaced(m: re.Match, vocab: frozenset[str]) -> str | None:
     merged = lead + u + tail
     first = tail[0].lower()
     if first in _HORN_O and _valid(merged, vocab):
-        return merged
+        return _guard(merged, vocab)
     if first in _HORN_U and _valid(lead + tail, vocab):
-        return lead + tail
+        return _guard(lead + tail, vocab)
     if _valid(merged, vocab):
-        return merged
+        return _guard(merged, vocab)
     head = lead + u
     # phần sau một chữ ASCII ("t", "n") là ký hiệu, không phải âm tiết; đầu viết hoa chỉ giữ khoảng trắng khi phần sau có dấu ("T- liệu"), vì "C- section", "D- ong" là tiếng Anh / tên riêng
     ok = (len(tail) >= 2 or not tail.isascii()) and (lead == lead.lower() or (len(lead) > 1 and not tail.isascii())) and _valid(head, vocab) and _valid(tail, vocab)
@@ -140,7 +158,8 @@ def _restore_lone(m: re.Match, vocab: frozenset[str]) -> str | None:
     if low[0] in _HORN_U:
         return f" {tail}" if low in _LONE_U else None
     if tail == low and _LONE_O.fullmatch(low) and _valid("ư" + low, vocab):
-        return f" ư{tail}"
+        fixed = _guard("ư" + low, vocab)
+        return AMBIGUOUS if fixed is AMBIGUOUS else f" ư{tail}"
     return None
 
 
@@ -171,14 +190,14 @@ def _restore_split(m: re.Match, vocab: frozenset[str]) -> str | None:
         ok = stem.lower() in _MULTI or stem.lower() in _SINGLE
         return stem + tail if ok and _valid(stem + tail, vocab) else None
     if _SPLIT_HORN.fullmatch(tail):
-        return head + tail if _valid(head + tail, vocab) else None
+        return _guard(head + tail, vocab) if _valid(head + tail, vocab) else None
     if _SPLIT_O.fullmatch(tail) and low not in _SPLIT_O_SKIP:
         fixed = head + _O_TO_HORN[tail[0]] + tail[1:]
-        return fixed if _valid(fixed, vocab) else None
+        return _guard(fixed, vocab) if _valid(fixed, vocab) else None
     return None
 
 
-def restore_u_in_text(text: str, vocab: frozenset[str], spaced: bool = True) -> tuple[str, int]:
+def restore_u_in_text(text: str, vocab: frozenset[str], spaced: bool = True, stats: dict | None = None) -> tuple[str, int]:
     """
     Sửa mọi chỗ "-" thay "ư" trong một đoạn văn bản (không áp ngưỡng cả bài, xem restore_u_in_pages).
 
@@ -186,6 +205,7 @@ def restore_u_in_text(text: str, vocab: frozenset[str], spaced: bool = True) -> 
         text:   Văn bản (đã NFC hoặc chưa; kết quả đã NFC).
         vocab:  Tập âm tiết thật (chữ thường, NFC).
         spaced: False thì chỉ sửa dạng liền chữ ("tr-ờng") và ư bị tách rời ("xư a"), bỏ dạng có khoảng trắng ("t- liệu", "trung - ơng", "tối - u"). Dạng "nh- " luôn được sửa.
+        stats:  Có thì cộng số chỗ bỏ qua vì mơ hồ (AMBIGUOUS) vào stats["ambiguous"].
 
     Returns:
         (văn bản đã sửa, số chỗ đã sửa).
@@ -199,7 +219,9 @@ def restore_u_in_text(text: str, vocab: frozenset[str], spaced: bool = True) -> 
             """Thay một chỗ khớp."""
             nonlocal n
             fixed = restore(m, vocab)
-            if fixed is None:
+            if fixed is AMBIGUOUS and stats is not None:
+                stats["ambiguous"] = stats.get("ambiguous", 0) + 1
+            if fixed is None or fixed is AMBIGUOUS:
                 return m.group(0)
             n += 1
             return fixed
@@ -216,7 +238,7 @@ def restore_u_in_text(text: str, vocab: frozenset[str], spaced: bool = True) -> 
     return text, n
 
 
-def restore_u_in_pages(pages: list[str], vocab: frozenset[str] | None, min_hits: int = MIN_DOC_HITS) -> tuple[list[str], int]:
+def restore_u_in_pages(pages: list[str], vocab: frozenset[str] | None, min_hits: int = MIN_DOC_HITS, stats: dict | None = None) -> tuple[list[str], int]:
     """
     Khôi phục "ư" trong các trang của MỘT bài: dạng liền chữ ("ng-ời") sửa luôn; dạng có khoảng trắng ("t- liệu") chỉ sửa khi cả bài có ít nhất `min_hits` chỗ sửa được
     (tính cả dạng liền chữ), vì một chỗ lẻ có thể là cách viết thật.
@@ -225,15 +247,21 @@ def restore_u_in_pages(pages: list[str], vocab: frozenset[str] | None, min_hits:
         pages:    Text từng trang.
         vocab:    Tập âm tiết thật; None thì không làm gì (thiếu syllables.json).
         min_hits: Ngưỡng số chỗ sửa được của cả bài cho dạng có khoảng trắng.
+        stats:    Có thì ghi stats["ambiguous"] = số chỗ bỏ qua vì mơ hồ ở lượt sửa được dùng (J-42 P6).
 
     Returns:
         (các trang đã sửa, số chỗ đã sửa).
     """
     if not vocab:
         return pages, 0
-    glued = [restore_u_in_text(p, vocab, spaced=False) for p in pages]
-    full = [restore_u_in_text(p, vocab) for p in pages]
+    s_glued: dict = {}
+    s_full: dict = {}
+    glued = [restore_u_in_text(p, vocab, spaced=False, stats=s_glued) for p in pages]
+    full = [restore_u_in_text(p, vocab, stats=s_full) for p in pages]
     n_glued, n_full = sum(n for _, n in glued), sum(n for _, n in full)
+    used = s_full if n_full >= min_hits else s_glued
+    if stats is not None:
+        stats["ambiguous"] = used.get("ambiguous", 0)
     if n_full >= min_hits:
         return [t for t, _ in full], n_full
     return ([t for t, _ in glued], n_glued) if n_glued else (pages, 0)

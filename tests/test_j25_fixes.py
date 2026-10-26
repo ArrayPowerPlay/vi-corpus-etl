@@ -377,7 +377,7 @@ def test_audit_bao_loi_con_lot_tap_chi_bat_thuong_va_luat_don():
     rows += [_quality_row(1000 + i, vi_text(3, i), band="D", journal="econst", codes=["lost_diacritics"]) for i in range(30)]
     rows += [_quality_row(2000 + i, vi_text(3, i), band="A", journal="econst") for i in range(30)]
     res = A.audit_rows(rows, min_group=20)
-    assert res["error_counts"]["email"] == 1 and res["error_counts"]["journal_header"] == 1 and res["error_counts"]["hyphen_lost"] == 1
+    assert res["error_counts"]["email"] == 1 and res["error_counts"]["mid_header"] == 1 and res["error_counts"]["hyphen_lost"] == 1
     assert res["single_rule_drops"] == {"lost_diacritics": 30}
     assert [a["key"] for a in res["anomalies"] if a["level"] == "journal"] == ["econst"]
     assert res["samples"]["kept:email"][0]["doc_id"] == "vjol:0:0#c0"

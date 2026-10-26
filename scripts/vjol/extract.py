@@ -85,6 +85,8 @@ def main() -> int:
                    help="Tập âm tiết cho tín hiệu âm tiết lạ của bộ dò chữ hỏng (mặc định <data-root>/processed/ocr_bakeoff/syllables.json).")
     p.add_argument("--unaccented", type=Path, default=None,
                    help="Danh sách từ không dấu cho tín hiệu nodiac (mặc định <data-root>/processed/ocr_bakeoff/unaccented.json, sinh bằng scripts/build_unaccented.py; thiếu thì dùng danh sách tối thiểu).")
+    p.add_argument("--font-groups", type=Path, default=None,
+                   help="Danh sách nhóm font xấu (producer, creator) cho OCR cả bài (mặc định <data-root>/processed/vjol_font_canary/font_groups_bad.json, do scripts/vjol/font_canary.py ghi; thiếu thì không nhóm nào, J-42 (4)).")
     p.add_argument("--no-rotate", action="store_true",
                    help="Không xoay thử trang scan nghi bị xoay (J-24); mặc định xoay thử khi có tập âm tiết.")
     p.add_argument("--no-export", action="store_true", help="Không xuất Parquet ở cuối (dùng khi nhiều tiến trình chạy cùng lúc).")
@@ -138,7 +140,7 @@ def main() -> int:
     try:
         failed = run_extract(root, args.data_root, getter, ocr_enabled=not args.no_ocr, limit_files=args.limit_files,
                              retry_skipped=args.retry_skipped, sample_docs=args.sample_docs, seed=args.seed,
-                             syllables=args.syllables, unaccented_path=args.unaccented)
+                             syllables=args.syllables, unaccented_path=args.unaccented, font_groups_path=args.font_groups)
     except (ServerDown, EngineUnavailable) as exc:
         # exc_info: ghi cả chuỗi nguyên nhân (vd DependencyError của paddlex nằm sau RuntimeError), nếu không log chỉ còn dòng bọc ngoài
         log.error("%s. Dừng cả lượt (không loại trang âm thầm); sửa server / môi trường rồi chạy lại đúng lệnh cũ.", exc, exc_info=True)

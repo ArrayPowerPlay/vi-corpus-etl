@@ -22,7 +22,7 @@ Trước khi cắt, mỗi văn bản gốc được gắn doc_sha256 và doc_min
 theo văn bản, không theo đoạn (R-19). Stage này cũng đặt số đếm (char / word / token) cho mọi bản ghi.
 """
 
-import random
+import hashlib
 import re
 
 from vi_corpus.common.schema import text_sha256
@@ -31,8 +31,9 @@ from vi_corpus.pipeline.dedup import minhash_bytes
 from vi_corpus.pipeline.normalize import set_counts
 from vi_corpus.pipeline.tokens import TokenCounter
 
-CHUNK_VERSION = "4"  # 1 = cắt theo số từ; 2 = cắt theo token (D-10); 3 = giữ thụt lề dòng đầu đoạn văn (C-09);
-# 4 = đoạn văn quá dài gom mảnh tới mục tiêu, cắt cứng chia đều, đoạn đuôi ngắn mượn đoạn văn của đoạn trước
+CHUNK_VERSION = "5"  # 1 = cắt theo số từ; 2 = cắt theo token (D-10); 3 = giữ thụt lề dòng đầu đoạn văn (C-09);
+# 4 = đoạn văn quá dài gom mảnh tới mục tiêu, cắt cứng chia đều, đoạn đuôi ngắn mượn đoạn văn của đoạn trước;
+# 5 = lấy mẫu đoạn theo băm (seed, nguồn, parent_doc_id, chunk_index) thay cho random.sample, để sửa chữ trong một bài không làm đổi đoạn được chọn của bài khác (J-40 a)
 HEADING_MAX_WORDS = 15
 _HEADING = re.compile(r"^(?:chương|bài|mục|phần|chapter|part|section)\s+(?:\d+(?:\.\d+)*|[ivxlcdm]+)\b",
                       re.IGNORECASE)
@@ -117,6 +118,27 @@ def chunk_text(text: str, counter: TokenCounter, target: int, max_tokens: int, m
     return ["\n\n".join(p for p, _ in g) for g in groups]
 
 
+def chunk_rank(seed: int | str, source_key: str, parent_doc_id: str, chunk_index: int) -> str:
+    """
+    Khoá xếp hạng ổn định của một đoạn khi lấy mẫu (J-40 a): băm SHA-256 của (seed, nguồn, parent_doc_id, chunk_index).
+
+    Khoá chỉ phụ thuộc vào định danh của đoạn, không phụ thuộc vào văn bản hay số đoạn của bài khác; vì vậy sửa chữ trong một bài (đổi số đoạn của bài đó) không làm
+    đổi khoá, cũng không đổi việc chọn đoạn của bài khác. Lấy n đoạn có khoá nhỏ nhất thì mẫu của n nhỏ luôn nằm trong mẫu của n lớn hơn.
+    """
+    return hashlib.sha256(f"{seed}:{source_key}:{parent_doc_id}:{chunk_index}".encode()).hexdigest()
+
+
+def sample_chunks(pieces: list[dict], n: int, seed: int | str, source_key: str) -> list[dict]:
+    """
+    Lấy n đoạn có chunk_rank nhỏ nhất (J-40 a), trả về theo thứ tự doc_id. Bản ghi chưa cắt (không có parent_doc_id / chunk_index) dùng doc_id và 0.
+    """
+    def rank(piece: dict) -> str:
+        """Khoá xếp hạng của một đoạn."""
+        return chunk_rank(seed, source_key, piece.get("parent_doc_id") or piece["doc_id"], piece.get("chunk_index") or 0)
+
+    return sorted(sorted(pieces, key=rank)[:n], key=lambda r: r["doc_id"])
+
+
 def _split_doc(row: dict, texts: list[str]) -> list[dict]:
     """Các bản ghi đoạn của một văn bản (doc_id "<doc_id>#c<i>", parent_doc_id, chunk_index)."""
     return [{**row, "doc_id": f"{row['doc_id']}#c{i}", "text": text, "parent_doc_id": row["doc_id"], "chunk_index": i}
@@ -125,8 +147,8 @@ def _split_doc(row: dict, texts: list[str]) -> list[dict]:
 
 def chunk_rows(rows: list[dict], cfg: RunConfig, counter: TokenCounter) -> tuple[list[dict], dict]:
     """
-    Gắn vân tay văn bản gốc, cắt đoạn (xem docstring module), lấy mẫu nguồn chunked xuống cfg.mix[nguồn] đoạn (ngẫu nhiên
-    theo seed), rồi đếm char / word / token mọi bản ghi.
+    Gắn vân tay văn bản gốc, cắt đoạn (xem docstring module), lấy mẫu nguồn chunked xuống cfg.mix[nguồn] đoạn (theo băm ổn định
+    của seed và định danh đoạn, xem sample_chunks), rồi đếm char / word / token mọi bản ghi.
 
     Returns:
         (rows, thống kê theo nguồn: số văn bản, số văn bản bị cắt, số đoạn trước / sau khi lấy mẫu).
@@ -154,8 +176,7 @@ def chunk_rows(rows: list[dict], cfg: RunConfig, counter: TokenCounter) -> tuple
         st = {"docs": len(docs), "docs_split": split, "chunks_total": len(pieces)}
         n = cfg.mix.get(key)
         if prof.chunked and n is not None and n < len(pieces):
-            rng = random.Random(f"{cfg.seed}:{key}:chunk")
-            pieces = sorted(rng.sample(pieces, n), key=lambda r: r["doc_id"])
+            pieces = sample_chunks(pieces, n, cfg.seed, key)
         st["chunks_kept"] = len(pieces)
         stats[key] = st
         out.extend(pieces)

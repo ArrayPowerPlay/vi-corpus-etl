@@ -33,8 +33,10 @@ def test_chu_dau_viet_hoa_tach_khoang_trang():
 def test_dau_gach_noi_dung_mot_minh_la_am_tiet_u():
     """A2: "trung - ơng" -> "trung ương", "hương - ớc" -> "hương ước", "quy - ước" -> "quy ước"; dấu ngắt thật và công thức giữ nguyên."""
     for src, want in (("Ban chấp hành trung - ơng khóa", "Ban chấp hành trung ương khóa"), ("theo hương - ớc làng", "theo hương ước làng"), ("xây dựng quy - ước chung", "xây dựng quy ước chung"),
-                      ("H- ơng - ớc làng", "Hương ước làng"), ("thủ tục -ơng", "thủ tục ương")):
-        assert restore_u_in_text(src, VOCAB) == (want, src.count("-") if src.startswith("H-") else 1), src
+                      ("thủ tục -ơng", "thủ tục ương")):
+        assert restore_u_in_text(src, VOCAB) == (want, 1), src
+    # J-42 P6: "H- ơng" có cả "Hương" lẫn "Hưởng" trong tập âm tiết nên không sửa; " - ớc" vẫn sửa vì "ước" có dấu thanh rõ
+    assert restore_u_in_text("H- ơng - ớc làng", VOCAB) == ("H- ơng ước làng", 1)
     for keep in ("td σ - ứng suất tương đương", "Hà Nội - ở đây", "Trung - ơng-quận-huyện-h-ơng"):
         assert restore_u_in_text(keep, VOCAB)[1] == 0, keep
 

@@ -34,6 +34,8 @@ from collections import Counter
 from functools import lru_cache
 from pathlib import Path
 
+from vi_corpus.common.defects import (GIBBERISH_MIN_TOKENS, dropped_letters_runs, gibberish_ratio, joined_words_hits,
+                                      tone_shift_hits)
 from vi_corpus.common.garbled import (DEFAULT_THRESHOLDS, GARBLED_HARD_RATIO, GARBLED_MIN_WORDS, garbled_ratio, hyphen_lost,
                                       latin_tokens, load_unaccented, load_vocab, reversed_gain, unaccented_ratio)
 from vi_corpus.common.references import reference_share
@@ -41,12 +43,12 @@ from vi_corpus.pipeline.config import RunConfig, SourceProfile
 from vi_corpus.pipeline.language import UNDETERMINED, is_mixed, vi_diacritic_ratio
 from vi_corpus.pipeline.spans import math_share, strip_math_code
 
-QUALITY_VERSION = "7"  # 2 = thêm low_lang_score, mixed_language, low_diacritic; 3 = dup_line bỏ dòng không có chữ
+QUALITY_VERSION = "8"  # 2 = thêm low_lang_score, mixed_language, low_diacritic; 3 = dup_line bỏ dòng không có chữ
 # cái (F-01), số đo hình dạng trên văn xuôi, miễn cho văn bản toàn công thức / code (F-03), lang_unknown (F-07);
 # 4 = thêm số đo garbled và mã cứng garbled_font (J-10); 5 = private_use_chars, math_font_junk, lost_diacritics, reversed_text,
 # odd_words, reference_list (J-22, J-23); 6 = J-25: lost_letters (font mất ư / ơ), reference_list nhận theo mẫu đầu dòng, từ lạ đếm theo tạp chí,
 # perplexity (high_perplexity), danh sách từ không dấu sinh từ dữ liệu; 7 = J-28: lost_diacritics bỏ đường dẫn / văn bản tiếng Anh và tính mỗi từ tối đa 3 lần,
-# lost_letters không khớp "C- section"
+# lost_letters không khớp "C- section"; 8 = J-42 (1c), (5): thêm bốn số đo gibberish / tone_shift / dropped_letters / joined_words (mã loại cứng chỉ bật khi đặt ngưỡng ở HARD_DETECTOR_THRESHOLDS)
 MIN_VI_DIACRITIC = 0.05  # tiếng Việt có dấu bình thường ~0,2-0,3 chữ có dấu / chữ cái
 # F-03, ngưỡng khởi điểm chưa đo: văn xuôi < MATH_PROSE_WORDS từ và math_share >= MATH_SHARE_MIN thì miễn MATH_EXEMPT
 MATH_PROSE_WORDS = 20
@@ -73,6 +75,10 @@ ODD_MIN_JOURNALS_RUN = 10  # lần chạy có ít tạp chí hơn ngần ấy th
 ODD_SOFT = 0.08  # tỷ lệ từ lạ vừa phải; kèm perplexity cao (PPL_HIGH) thì thành odd_words (J-25 D3)
 PPL_HIGH = 120.0  # perplexity (Qwen3-0.6B, 512 token đầu) từ mức này là cao; điểm khởi đầu chưa đo, chỉnh bằng nửa chỉnh của bộ đáp án (J-25 Bước 0)
 HYPHEN_HARD_COUNT = 3  # từ ngần này chỗ font mất ư / ơ thành "-" trong một đoạn thì band D (lost_letters, J-25 B); J-37 D1: hạ 5 -> 3 vì sau hyphen_fix 323 đoạn clean của nhãn chuẩn cao nhất 2 chỗ (0 cờ nhầm), còn đoạn hyphen_font 1 đoạn đạt 3
+# J-42 (5): mã loại cứng cho bốn bộ dò mới (vi_corpus.common.defects). Khoá = tên số đo trong quality_metrics, giá trị = ngưỡng (đoạn có số đo >= ngưỡng thì mang mã cùng tên và bị band D);
+# None = CHỈ ĐO, không loại. Chỉ đổi sang số khi `scripts/vjol/groundtruth.py evaluate` báo precision >= 0,9 (DETECTOR_GATE_PRECISION) của bộ dò đó trên nhãn chuẩn; bộ dò precision thấp để mãi là None.
+HARD_DETECTOR_THRESHOLDS: dict[str, float | None] = {"gibberish": None, "tone_shift": None, "dropped_letters": None, "joined_words": None}
+DETECTOR_GATE_PRECISION = 0.9
 
 _PUA = re.compile("[\ue000-\uf8ff]")
 _JUNK_SCRIPT = re.compile("[\u0600-\u06ff\u0900-\u0eff]")
@@ -105,7 +111,7 @@ def compute_metrics(text: str, vocab: frozenset[str] | None = None, unaccented: 
     từ không dấu thông dụng, 0 nếu dưới UNACCENTED_MIN_WORDS từ Latinh), reversed_gain (độ lợi âm tiết hợp lệ khi viết ngược từ, 0 nếu
     không có `vocab` hoặc dưới REVERSED_MIN_WORDS từ hoặc bản viết ngược dưới REVERSED_MIN_REV), ref_line (tỷ lệ dòng là mục tài liệu tham khảo,
     0 nếu dưới REF_MIN_LINES dòng), odd_word (luôn 0 ở đây; annotate_odd_words điền sau), perplexity (luôn 0 ở đây; annotate_perplexity điền sau), hyphen_lost (số chỗ font mất
-    ư / ơ thành dấu gạch nối, J-25 B). `unaccented` là danh sách từ không dấu của lost_diacritics (None = danh sách tối thiểu).
+    ư / ơ thành dấu gạch nối, J-25 B). J-42: gibberish (tỷ lệ từ rác, 0 nếu dưới GIBBERISH_MIN_TOKENS từ), dropped_letters (số chuỗi chữ rơi mất), joined_words và tone_shift (số từ dính liền / lệch dấu; 0 nếu thiếu `vocab`). `unaccented` là danh sách từ không dấu của lost_diacritics (None = danh sách tối thiểu).
     """
     words = text.split()
     prose = strip_math_code(text)
@@ -122,6 +128,7 @@ def compute_metrics(text: str, vocab: frozenset[str] | None = None, unaccented: 
     unaccented_rate, n_latin = unaccented_ratio(text, unaccented)
     _, _, n_hyphen = hyphen_lost(text)
     gain, rev_known, n_rev = reversed_gain(text, vocab) if vocab is not None else (0.0, 0.0, 0)
+    gib, gib_tokens = gibberish_ratio(text)
     return {
         "words": len(words),
         "prose_words": len(pwords),
@@ -151,6 +158,10 @@ def compute_metrics(text: str, vocab: frozenset[str] | None = None, unaccented: 
         "ref_line": reference_share(lines) if len(lines) >= REF_MIN_LINES else 0.0,
         "odd_word": 0.0,
         "perplexity": 0.0,
+        "gibberish": gib if gib_tokens >= GIBBERISH_MIN_TOKENS else 0.0,
+        "dropped_letters": dropped_letters_runs(text),
+        "joined_words": joined_words_hits(text, vocab) if vocab is not None else 0,
+        "tone_shift": tone_shift_hits(text, vocab) if vocab is not None else 0,
     }
 
 
@@ -199,6 +210,9 @@ def score_metrics(m: dict, lang: str | None, profile: SourceProfile, lang_score:
         reasons.append("reversed_text")
     if m.get("hyphen_lost", 0) >= HYPHEN_HARD_COUNT:
         reasons.append("lost_letters")
+    for name, limit in HARD_DETECTOR_THRESHOLDS.items():  # J-42 (5): bộ dò đã qua cổng precision
+        if limit is not None and m.get(name, 0) >= limit:
+            reasons.append(name)
     if profile.odd_words and (m.get("odd_word", 0.0) >= ODD_HARD
                               or (m.get("odd_word", 0.0) >= ODD_SOFT and m.get("perplexity", 0.0) >= PPL_HIGH)):
         reasons.append("odd_words")
@@ -241,7 +255,8 @@ def score_metrics(m: dict, lang: str | None, profile: SourceProfile, lang_score:
 
 HARD_REASONS = frozenset({"empty", "too_short", "too_long", "lang_not_allowed", "low_alpha", "replacement_chars",
                           "repeated_ngrams", "duplicate_lines", "garbled_font", "private_use_chars", "math_font_junk",
-                          "lost_diacritics", "reversed_text", "odd_words", "lost_letters"})
+                          "lost_diacritics", "reversed_text", "odd_words", "lost_letters", "gibberish", "tone_shift",
+                          "dropped_letters", "joined_words"})
 
 
 def band_of(score: float) -> str:

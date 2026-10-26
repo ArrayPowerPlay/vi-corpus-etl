@@ -27,7 +27,7 @@ import random
 import re
 import time
 from collections import Counter
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from functools import partial
 from pathlib import Path
 
@@ -40,6 +40,7 @@ from vi_corpus.common.parsers import PARSER_VERSION, detect_format
 from vi_corpus.common.pdf_text import extract_pdf
 from vi_corpus.common.state import read_json
 from vi_corpus.ocr_bakeoff.cascade import EngineUnavailable, ServerDown
+from vi_corpus.vjol.reocr import FONT_GROUPS_REL, font_groups_tag, load_font_groups, reocr_reason
 
 logger = logging.getLogger("vi_corpus")
 
@@ -52,33 +53,36 @@ OCR_ALL_PRODUCERS = (("ABBYY FineReader 11", "ScanGate"),)
 # trường extract_version); 2 = J-10: trang lỗi font cũng đi OCR; 3 = J-23: thêm tín hiệu nodiac (mất dấu tiếng Việt), J-24: xoay thử trang scan nghi bị xoay. Không dùng PARSER_VERSION vì nó dùng chung với giáo trình.
 # 4 = J-25: tín hiệu hyphen (font mất ư / ơ), danh sách từ không dấu sinh từ kho chữ sạch (bỏ "doanh", "cung"), bộ nhớ đệm OCR.
 # 5 = J-33 B, C: trang không có lớp chữ và không có ảnh nhúng được vẽ ra thử (có nội dung thì OCR, trắng thì reason "blank_page"), câu "There is no text in the image" của VLM bị lọc.
-EXTRACT_VERSION = "5"
+# 6 = J-42 (3), (4): bài có lớp chữ lệch dấu / rơi chữ / dính liền ở đủ nhiều trang (reason "defect_doc") và bài thuộc nhóm font xấu của phép thử font_canary (reason "font_group_bad") đi OCR cả bài.
+EXTRACT_VERSION = "6"
 VOCAB_TAG = "+vocab"  # hậu tố extract_version khi bộ dò có tín hiệu âm tiết lạ (J-16)
+FONT_TAG = "+fg"  # hậu tố (kèm băm danh sách) khi có file nhóm font xấu (J-42 (4)): đổi danh sách thì checkpoint cũ bị làm lại
 UNACC_TAG = "+unacc"  # hậu tố (kèm băm nội dung) khi bộ dò dùng danh sách từ không dấu sinh từ dữ liệu thay cho danh sách tối thiểu (J-25 A)
 CLAIM_DIR = "state/vjol_extract/claims"
 SYLLABLES_REL = "processed/ocr_bakeoff/syllables.json"  # tập âm tiết cho tín hiệu "unknown" của bộ dò chữ hỏng (J-16)
 UNACCENTED_REL = "processed/ocr_bakeoff/unaccented.json"  # danh sách từ không dấu cho tín hiệu "nodiac" (J-25 A, scripts/build_unaccented.py)
-_VERSION_RE = re.compile(rf"^{re.escape(EXTRACT_VERSION)}(?:{re.escape(UNACC_TAG)}\w+)?(?:{re.escape(VOCAB_TAG)})?$")
+_VERSION_RE = re.compile(rf"^{re.escape(EXTRACT_VERSION)}(?:{re.escape(UNACC_TAG)}\w+)?(?:{re.escape(FONT_TAG)}\w+)?(?:{re.escape(VOCAB_TAG)})?$")
 YEAR_DIR = re.compile(r"^\d{4}$")
 PDF_STEM = re.compile(r"^(\d+)_(\d+)$")  # <article_id>_<galley_id>
 SKIP_DIRS = frozenset({"metadata"})  # thư mục không chứa PDF bài báo
 
 
-def version_for(vocab, unaccented=None) -> str:
+def version_for(vocab, unaccented=None, font_groups=()) -> str:
     """
     extract_version ghi vào checkpoint: EXTRACT_VERSION, thêm "+unacc<băm>" nếu bộ dò dùng danh sách từ không dấu sinh từ dữ liệu (đổi danh sách thì
-    băm đổi và checkpoint cũ bị làm lại), rồi "+vocab" nếu bộ dò có tín hiệu âm tiết lạ (J-16).
+    băm đổi và checkpoint cũ bị làm lại), "+fg<băm>" nếu có danh sách nhóm font xấu (J-42 (4)), rồi "+vocab" nếu bộ dò có tín hiệu âm tiết lạ (J-16).
     """
     tag = unaccented_tag(unaccented)
-    return EXTRACT_VERSION + (f"{UNACC_TAG}{tag}" if tag else "") + (VOCAB_TAG if vocab is not None else "")
+    fg = font_groups_tag(font_groups)
+    return EXTRACT_VERSION + (f"{UNACC_TAG}{tag}" if tag else "") + (f"{FONT_TAG}{fg}" if fg else "") + (VOCAB_TAG if vocab is not None else "")
 
 
-def accepted_versions(vocab, unaccented=None) -> frozenset[str]:
+def accepted_versions(vocab, unaccented=None, font_groups=()) -> frozenset[str]:
     """
     Các extract_version mà lần chạy này coi là đã xong: có tập âm tiết thì chỉ "+vocab" (checkpoint dò thiếu tín hiệu bị làm lại); không có
-    thì cả hai (không làm lại checkpoint đã dò đủ chỉ vì lần này thiếu file). Danh sách từ không dấu thì phải khớp đúng (kể cả băm).
+    thì cả hai (không làm lại checkpoint đã dò đủ chỉ vì lần này thiếu file). Danh sách từ không dấu và danh sách nhóm font xấu thì phải khớp đúng (kể cả băm).
     """
-    return frozenset({version_for(vocab, unaccented)} | ({version_for(frozenset(), unaccented)} if vocab is None else set()))
+    return frozenset({version_for(vocab, unaccented, font_groups)} | ({version_for(frozenset(), unaccented, font_groups)} if vocab is None else set()))
 
 
 def version_is_current(version: str | None) -> bool:
@@ -168,7 +172,7 @@ def path_meta(path: Path) -> dict:
 
 def extract_file(path: Path, get_ocr: Callable[[], object | None], vocab: frozenset[str] | None = None,
                  th: Thresholds = DEFAULT_THRESHOLDS, unaccented: frozenset[str] | None = None,
-                 cache_root: Path | None = None) -> dict:
+                 cache_root: Path | None = None, font_groups: Sequence[tuple[str, str]] = ()) -> dict:
     """
     Trích text một PDF VJOL; không ném lỗi của file.
 
@@ -177,6 +181,10 @@ def extract_file(path: Path, get_ocr: Callable[[], object | None], vocab: frozen
         th:    Ngưỡng của bộ dò chữ hỏng.
         unaccented: Danh sách từ không dấu cho tín hiệu "nodiac" (None = danh sách tối thiểu trong vi_corpus.common.garbled).
         cache_root: Thư mục gốc dữ liệu để đặt bộ nhớ đệm OCR (J-25 Bước 2); None hoặc `get_ocr` không có `signature()` thì không dùng cache.
+        font_groups: Các cặp (producer, creator) của nhóm font xấu (J-42 (4)): bài thuộc nhóm thì cả bài đi OCR (reason font_group_bad).
+
+    Bài có lớp chữ lệch dấu / rơi chữ / dính liền ở đủ nhiều trang (vi_corpus.vjol.reocr.reocr_reason, J-42 (3)) cũng đi OCR cả bài (reason defect_doc); `hyphen_fix` chỉ còn việc cho bài KHÔNG bị chuyển
+    sang OCR vì nó chạy ở bước làm sạch bản ghi, không ở đây.
 
     Returns:
         {"format", "pages", "error", "skipped", "parser_version", "extract_version", "seconds"}: không phải PDF thì skipped="unsupported_format";
@@ -188,7 +196,7 @@ def extract_file(path: Path, get_ocr: Callable[[], object | None], vocab: frozen
     t0 = time.time()
     fmt = detect_format(path)
     out = {"format": fmt, "pages": [], "error": None, "skipped": None, "parser_version": PARSER_VERSION,
-           "extract_version": version_for(vocab, unaccented)}
+           "extract_version": version_for(vocab, unaccented, font_groups)}
     if fmt != "pdf":
         out["skipped"] = "unsupported_format"
     else:
@@ -196,7 +204,8 @@ def extract_file(path: Path, get_ocr: Callable[[], object | None], vocab: frozen
             signature = getattr(get_ocr, "signature", None)
             cache = OcrCache.for_pdf(cache_root, file_sha256(path), signature()) if cache_root is not None and callable(signature) else None
             out["pages"] = extract_pdf(path, get_ocr, detect_garbled=True, garbled_vocab=vocab, garbled_th=th, garbled_unaccented=unaccented,
-                                       ocr_cache=cache, ocr_all_producers=OCR_ALL_PRODUCERS, rescue_empty=True)
+                                       ocr_cache=cache, ocr_all_producers=OCR_ALL_PRODUCERS, rescue_empty=True,
+                                       ocr_all_groups=font_groups, ocr_all_if=partial(reocr_reason, vocab=vocab))
         except (ServerDown, EngineUnavailable):
             raise
         except Exception as exc:  # noqa: BLE001 — một PDF lỗi không được dừng cả lô
@@ -208,7 +217,7 @@ def extract_file(path: Path, get_ocr: Callable[[], object | None], vocab: frozen
 def run_extract(root: Path, data_root: Path, get_ocr: Callable[[], object | None], ocr_enabled: bool = True,
                 limit_files: int | None = None, retry_skipped: bool = False, sample_docs: int | None = None,
                 seed: int = 0, syllables: Path | None = None, th: Thresholds = DEFAULT_THRESHOLDS,
-                unaccented_path: Path | None = None) -> int:
+                unaccented_path: Path | None = None, font_groups_path: Path | None = None) -> int:
     """
     Chọn PDF (select_files) rồi trích text mọi file chưa làm (xem vi_corpus.common.batch_extract.run_batch).
 
@@ -217,6 +226,7 @@ def run_extract(root: Path, data_root: Path, get_ocr: Callable[[], object | None
     `syllables`: file tập âm tiết (mặc định <data_root>/processed/ocr_bakeoff/syllables.json). Thiếu file thì bộ dò chữ hỏng bỏ tín hiệu
     "unknown" (ghi cảnh báo; checkpoint ghi extract_version không có +vocab, report() đếm các checkpoint đó và lần chạy sau có file sẽ làm lại chúng).
     `unaccented_path`: file danh sách từ không dấu (mặc định <data_root>/processed/ocr_bakeoff/unaccented.json); thiếu thì dùng danh sách tối thiểu.
+    `font_groups_path`: file nhóm font xấu (mặc định <data_root>/processed/vjol_font_canary/font_groups_bad.json, do scripts/vjol/font_canary.py ghi); thiếu thì không có nhóm nào (J-42 (4)).
 
     Returns:
         Số PDF bị lỗi trong lần chạy này.
@@ -232,12 +242,15 @@ def run_extract(root: Path, data_root: Path, get_ocr: Callable[[], object | None
     if unaccented is None:
         logger.warning("Không thấy danh sách từ không dấu %s: dùng danh sách tối thiểu (chạy scripts/build_unaccented.py để sinh từ dữ liệu, J-25 A)",
                        unaccented_path or data_root / UNACCENTED_REL)
+    font_groups = load_font_groups(font_groups_path or data_root / FONT_GROUPS_REL)
+    if font_groups:
+        logger.info("VJOL: %d nhóm font xấu (producer, creator) sẽ OCR cả bài", len(font_groups))
     files = select_files(root, sample_docs, seed, limit_files)
     logger.info("VJOL: %d PDF được chọn (sample_docs=%s, seed=%s)", len(files), sample_docs, seed)
-    return run_batch(root, data_root, TEXT_DIR, partial(extract_file, vocab=vocab, th=th, unaccented=unaccented, cache_root=data_root),
+    return run_batch(root, data_root, TEXT_DIR, partial(extract_file, vocab=vocab, th=th, unaccented=unaccented, cache_root=data_root, font_groups=font_groups),
                      path_meta, get_ocr, ocr_enabled=ocr_enabled,
                      desc="Trích text VJOL", retry_skipped=retry_skipped, files=files, claim_dir=CLAIM_DIR,
-                     extract_versions=accepted_versions(vocab, unaccented))
+                     extract_versions=accepted_versions(vocab, unaccented, font_groups))
 
 
 def report(root: Path | None, data_root: Path) -> dict:

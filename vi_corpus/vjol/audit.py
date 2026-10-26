@@ -9,6 +9,11 @@ Công cụ đo cho pipeline VJOL (J-25 Bước 0, chạy CPU, đọc kết quả
 - J-33: journal_balance (tỷ lệ bị loại theo từng tạp chí và trung bình theo tạp chí, vì một tạp chí có thể chiếm hơn 1/4 mẫu), year_checks (đoạn thiếu năm, năm mặc định 1970, năm nào chỉ có ở bài không có
   metadata) và font_misread (chữ có dấu bị đọc thành chữ có dấu khác: "NGHIấN", "nghiờn", "nhõn", "Khỏnh"; cần tập âm tiết) để quyết định có cần sửa họ lỗi này không (J-33 H).
 - J-37 D: hai số đo lỗi còn lọt mới: header_start (tiêu đề tạp chí trong 200 ký tự đầu của đoạn) và u_split ("ư" bị tách rời: "xư a", "nư óc"); bộ dò running_header của evaluate_labels = header_start.
+- J-42 (1c), P4: bỏ số đo `journal_header` (đếm nhầm câu trích dẫn: 4 / 5 mẫu của audit v7 là trích dẫn hợp lệ), thay bằng `header_start` + `mid_header` (tiêu đề giữa đoạn, không đếm trích dẫn) và thêm
+  bốn số đo từ vi_corpus.common.defects: `gibberish`, `tone_shift`, `dropped_letters`, `joined_words`. `evaluate_labels` báo precision / recall từng bộ dò (gộp hai nửa, kèm cờ qua cổng precision >= 0,9
+  của quality.HARD_DETECTOR_THRESHOLDS) và tách nhãn `other` thành nhãn con bằng từ khoá trong cột `note` (refine_label).
+- J-42 (7), P3: mẫu thi cuối (make_final_sample: >= 600 đoạn, hạt giống mới, 100% ngẫu nhiên, loại bài đã nằm trong mẫu gán nhãn cũ), báo cáo theo ngân sách lỗi với khoảng tin cậy Wilson (final_report) và mẫu
+  50 đoạn để chủ dự án xem tay (make_review_sample). Chỉ đo MỘT lần sau khi sửa xong; chỉnh theo nó thì phải sinh mẫu mới khác.
 - Tập chữ đúng (make_clean_set, check_clean_set): đoạn kinh tế / luật / y học có dấu đầy đủ; bộ dò nào gắn cờ lên tập này là lỗi (tiêu chí nghiệm thu "0 cờ").
 """
 
@@ -20,21 +25,23 @@ import re
 import statistics
 import unicodedata
 from collections import Counter, defaultdict
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from pathlib import Path
 
-from vi_corpus.common.garbled import _HYPHEN_LOST, DEFAULT_THRESHOLDS, hyphen_lost, latin_tokens, load_vocab, page_signals
+from vi_corpus.common import defects as Df
+from vi_corpus.common.garbled import _HYPHEN_LOST, DEFAULT_THRESHOLDS, hyphen_lost, load_vocab, page_signals
 from vi_corpus.common.state import write_json_atomic
 from vi_corpus.pipeline import quality as Q
 from vi_corpus.pipeline.config import PROFILES
 from vi_corpus.pipeline.io import read_rows
-from vi_corpus.vjol.clean import _BOILER, BOILER_MAX_WORDS, EMAIL, find_phones, heading_key, is_ref_heading
+from vi_corpus.vjol.clean import _BOILER, BOILER_MAX_WORDS, EMAIL, find_journal_headers, find_phones, heading_key, is_ref_heading
 
 OUT_SUBDIR = "audit"
 SUSPECT_RULES = (("odd_word", 0.08), ("unaccented", 0.01), ("reversed_gain", 0.15), ("pua_chars", 1), ("junk_script_chars", 1), ("hyphen_lost", 1))
 KEPT_BANDS = ("A", "B", "C")
-LABELS = ("clean", "lost_diacritics", "hyphen_font", "font_misread", "old_ocr", "reference", "running_header", "other")
-_JOURNAL_HEADER = re.compile(r"Tạp chí[^\n]{3,70}?\bsố\s*\d+", re.IGNORECASE)
+# Nhãn con của `other` (J-42 (1d)) đứng sau nhãn gốc; nhãn "other" cũ vẫn hợp lệ, evaluate_labels đổi nó thành nhãn con theo cột `note` (refine_label).
+SUB_LABELS = ("font_shift", "dropped_letters", "joined_words", "formula", "chart_label", "layout", "garbage")
+LABELS = ("clean", "lost_diacritics", "hyphen_font", "font_misread", "old_ocr", "reference", "running_header", "other") + SUB_LABELS
 # J-37 D2: tiêu đề tạp chí còn dính ở ĐẦU đoạn (200 ký tự đầu): "Tạp chí ... Số N", "ISSN dddd-dddX", "Số N - năm", "Vol. N, No. M".
 HEADER_START_CHARS = 200
 _HEADER_START = re.compile(r"Tạp chí\b[^\n]{3,90}?\b(?:số|tập)\s*\d+|ISSN\s*\d{4}\s*-\s*\d{3}[\dXx]|(?<!\w)Số\s*\d+\s*(?:\(\d+\))?\s*[-–]\s*(?:19|20)\d{2}|Vol\.\s*\d+,\s*No\.\s*\d+", re.IGNORECASE)
@@ -43,7 +50,7 @@ _U_SPLIT = re.compile(r"(?<![\w-])[^\W\d_]*ư (?:a|u|[ơờớởỡợ](?:ng|c|
 CLEAN_KEYWORDS = ("kinh tế", "doanh nghiệp", "ngân hàng", "tài chính", "pháp luật", "điều luật", "luật", "bệnh nhân", "điều trị", "lâm sàng", "thuế")
 HARD_CODES = Q.HARD_REASONS | {"garbled_font"}
 # Họ lỗi đọc font (J-25 (3), J-33 H): chữ có dấu bị thay bằng chữ có dấu khác. Khoá = ký tự sai, giá trị = ký tự đúng ("NGHIấN" -> "NGHIÊN", "nghiờn" -> "nghiên", "nhõn" -> "nhân", "Khỏnh" -> "Khánh").
-MISREAD_MAP = {"ấ": "ê", "ờ": "ê", "õ": "â", "ỏ": "á"}
+MISREAD_MAP = Df.TONE_SHIFT_MAP
 MISREAD_MIN_HITS = 2  # đoạn có ít nhất ngần ấy từ sửa được bằng MISREAD_MAP mới tính là đoạn lỗi (một tên riêng lẻ tẻ không tính)
 MISREAD_REPORT_RATE = 0.005  # J-33 H: tỷ lệ đoạn giữ lại vượt mức này thì nên thêm tín hiệu / bản đồ sửa
 
@@ -78,18 +85,25 @@ def misread_hits(text: str, vocab: frozenset[str]) -> int:
     """
     Số từ trong `text` KHÔNG thuộc tập âm tiết `vocab` nhưng thành âm tiết thật khi đổi MỘT ký tự theo MISREAD_MAP (họ lỗi đọc font ê -> ấ / ờ, â -> õ, á -> ỏ; J-33 H).
     """
-    hits = 0
-    for tok in latin_tokens(text):
-        low = tok.lower()
-        if low in vocab:
-            continue
-        hits += any(c in MISREAD_MAP and low[:i] + MISREAD_MAP[c] + low[i + 1:] in vocab for i, c in enumerate(low))
-    return hits
+    return Df.tone_shift_hits(text, vocab, MISREAD_MAP)
 
 
 def _lines(text: str) -> list[str]:
     """Các dòng không rỗng của văn bản."""
     return [ln.strip() for ln in text.splitlines() if ln.strip()]
+
+
+def _gibberish(row: dict, m: dict) -> bool:
+    """Đoạn rác (J-42 P4): số đo `gibberish` của quality_metrics nếu có, không thì tính lại từ text; ngưỡng Df.GIBBERISH_MIN_RATIO."""
+    if "gibberish" in m:
+        return m["gibberish"] >= Df.GIBBERISH_MIN_RATIO
+    ratio, n = Df.gibberish_ratio(row["text"])
+    return n >= Df.GIBBERISH_MIN_TOKENS and ratio >= Df.GIBBERISH_MIN_RATIO
+
+
+def _dropped(row: dict, m: dict) -> bool:
+    """Đoạn có chữ rơi mất (J-42 P4): số đo `dropped_letters` của quality_metrics nếu có, không thì tính lại từ text."""
+    return (m["dropped_letters"] if "dropped_letters" in m else Df.dropped_letters_runs(row["text"])) >= Df.DROPPED_MIN_RUNS
 
 
 ERROR_CHECKS: dict[str, Callable[[dict, dict], bool]] = {
@@ -102,11 +116,13 @@ ERROR_CHECKS: dict[str, Callable[[dict, dict], bool]] = {
     "junk_script": lambda r, m: m.get("junk_script_chars", 0) >= 1,
     "reference_label": lambda r, m: "reference_list" in (r.get("reason_codes") or []),
     "reference_heading": lambda r, m: any(is_ref_heading(heading_key(ln)) for ln in _lines(r["text"])),
-    "journal_header": lambda r, m: bool(_JOURNAL_HEADER.search(r["text"])),
+    "mid_header": lambda r, m: bool(find_journal_headers(r["text"])),
     "header_start": lambda r, m: bool(_HEADER_START.search(r["text"][:HEADER_START_CHARS])),
     "u_split": lambda r, m: bool(_U_SPLIT.search(unicodedata.normalize("NFC", r["text"]))),
     "received_line": lambda r, m: any(len(ln.split()) <= BOILER_MAX_WORDS and _BOILER.match(ln) for ln in _lines(r["text"])),
     "high_perplexity": lambda r, m: m.get("perplexity", 0.0) >= Q.PPL_HIGH,
+    "gibberish": lambda r, m: _gibberish(r, m),
+    "dropped_letters": lambda r, m: _dropped(r, m),
 }
 
 
@@ -119,13 +135,15 @@ def _locate_phone(text: str) -> tuple[int, int] | None:
 
 # Hàm định vị chỗ lỗi cho mẫu của audit (J-28): trả về (đầu, cuối) hoặc None. Lỗi không có ở đây thì mẫu lấy đầu đoạn.
 HIT_LOCATORS: dict[str, Callable[[str], tuple[int, int] | None]] = {
-    "journal_header": lambda t: (m.start(), m.end()) if (m := _JOURNAL_HEADER.search(t)) else None,
+    "mid_header": lambda t: (spans[0] if (spans := find_journal_headers(t)) else None),
     "header_start": lambda t: (m.start(), m.end()) if (m := _HEADER_START.search(t[:HEADER_START_CHARS])) else None,
     "u_split": lambda t: (m.start(), m.end()) if (m := _U_SPLIT.search(unicodedata.normalize("NFC", t))) else None,
     "email": lambda t: (m.start(), m.end()) if (m := EMAIL.search(t)) else None,
     "phone": _locate_phone,
     "hyphen_lost": lambda t: (m.start(), m.end()) if (m := _HYPHEN_LOST.search(unicodedata.normalize("NFC", t))) else None,
     "lost_letters": lambda t: (m.start(), m.end()) if (m := _HYPHEN_LOST.search(unicodedata.normalize("NFC", t))) else None,
+    "dropped_letters": Df.first_dropped_span,
+    "gibberish": Df.first_gibberish_span,
 }
 
 
@@ -195,7 +213,7 @@ def year_checks(rows: list[dict], top: int = 5) -> dict:
 
 
 def audit_rows(rows: list[dict], min_group: int = 20, factor: float = 3.0, min_rate: float = 0.15, samples: int = 5, seed: int = 0,
-               vocab: frozenset[str] | None = None) -> dict:
+               vocab: frozenset[str] | None = None, tone_map: Mapping[str, str] | None = None) -> dict:
     """
     Kiểm một danh sách bản ghi VJOL đã qua stage quality (xem audit_run).
 
@@ -205,7 +223,8 @@ def audit_rows(rows: list[dict], min_group: int = 20, factor: float = 3.0, min_r
         factor:    Tỷ lệ bị loại phải lớn hơn factor x trung vị các nhóm...
         min_rate:  ... và ít nhất mức này thì nhóm bị báo bất thường.
         samples:   Số mẫu mỗi loại lỗi / luật.
-        vocab:     Tập âm tiết thật; có thì đo thêm họ lỗi đọc font "font_misread" (misread_hits, J-33 H).
+        vocab:     Tập âm tiết thật; có thì đo thêm họ lỗi đọc font "font_misread" (misread_hits, J-33 H) và hai số đo J-42 "tone_shift", "joined_words".
+        tone_map:  Bảng đổi lệch dấu cho "tone_shift" (None = bảng mặc định; bảng học từ dữ liệu: vi_corpus.common.defects.load_tone_shift_map).
 
     Returns:
         {"chunks", "kept", "dropped", "error_rates": {lỗi: tỷ lệ trên đoạn giữ}, "error_counts", "single_rule_drops": {mã: số đoạn chỉ bị mã đó}, "groups": {"journal"|"journal_year": {...}},
@@ -219,8 +238,13 @@ def audit_rows(rows: list[dict], min_group: int = 20, factor: float = 3.0, min_r
     found: dict[str, list[dict]] = defaultdict(list)
     for r in kept:
         flags = error_flags(r)
-        if vocab is not None and misread_hits(r["text"], vocab) >= MISREAD_MIN_HITS:
-            flags.append("font_misread")
+        if vocab is not None:
+            if misread_hits(r["text"], vocab) >= MISREAD_MIN_HITS:
+                flags.append("font_misread")
+            if Df.tone_shift_hits(r["text"], vocab, tone_map) >= Df.SHIFT_MIN_HITS:
+                flags.append("tone_shift")
+            if Df.joined_words_hits(r["text"], vocab) >= Df.JOINED_MIN_HITS:
+                flags.append("joined_words")
         for name in flags:
             counts[name] += 1
             found[name].append(r)
@@ -286,7 +310,8 @@ def audit_run(run_dir: Path, out_dir: Path | None = None, syllables: Path | None
     out.mkdir(parents=True, exist_ok=True)
     default = run_dir.resolve().parents[2] / "processed" / "ocr_bakeoff" / "syllables.json" if len(run_dir.resolve().parents) > 2 else None
     vocab = load_vocab(syllables or default) if (syllables or default) else None
-    res = audit_rows(rows, vocab=vocab, **kwargs)
+    tone_map = Df.load_tone_shift_map(run_dir.resolve().parents[2] / Df.TONE_SHIFT_REL) if len(run_dir.resolve().parents) > 2 else None  # bảng học từ dữ liệu (J-42), thiếu thì bảng mặc định
+    res = audit_rows(rows, vocab=vocab, tone_map=tone_map, **kwargs)
     write_json_atomic(out / "audit.json", res)
     with open(out / "audit_journals.csv", "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
@@ -415,34 +440,189 @@ DETECTORS: dict[str, Callable[[dict, str], bool]] = {  # (số đo quality_metri
     "old_ocr": lambda m, t: m.get("odd_word", 0.0) >= Q.ODD_SOFT,
     "reference": lambda m, t: m.get("ref_line", 0.0) >= Q.REF_LINE_TAG,
     "running_header": lambda m, t: bool(_HEADER_START.search(t[:HEADER_START_CHARS])),  # J-37 D4: nhãn chuẩn running_header = tiêu đề ở đầu đoạn
+    # J-42 (1d): bộ dò chỉ cần text (số đo tính lại, vì nhãn chuẩn lấy từ lần chạy cũ chưa có các số đo này)
+    "mid_header": lambda m, t: bool(find_journal_headers(t)),
+    "gibberish": lambda m, t: _gibberish({"text": t}, {}),
+    "dropped_letters": lambda m, t: _dropped({"text": t}, {}),
+}
+# Nhãn mà mỗi bộ dò được coi là bắt đúng (tp). Bộ dò không có ở đây thì chỉ bắt nhãn trùng tên với nó.
+DETECTOR_TARGETS: dict[str, frozenset[str]] = {"mid_header": frozenset({"running_header"}), "gibberish": frozenset({"garbage"}), "tone_shift": frozenset({"font_shift", "font_misread"})}
+# Từ khoá trong cột `note` để chia nhãn `other` thành nhãn con (J-42 (1d)), thử theo thứ tự; không từ khoá nào khớp thì giữ "other". Chỉ là gợi ý để đo: kiểm tay 20 dòng (other_samples).
+OTHER_KEYWORDS: tuple[tuple[str, re.Pattern], ...] = (
+    ("garbage", re.compile(r"rác|gibberish|vỡ chữ|chữ vỡ|garbage", re.IGNORECASE)),
+    ("font_shift", re.compile(r"lệch dấu|sai dấu|đổi dấu|đọc nhầm dấu|font_shift|misread", re.IGNORECASE)),
+    ("dropped_letters", re.compile(r"mất chữ|rơi chữ|chữ rơi|rơi mất|thiếu chữ|mất dấu|kh n th|dropped", re.IGNORECASE)),
+    ("joined_words", re.compile(r"dính|mất khoảng trắng|ghép liền|liền từ|joined", re.IGNORECASE)),
+    ("chart_label", re.compile(r"biểu đồ|nhãn trục|trục|chart|axis|legend|chú giải", re.IGNORECASE)),
+    ("formula", re.compile(r"công thức|phương trình|formula|equation|toán", re.IGNORECASE)),
+    ("layout", re.compile(r"bố cục|cột|bảng|layout|table|đảo thứ tự|thứ tự khối", re.IGNORECASE)),
+)
+OTHER_SAMPLES = 20  # số dòng `other` đưa ra để kiểm tay phép chia nhãn con
+GATE_MIN_FLAGGED = 5  # bộ dò chỉ được cờ qua cổng khi gắn cờ ít nhất ngần này đoạn (precision trên mẫu quá nhỏ không đáng tin)
+
+
+def refine_label(item: dict) -> str:
+    """Nhãn dùng để đo: nhãn `other` được đổi thành nhãn con (SUB_LABELS) theo từ khoá trong cột `note` (OTHER_KEYWORDS); nhãn khác giữ nguyên."""
+    label = item.get("label", "")
+    if label != "other":
+        return label
+    note = item.get("note") or ""
+    return next((name for name, rx in OTHER_KEYWORDS if rx.search(note)), "other")
+
+
+def _scores(hits: list[bool], rows: list[dict], targets: frozenset[str]) -> dict:
+    """tp / fp / fn / precision / recall của một bộ dò trên `rows` (nhãn đã qua refine_label), `hits` là cờ của bộ dò theo từng dòng."""
+    tp = sum(h and it["label"] in targets for h, it in zip(hits, rows))
+    fp = sum(h and it["label"] not in targets for h, it in zip(hits, rows))
+    fn = sum((not h) and it["label"] in targets for h, it in zip(hits, rows))
+    return {"tp": tp, "fp": fp, "fn": fn, "precision": round(tp / (tp + fp), 3) if tp + fp else None, "recall": round(tp / (tp + fn), 3) if tp + fn else None}
+
+
+def evaluate_labels(items: list[dict], vocab: frozenset[str] | None = None, tone_map: Mapping[str, str] | None = None, seed: int = 0) -> dict:
+    """
+    Độ chính xác / độ bao phủ của từng bộ dò (DETECTORS, thêm tone_shift và joined_words khi có `vocab`) theo nhãn, tách hai nửa "tune" và "holdout" và gộp cả hai ("all").
+
+    Chỉ tính dòng đã có nhãn hợp lệ; nhãn `other` được chia thành nhãn con theo cột `note` (refine_label). Với nhãn "clean" ghi số dòng bị bộ dò nào gắn cờ nhầm (dương tính giả).
+
+    Args:
+        vocab:    Tập âm tiết cho tone_shift / joined_words; None thì hai bộ dò này không được đo.
+        tone_map: Bảng đổi lệch dấu (None = bảng mặc định).
+        seed:     Hạt giống chọn `other_samples`.
+
+    Returns:
+        {"labeled": {nửa: số dòng}, "by_label": {nhãn đã chia nhỏ: số dòng}, "other_breakdown": {nhãn con: số dòng} (từ các dòng gốc `other`), "other_samples": [{doc_id, note, label}] để kiểm tay,
+         "detectors": {tên: {nửa | "all": {tp, fp, fn, precision, recall}, "targets": [nhãn], "gate_ok": precision gộp >= quality.DETECTOR_GATE_PRECISION và gắn cờ >= GATE_MIN_FLAGGED đoạn}},
+         "clean_false_flags": {nửa: {tên: số}}}.
+    """
+    dets: dict[str, Callable[[dict, str], bool]] = dict(DETECTORS)
+    if vocab is not None:
+        dets["tone_shift"] = lambda m, t: Df.tone_shift_hits(t, vocab, tone_map) >= Df.SHIFT_MIN_HITS
+        dets["joined_words"] = lambda m, t: Df.joined_words_hits(t, vocab) >= Df.JOINED_MIN_HITS
+    valid = [it for it in items if it.get("label") in LABELS]
+    rows = [{**it, "label": refine_label(it)} for it in valid]
+    others = [(it, r) for it, r in zip(valid, rows) if it["label"] == "other"]
+    sample = random.Random(seed).sample(others, min(OTHER_SAMPLES, len(others)))
+    res: dict = {"labeled": dict(Counter(it["split"] for it in rows)), "by_label": dict(Counter(it["label"] for it in rows)),
+                 "other_breakdown": dict(Counter(r["label"] for _, r in others)),
+                 "other_samples": [{"doc_id": it.get("doc_id"), "note": it.get("note", ""), "label": r["label"]} for it, r in sample], "detectors": {}, "clean_false_flags": {}}
+    metrics = [json.loads(it.get("quality_metrics") or "{}") for it in rows]
+    for name, det in dets.items():
+        targets = DETECTOR_TARGETS.get(name, frozenset({name}))
+        hits = [bool(det(m, it["text"])) for m, it in zip(metrics, rows)]
+        per = {split: _scores([h for h, it in zip(hits, rows) if it["split"] == split], [it for it in rows if it["split"] == split], targets) for split in ("tune", "holdout")}
+        per["all"] = _scores(hits, rows, targets)
+        flagged = per["all"]["tp"] + per["all"]["fp"]
+        per["targets"] = sorted(targets)
+        per["gate_ok"] = bool(per["all"]["precision"] is not None and per["all"]["precision"] >= Q.DETECTOR_GATE_PRECISION and flagged >= GATE_MIN_FLAGGED)
+        res["detectors"][name] = per
+    for split in ("tune", "holdout"):
+        idx = [i for i, it in enumerate(rows) if it["split"] == split and it["label"] == "clean"]
+        res["clean_false_flags"][split] = {name: sum(bool(det(metrics[i], rows[i]["text"])) for i in idx) for name, det in dets.items()}
+    return res
+
+
+def detect_all(text: str, vocab: frozenset[str] | None = None, tone_map: Mapping[str, str] | None = None) -> set[str]:
+    """
+    Tên mọi bộ dò (DETECTORS, thêm `u_split`, và `tone_shift` / `joined_words` khi có `vocab`) gắn cờ lên một văn bản, số đo tính lại từ chính văn bản (compute_metrics): dùng cho ca thử vàng
+    (tests/data/vjol_golden.jsonl, scripts/vjol/make_golden.py), nơi không có quality_metrics của lần chạy.
+    """
+    m = json.loads(json.dumps(Q.compute_metrics(text, vocab)))
+    flagged = {name for name, det in DETECTORS.items() if det(m, text)}
+    if ERROR_CHECKS["u_split"]({"text": text}, m):
+        flagged.add("u_split")
+    if vocab is not None:
+        if Df.tone_shift_hits(text, vocab, tone_map) >= Df.SHIFT_MIN_HITS:
+            flagged.add("tone_shift")
+        if Df.joined_words_hits(text, vocab) >= Df.JOINED_MIN_HITS:
+            flagged.add("joined_words")
+    return flagged
+
+
+# ---------------------------------------------------------------------------------------------------------------- mẫu thi cuối (J-42 (7), P3)
+
+FINAL_SEED = 20261026  # hạt giống mới của mẫu thi cuối (chưa dùng để chỉnh gì)
+FINAL_MIN_N = 600  # 0 lỗi trong 300 đoạn chỉ chứng minh < 1% (tin cậy 95%); cần >= 600 để nói về ngân sách 0,5%
+REVIEW_N = 50  # số đoạn chủ dự án xem tay để kiểm độ lệch nhãn của Claude
+# Ngân sách lỗi chấp nhận (J-42): tên nhóm -> (tỷ lệ tối đa trên đoạn giữ, các nhãn tính vào nhóm, chỉ tính band A hay không).
+ERROR_BUDGETS: dict[str, tuple[float, frozenset[str], bool]] = {
+    "chu_hong_sai_nghia": (0.005, frozenset({"lost_diacritics", "hyphen_font", "font_misread", "font_shift", "dropped_letters", "joined_words", "garbage", "old_ocr"}), False),
+    "tieu_de_hoac_tham_khao": (0.02, frozenset({"running_header", "reference"}), False),
+    "rac_hoan_toan_dai_A": (0.0, frozenset({"garbage"}), True),
 }
 
 
-def evaluate_labels(items: list[dict]) -> dict:
-    """
-    Độ chính xác / độ bao phủ của từng bộ dò (DETECTORS) theo nhãn, tách hai nửa "tune" và "holdout".
+def wilson_interval(k: int, n: int, z: float = 1.96) -> tuple[float, float]:
+    """Khoảng tin cậy Wilson (mặc định 95%) cho tỷ lệ k / n; n = 0 trả (0.0, 1.0)."""
+    if n <= 0:
+        return 0.0, 1.0
+    p = k / n
+    denom = 1 + z * z / n
+    centre = (p + z * z / (2 * n)) / denom
+    half = z * ((p * (1 - p) / n + z * z / (4 * n * n)) ** 0.5) / denom
+    return max(0.0, centre - half), min(1.0, centre + half)
 
-    Chỉ tính dòng đã có nhãn hợp lệ. Với nhãn "clean" ghi số dòng bị bộ dò nào gắn cờ nhầm (dương tính giả).
+
+def make_final_sample(rows: list[dict], n: int = FINAL_MIN_N, seed: int = FINAL_SEED, exclude_articles: frozenset[str] = frozenset(), max_per_article: int = 3) -> list[dict]:
+    """
+    Mẫu thi cuối (J-42 (7)): n đoạn đã giữ (band A/B/C) chọn 100% ngẫu nhiên, KHÔNG bốc theo bộ dò. Bài đã nằm trong các mẫu gán nhãn trước (`exclude_articles`, theo article_id) bị loại, vì đã bị nhìn
+    nhiều lần khi chỉnh. Mỗi bài tối đa `max_per_article` đoạn. Cột `label`, `note` để trống.
 
     Returns:
-        {"labeled": {nửa: số dòng}, "by_label": {nhãn: số dòng}, "detectors": {tên: {nửa: {tp, fp, fn, precision, recall}}}, "clean_false_flags": {nửa: {tên: số}}}.
+        Danh sách cùng dạng make_labeling_sample (ghi bằng write_labeling_sample); ít hơn n nếu không đủ đoạn.
     """
-    rows = [it for it in items if it.get("label") in LABELS]
-    res: dict = {"labeled": dict(Counter(it["split"] for it in rows)), "by_label": dict(Counter(it["label"] for it in rows)), "detectors": {}, "clean_false_flags": {}}
-    for name, det in DETECTORS.items():
-        per_split = {}
-        for split in ("tune", "holdout"):
-            sub = [it for it in rows if it["split"] == split]
-            hit = [det(json.loads(it["quality_metrics"]), it["text"]) for it in sub]
-            tp = sum(h and it["label"] == name for h, it in zip(hit, sub))
-            fp = sum(h and it["label"] != name for h, it in zip(hit, sub))
-            fn = sum((not h) and it["label"] == name for h, it in zip(hit, sub))
-            per_split[split] = {"tp": tp, "fp": fp, "fn": fn, "precision": round(tp / (tp + fp), 3) if tp + fp else None, "recall": round(tp / (tp + fn), 3) if tp + fn else None}
-        res["detectors"][name] = per_split
-    for split in ("tune", "holdout"):
-        clean = [it for it in rows if it["split"] == split and it["label"] == "clean"]
-        res["clean_false_flags"][split] = {name: sum(det(json.loads(it["quality_metrics"]), it["text"]) for it in clean) for name, det in DETECTORS.items()}
+    rng = random.Random(seed)
+    pool = [r for r in rows if r["quality_band"] in KEPT_BANDS and str(meta_of(r).get("article_id") or r.get("parent_doc_id")) not in exclude_articles]
+    rng.shuffle(pool)
+    per_article: Counter = Counter()
+    picked = []
+    for r in pool:
+        aid = meta_of(r).get("article_id") or r.get("parent_doc_id")
+        if len(picked) < n and per_article[aid] < max_per_article:
+            per_article[aid] += 1
+            picked.append(r)
+    out = []
+    for r in picked:
+        meta = meta_of(r)
+        out.append({"doc_id": r["doc_id"], "article_id": meta.get("article_id"), "journal": meta.get("journal_slug"), "year": meta.get("year"),
+                    "split": split_of(meta.get("article_id") or r.get("parent_doc_id"), seed), "group": "thi_cuối", "band": r["quality_band"],
+                    "reason_codes": "+".join(r.get("reason_codes") or []), "suspicious": "+".join(suspicious(r)), "quality_metrics": r.get("quality_metrics") or "{}",
+                    "text": r["text"], "label": "", "note": ""})
+    return out
+
+
+def final_report(items: list[dict], review: list[dict] | None = None) -> dict:
+    """
+    Báo cáo mẫu thi cuối đã gán nhãn: tỷ lệ từng nhóm lỗi so với ngân sách (ERROR_BUDGETS) kèm khoảng tin cậy Wilson 95%, và độ đồng ý của chủ dự án trên các dòng xem tay.
+
+    Mỗi nhóm có `within_budget` (tỷ lệ đo được <= ngân sách) và `proven` (cận trên Wilson <= ngân sách: chỉ khi n đủ lớn mới chứng minh được; ngân sách 0 không bao giờ proven, chỉ nói được "0 trong n").
+    Chỉ tính dòng có nhãn hợp lệ; nhãn `other` được chia nhỏ theo refine_label.
+
+    Args:
+        items:  Dòng mẫu thi cuối có cột label (và note).
+        review: Dòng xem tay (cột doc_id, label của Claude, user_label của chủ dự án; user_label rỗng thì chưa xem).
+
+    Returns:
+        {"n", "by_label", "budgets": {nhóm: {"k", "n", "rate", "wilson95": [lo, hi], "budget", "within_budget", "proven"}}, "review": {"reviewed", "agree", "agreement"} hoặc None}.
+    """
+    rows = [{**it, "label": refine_label(it)} for it in items if it.get("label") in LABELS]
+    res: dict = {"n": len(rows), "by_label": dict(Counter(r["label"] for r in rows)), "budgets": {}, "review": None}
+    for name, (budget, labels, only_a) in ERROR_BUDGETS.items():
+        pool = [r for r in rows if r.get("band") == "A"] if only_a else rows
+        k = sum(r["label"] in labels for r in pool)
+        lo, hi = wilson_interval(k, len(pool))
+        res["budgets"][name] = {"k": k, "n": len(pool), "rate": round(k / len(pool), 4) if pool else None, "wilson95": [round(lo, 4), round(hi, 4)], "budget": budget,
+                                "within_budget": bool(pool) and k / len(pool) <= budget, "proven": bool(pool) and hi <= budget}
+    if review is not None:
+        seen = [r for r in review if (r.get("user_label") or "").strip()]
+        agree = sum(r["user_label"].strip() == r["label"] for r in seen)
+        res["review"] = {"reviewed": len(seen), "agree": agree, "agreement": round(agree / len(seen), 3) if seen else None}
     return res
+
+
+def make_review_sample(items: list[dict], n: int = REVIEW_N, seed: int = FINAL_SEED) -> list[dict]:
+    """n dòng ngẫu nhiên đã có nhãn của mẫu thi cuối để chủ dự án xem tay (cột user_label để trống): {doc_id, label, note, text, user_label}."""
+    rows = [it for it in items if it.get("label") in LABELS]
+    return [{"doc_id": it["doc_id"], "label": it["label"], "note": it.get("note", ""), "text": it["text"], "user_label": ""} for it in random.Random(seed).sample(rows, min(n, len(rows)))]
 
 
 # ---------------------------------------------------------------------------------------------------------------- tập chữ đúng

@@ -35,7 +35,7 @@ from collections.abc import Callable, Sequence
 
 import pymupdf
 
-from vi_corpus.common.garbled import (DEFAULT_THRESHOLDS, REASON_BLANK, REASON_NO_TEXT, REASON_PRODUCER, Thresholds, page_signals,
+from vi_corpus.common.garbled import (DEFAULT_THRESHOLDS, REASON_BLANK, REASON_FONT_GROUP, REASON_NO_TEXT, REASON_PRODUCER, Thresholds, page_signals,
                                       plan_garbled)
 from vi_corpus.common.ocr_noise import strip_vlm_noise
 
@@ -125,6 +125,12 @@ def _producer_matches(meta: dict | None, rules: Sequence[tuple[str, str]]) -> bo
     return any(producer.startswith(p) and c in creator for p, c in rules)
 
 
+def _group_matches(meta: dict | None, groups: Sequence[tuple[str, str]]) -> bool:
+    """True nếu (producer, creator) của PDF BẰNG một nhóm trong `groups` (so khớp nguyên, khác _producer_matches); nhóm có cả hai trường rỗng bị bỏ vì sẽ khớp mọi PDF thiếu metadata."""
+    key = (((meta or {}).get("producer") or "").strip(), ((meta or {}).get("creator") or "").strip())
+    return key != ("", "") and key in {(p, c) for p, c in groups}
+
+
 def _scrub_vlm(entry: dict) -> dict:
     """
     Lọc câu "nói về chính ảnh" của OCR VLM khỏi một kết quả OCR (vi_corpus.common.ocr_noise, J-33 C); không sửa `entry` (có thể là mục của bộ nhớ đệm).
@@ -156,7 +162,9 @@ def page_has_ink(page: pymupdf.Page) -> bool:
 def extract_pdf(path, get_ocr: Callable[[], object | None], detect_garbled: bool = False,
                 garbled_vocab: frozenset[str] | None = None, garbled_th: Thresholds = DEFAULT_THRESHOLDS,
                 garbled_unaccented: frozenset[str] | None = None, ocr_cache=None,
-                ocr_all_producers: Sequence[tuple[str, str]] = (), rescue_empty: bool = False) -> list[dict]:
+                ocr_all_producers: Sequence[tuple[str, str]] = (), rescue_empty: bool = False,
+                ocr_all_groups: Sequence[tuple[str, str]] = (),
+                ocr_all_if: Callable[[Sequence[str | None]], str | None] | None = None) -> list[dict]:
     """
     Trích text từng trang của một PDF.
 
@@ -175,6 +183,9 @@ def extract_pdf(path, get_ocr: Callable[[], object | None], detect_garbled: bool
                  không được gọi nếu mọi trang cần OCR đều có sẵn; kết quả OCR mới được ghi vào cache (save) khi xong cả lô. None = không dùng cache.
         ocr_all_producers: Các cặp (đầu của `producer`, chuỗi con của `creator`) trong metadata PDF; PDF khớp một cặp thì MỌI trang có chữ đi OCR (lý do
                  REASON_PRODUCER), vì lớp chữ do phần mềm OCR đời cũ tạo ra (J-29, D2). Chỉ có tác dụng khi detect_garbled bật.
+        ocr_all_groups: Các cặp (producer, creator) của nhóm font xấu, so khớp NGUYÊN (không phải đầu / chuỗi con như ocr_all_producers), do phép thử scripts/vjol/font_canary.py tìm ra (J-42 (4)); lý do REASON_FONT_GROUP.
+        ocr_all_if: Hàm nhận lớp chữ từng trang (None cho trang không có lớp chữ) và trả về một mã lý do nếu CẢ BÀI phải OCR lại, None nếu không (J-42 (3): vi_corpus.vjol.reocr.reocr_reason);
+                 chỉ gọi khi bài chưa bị đưa đi OCR cả bài bởi producer / nhóm font. Chỉ có tác dụng khi detect_garbled bật.
         rescue_empty: True thì trang không có chữ và không có ảnh nhúng được vẽ ra thử (page_has_ink): có nội dung thì OCR (REASON_NO_TEXT), trắng thì
                  method "empty" kèm reason REASON_BLANK (J-33 B). Mặc định tắt, giáo trình chạy y như trước.
 
@@ -219,8 +230,15 @@ def extract_pdf(path, get_ocr: Callable[[], object | None], detect_garbled: bool
         reasons: dict[int, str] = {}  # trang chữ bị lỗi font -> lý do (J-10), cũng đi OCR như trang scan
         if detect_garbled:
             reasons = {i: r for i, r in enumerate(plan_garbled(layer, garbled_th, vocab=garbled_vocab, unaccented=garbled_unaccented)) if r}
+            whole_doc: str | None = None
             if _producer_matches(doc.metadata, ocr_all_producers):
-                reasons.update({i: reasons.get(i, REASON_PRODUCER) for i, t in enumerate(layer) if t is not None})
+                whole_doc = REASON_PRODUCER
+            elif _group_matches(doc.metadata, ocr_all_groups):
+                whole_doc = REASON_FONT_GROUP
+            elif ocr_all_if is not None:
+                whole_doc = ocr_all_if(layer)
+            if whole_doc:
+                reasons.update({i: reasons.get(i, whole_doc) for i, t in enumerate(layer) if t is not None})
             for i in reasons:
                 pages[i] = None
         reasons.update({i: REASON_NO_TEXT for i in no_text})

@@ -29,6 +29,10 @@ J-37 (C), chạy lúc sinh bản ghi:
   viết (kể cả chữ hoa lẫn thường, "Tập N, Số M (năm): tr", ISSN, trang, địa chỉ web), "Nghiên cứu Tôn giáo. Số 6 - 2001 35", ". Số 3 - 2005 45", "SỐ 12 (206)-2012 NGÔN NGỮ & ĐỜI SỐNG 27",
   "© Học viện Ngân hàng ISSN 1859 - 011X", "Vietnam J. Agri. Sci. 2016, Vol. 14, No. 6: 843-851", "http://... Bài báo khoa học". Câu trích dẫn ("Tạp chí Nghiên cứu Tôn giáo, số 4/2000, tr. 5")
   không bị cắt: dạng có dấu phẩy ngay trước "số" chỉ nhận ở trang đầu và không có "tr." mà thiếu ISSN.
+J-42 (6), P8 (cắt mức dòng thay vì loại cả đoạn, chạy lúc sinh bản ghi):
+- strip_mid_headers cắt tiêu đề tạp chí ở MỌI vị trí trong dòng (find_journal_headers: "Tạp chí X số N - năm", ISSN, số trang; câu trích dẫn không bị cắt), phần còn lại của dòng giữ nguyên (khác dòng chỉ gồm tiêu đề thì bỏ);
+- strip_junk_lines bỏ dòng rác (>= JUNK_LINE_MIN_TOKENS từ, >= JUNK_LINE_RATIO là từ rác của defects.gibberish_ratio và không có từ Latinh >= 3 chữ cái): "/, N9 = < 0 e H ; :"; một dòng rác không còn làm mất cả đoạn 1.000 token sạch.
+  Rủi ro đã biết: công thức dàn phẳng toàn ký hiệu đơn cũng thoả điều kiện; số dòng bỏ ghi ở meta.repairs để đo trước khi tin.
 - F (J-25): dòng khuôn mẫu "ngày + động từ + ngày tháng" nói chung ("Ngày phản biện: 12/05/2015"), số điện thoại có mã nước không có dấu + ("84-983226880") có kiểm đầu số
   và loại số liệu bảng.
 """
@@ -37,6 +41,7 @@ import math
 import re
 import unicodedata
 
+from vi_corpus.common.defects import gibberish_ratio
 from vi_corpus.common.ocr_noise import strip_vlm_noise
 from vi_corpus.common.references import is_reference_entry, reference_flags
 from vi_corpus.vjol.hyphen_fix import restore_u_in_pages
@@ -163,6 +168,77 @@ def _journal_header_end(line: str, front: bool) -> int | None:
         if not front or (re.search(r"\b(?:tr|trang|pp)\.?\s*\d", run, re.IGNORECASE) and not has_issn):
             return None
     return lead.end() + end
+
+
+_JOURNAL_WORD = re.compile(r"(?:Tạp chí|TẠP CHÍ)\s+")
+
+
+def find_journal_headers(text: str) -> list[tuple[int, int]]:
+    """
+    Vị trí các tiêu đề tạp chí ("Tạp chí <tên> số N - năm", ISSN, số trang ...) ở BẤT KỲ chỗ nào trong `text` (J-42 (1c)), theo quy tắc của `_journal_header_end` ở chế độ không phải trang đầu:
+    câu trích dẫn có dấu phẩy ngay trước "số" ("Tạp chí Nghiên cứu Tôn giáo, số 8, 2008") và cụm viết thường giữa câu ("trên tạp chí ...") không được tính.
+
+    Returns:
+        [(đầu, cuối)] theo thứ tự xuất hiện.
+    """
+    spans = []
+    for m in _JOURNAL_WORD.finditer(text):
+        end = _journal_header_end(text[m.start():], front=False)
+        if end is not None:
+            spans.append((m.start(), m.start() + end))
+    return spans
+
+
+JUNK_LINE_MIN_TOKENS = 8  # dòng rác phải có ít nhất ngần này từ (không tính số / dấu câu thuần)
+JUNK_LINE_RATIO = 0.85  # và tỷ lệ từ rác (gibberish_ratio) từ mức này
+_LONG_WORD = re.compile(r"[A-Za-z\u00C0-\u024F\u1E00-\u1EFF]{3,}")
+
+
+def strip_mid_headers(pages: list[str]) -> tuple[list[str], int]:
+    """
+    Cắt tiêu đề tạp chí dính ở bất kỳ chỗ nào trong dòng (J-42 (6), find_journal_headers); dòng chỉ còn khoảng trắng / dấu câu thì bỏ. Lặp tối đa 3 lượt cho dòng có nhiều tiêu đề.
+
+    Returns:
+        (các trang đã cắt, số chỗ đã cắt).
+    """
+    out, total = [], 0
+    for text in pages:
+        lines = []
+        for line in text.splitlines():
+            cut = 0
+            for _ in range(3):
+                spans = find_journal_headers(line)
+                if not spans:
+                    break
+                a, b = spans[0]
+                line = re.sub(r"^[\s.,;:|–—-]+", "", re.sub(r"[ \t]{2,}", " ", line[:a] + " " + line[b:]).strip())
+                cut += 1
+            total += cut
+            if cut and not line:  # dòng chỉ gồm tiêu đề: bỏ (dòng trống sẵn có vẫn giữ)
+                continue
+            lines.append(line)
+        out.append("\n".join(lines))
+    return out, total
+
+
+def is_junk_line(line: str) -> bool:
+    """True nếu `line` là dòng rác (J-42 (6)): >= JUNK_LINE_MIN_TOKENS từ, >= JUNK_LINE_RATIO là từ rác và không có từ Latinh nào >= 3 chữ cái."""
+    ratio, n = gibberish_ratio(line)
+    return n >= JUNK_LINE_MIN_TOKENS and ratio >= JUNK_LINE_RATIO and not _LONG_WORD.search(unicodedata.normalize("NFC", line))
+
+
+def strip_junk_lines(pages: list[str]) -> tuple[list[str], int]:
+    """Bỏ các dòng rác (is_junk_line) khỏi các trang, giữ nguyên số trang và dòng trống; trả về (các trang, số dòng đã bỏ)."""
+    out, total = [], 0
+    for text in pages:
+        kept = []
+        for line in text.splitlines():
+            if line.strip() and is_junk_line(line):
+                total += 1
+                continue
+            kept.append(line)
+        out.append("\n".join(kept))
+    return out, total
 
 
 def _strip_front_line(line: str, front: bool) -> tuple[str, int]:
@@ -560,9 +636,10 @@ def clean_paper_pages(pages: list[str], journal_title: str | None = None, vocab:
         vocab:         Tập âm tiết thật để kiểm khi khôi phục "ư" (vi_corpus.vjol.hyphen_fix); None thì bỏ bước khôi phục.
 
     Returns:
-        (các trang đã làm sạch, {"hyphen_restored", "vlm_noise_removed", "cover_pages", "toc_pages", "editorial_pages", "running_headers", "front_headers", "reference_lines", và các số đếm của strip_boilerplate}).
+        (các trang đã làm sạch, {"hyphen_restored", "hyphen_ambiguous" (chỗ bỏ qua vì mơ hồ, J-42 P6), "mid_headers", "junk_lines" (J-42 (6)), "vlm_noise_removed", "cover_pages", "toc_pages", "editorial_pages", "running_headers", "front_headers", "reference_lines", và các số đếm của strip_boilerplate}).
     """
-    pages, restored = restore_u_in_pages(pages, vocab)
+    hyphen_stats: dict = {}
+    pages, restored = restore_u_in_pages(pages, vocab, stats=hyphen_stats)
     noise = 0
     cleaned = []
     for text in pages:
@@ -570,9 +647,11 @@ def clean_paper_pages(pages: list[str], journal_title: str | None = None, vocab:
         cleaned.append(text)
         noise += n
     pages, stats = drop_front_matter(cleaned)
-    stats = {"hyphen_restored": restored, "vlm_noise_removed": noise, **stats}
+    stats = {"hyphen_restored": restored, "hyphen_ambiguous": hyphen_stats.get("ambiguous", 0), "vlm_noise_removed": noise, **stats}
     pages, stats["running_headers"] = strip_running_headers(pages)
     pages, stats["front_headers"] = strip_front_headers(pages)
+    pages, stats["mid_headers"] = strip_mid_headers(pages)
+    pages, stats["junk_lines"] = strip_junk_lines(pages)
     pages, stats["reference_lines"] = strip_references(pages)
     pages, tail = strip_trailing_references(pages)
     stats["reference_lines"] += tail

@@ -5,6 +5,8 @@ Mỗi bài (một sha256 PDF) một bản ghi. Text là các trang đã làm s�
 (vi_corpus.vjol.clean) rồi vi_corpus.common.pdf_text.clean_pages (tiêu đề chạy, số trang, ghép dòng), áp dụng lúc sinh bản ghi
 chứ không lưu vào interim. Quyền (rights_status) lấy mặc định của registry ("unknown"): chỉ gắn nhãn, không loại (R-01).
 
+J-42 (5): meta mang thêm `repairs` ({quy tắc: số chỗ} đã chạy trên bài, xem repairs_of).
+
 Metadata (J-03): raw/vjol/metadata/vjol_merged.jsonl (hàng trăm MB, mỗi dòng một bài) được đọc theo luồng MỘT lượt, chỉ giữ
 dòng của các bài có trong checkpoint, nối qua article_id (khớp tên file <article_id>_<galley_id>.pdf). PDF không có dòng
 metadata vẫn thành bản ghi, chỉ thiếu trường. Nhãn ngôn ngữ trong metadata chỉ nằm ở `meta` (khoá journal_language_raw), không thay language id của pipeline.
@@ -35,6 +37,14 @@ META_OUT = tuple(META_RENAMES.get(k, k) for k in META_FIELDS)
 # Năm hợp lệ của một bài báo. 1970 là mốc 0 của Unix (R-25, J-33 D): giá trị mặc định khi thiếu ngày, không phải năm xuất bản, nên coi là thiếu.
 YEAR_MIN, YEAR_MAX = 1900, 2100
 DEFAULT_YEARS = frozenset({1970})
+
+
+def repairs_of(stats: dict) -> dict[str, int]:
+    """
+    Trường `repairs` của meta (J-42 (5)): từng quy tắc làm sạch / sửa chữ đã chạy trên bài và số chỗ (chỉ quy tắc có số > 0), gồm cả `hyphen_ambiguous` (chỗ KHÔNG sửa vì mơ hồ). Để lọc bài theo
+    mức bị sửa và truy vết một lỗi về quy tắc đã chạm vào nó. Số đếm theo BÀI, không theo đoạn.
+    """
+    return {k: int(v) for k, v in stats.items() if isinstance(v, (int, float)) and not isinstance(v, bool) and v}
 
 
 def normalize_year(value: object) -> int | None:
@@ -162,6 +172,7 @@ def iter_records(spec: SourceSpec, data_root: Path, limit_files: int | None = No
                 "garbled_pages": sum(p.get("reason") in GARBLED_REASONS for p in done["pages"]),
                 "no_text_layer_pages": sum(p.get("reason") == REASON_NO_TEXT for p in done["pages"]),
                 "page_lines_removed": page_stats.get("lines_removed", 0), **clean_stats,
+                "repairs": repairs_of({**clean_stats, "page_lines_removed": page_stats.get("lines_removed", 0)}),
             }, ensure_ascii=False)
         yield rec
     if any(dropped.values()):

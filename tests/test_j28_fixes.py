@@ -57,8 +57,8 @@ def test_che_so_dien_thoai_khong_dung_vao_so_lieu_bang():
 def test_mau_audit_trich_quanh_cho_loi():
     """excerpt_of lấy ngữ cảnh quanh chỗ lỗi đã định vị (tiêu đề tạp chí, số điện thoại), còn lỗi không định vị được thì lấy đầu đoạn."""
     from vi_corpus.vjol.audit import excerpt_of
-    text = "Mở đầu " * 60 + "Tạp chí Kinh tế số 12 chen giữa " + "Nội dung " * 60
-    assert "Tạp chí Kinh tế số 12" in excerpt_of(text, "journal_header") and excerpt_of(text, "journal_header").startswith("…")
+    text = "Mở đầu " * 60 + "Tạp chí Kinh tế số 12 - 2015 chen giữa " + "Nội dung " * 60
+    assert "Tạp chí Kinh tế số 12" in excerpt_of(text, "mid_header") and excerpt_of(text, "mid_header").startswith("…")
     assert excerpt_of(text, "khong_biet") == text[:240]
     assert "0903 123 456" in excerpt_of("x " * 200 + "Mobile: 0903 123 456 " + "y " * 200, "phone")
 

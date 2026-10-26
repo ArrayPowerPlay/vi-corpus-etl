@@ -34,6 +34,7 @@
 | S-18 | VJOL: trích lại một lần sau sửa J-33 (khôi phục "ư", trang không lớp chữ, câu rác VLM, năm 1970 ...) rồi chạy pipeline `vjol_10k_v6` và so với `v5` | J-34 | CHẠY SAU S-17 | trích lại vài chục phút trên 4 GPU (chỉ vài trăm trang mới phải OCR, phần còn lại có trong cache); pipeline ~10 phút | 4 |
 | S-19 | VJOL: chạy lại pipeline `vjol_10k_v7` sau sửa J-35 (không trích lại) và so với `v6` | J-35 | CHẠY SAU S-18 | pipeline ~10 phút | 1 |
 | S-20 | VJOL: chạy lại pipeline `vjol_10k_v8` sau sửa J-37 (không trích lại), so với `v7`, đo bằng nhãn chuẩn | J-38 | CHẠY SAU S-19 | pipeline ~10 phút | 1 |
+| S-21 | VJOL: đo CPU kế hoạch OCR lại cả bài, so ghép đôi v7 / v8, học bảng lệch dấu, phép thử nhóm font (GPU); SAU KHI chốt ngưỡng: trích lại, pipeline `vjol_10k_v9`, đo bằng nhãn chuẩn, sinh mẫu thi cuối | J-43 (code J-40 / J-42) | CHẠY SAU S-20 | Phần A: CPU vài chục phút + canary ~30-60 phút GPU; Phần B: trích lại + pipeline vài chục phút | 4 |
 
 Thứ tự khuyến nghị: S-10 (VJOL ưu tiên cao nhất, R-15) → S-0 → S-1 → S-2 → S-3 (có đủ số để tính giờ OCR) → S-4 → S-5. S-6 đến S-9 và S-11 làm sau phiên code (S-11 cần script `scripts/dedup_pairs_sample.py`, viết ở gói G-05 bước 2).
 
@@ -569,6 +570,74 @@ tar czf vjol_s20.tar.gz $V8/{manifest.json,report.html,04_quality.parquet,audit,
 Các lệnh viết riêng từng dòng (không `&&`) vì `audit_run.py` và `check-clean` thoát mã 1 khi có cờ.
 
 **Báo lại**: `vjol_s20.tar.gz`, kết quả `check-clean`, lệnh nào lỗi. **Kỳ vọng v8 so với v7**: `hyphen_lost` 1,31% -> <= 0,4%; `header_start` (mới) thấp; `u_split` (mới) thấp; giữ >= 9.781; `lost_letters` không tăng quá vài đoạn (ngưỡng 3 loại thêm ~5 đoạn); 0 cờ nhầm trên tập chữ đúng.
+
+---
+
+## S-21. VJOL: OCR lại cả bài, nhóm font, mẫu ổn định, mẫu thi cuối  [CHẠY SAU S-20]
+
+**Mục đích**: J-43 code các việc J-40 / J-42: (1a) mẫu chunk theo băm (v9 là lần so sánh sạch đầu tiên với v8), (1b) so ghép đôi, (1c)-(1d) bộ dò mới + nhãn chuẩn chia nhỏ + precision / recall từng bộ dò, (2) `plan_reocr.py`, (3) cả bài lệch dấu / rơi chữ / dính liền đi OCR (`EXTRACT_VERSION` 6), (4) `font_canary.py`, (5) sửa "ư" chỉ khi xác định + `meta.repairs`, (6) bỏ dòng rác / tiêu đề giữa dòng, (7) mẫu thi cuối. **Chia hai phần vì hai chỗ cần chủ dự án quyết bằng số đo** (ngưỡng OCR lại, ngưỡng nhóm font): làm Phần A, gửi kết quả, DỪNG; Phần B chỉ chạy khi đã có ngưỡng.
+
+### Phần A: đo (không sửa dữ liệu, chưa trích lại)
+
+```bash
+cd /home/jovyan/dinh/vi-corpus-etl
+git fetch origin && git checkout worktree-vjol-pipeline && git pull
+source /home/jovyan/dinh/env.sh
+uv sync --group curator --group viz --group ocr
+uv run pytest -q                                   # kỳ vọng 343 test qua
+nvidia-smi                                         # không còn tiến trình vLLM nào
+V6=data/processed/pipeline_runs/vjol_10k_v6; V7=data/processed/pipeline_runs/vjol_10k_v7; V8=data/processed/pipeline_runs/vjol_10k_v8
+
+# A1 (CPU, vài phút): so GHÉP ĐÔI v7 với v8 (cùng doc_id), kết luận J-38 có hiệu quả không mà không cần chạy lại gì
+uv run python scripts/vjol/compare_runs.py --old $V7 --new $V8 --paired --samples 20 | tee $V8/paired_v7_v8.txt
+
+# A2 (CPU): học bảng đổi lệch dấu từ dữ liệu v8 (ghi data/processed/ocr_bakeoff/tone_shift.json), rồi đo lại nhãn chuẩn với bộ dò mới
+uv run python scripts/vjol/learn_tone_shift.py --data-root data --run-dir $V8 | tee $V8/tone_shift_pairs.txt
+uv run python scripts/vjol/groundtruth.py evaluate --labels $V6/groundtruth/labeling_sample.csv --data-root data | tee $V8/groundtruth_eval_v2.json
+
+# A2b (CPU): sinh ca thử vàng từ 400 nhãn chuẩn (đoạn rút gọn; chỉ giữ ca bộ dò THỰC SỰ bắt được / ca sạch không bị gắn cờ); gửi tests/data/vjol_golden.jsonl
+uv run python scripts/vjol/make_golden.py --labels $V6/groundtruth/labeling_sample.csv --data-root data
+
+# A3 (CPU, ~10-30 phút): kế hoạch OCR lại cả bài (đếm bài / trang / giờ GPU, mẫu và cả kho). Thoát mã 1 + dòng "CẢNH BÁO" nếu OCR lại > 15% số trang: khi đó DỪNG, báo lại.
+uv run python scripts/vjol/plan_reocr.py --data-root data ; echo "plan_reocr exit=$?"
+
+# A4 (GPU, ~30-60 phút): phép thử nhóm font, 3 bài x 2 trang mỗi nhóm (producer, creator) trên các bài đã trích. CHƯA ghi font_groups_bad.json (chưa có --threshold)
+uv run --no-sync python scripts/vjol/font_canary.py --data-root data --gpu 0 --serve --vllm-bin $(which vllm) --labels $V6/groundtruth/labeling_sample.csv
+
+tar czf vjol_s21a.tar.gz $V8/{paired_v7_v8.txt,tone_shift_pairs.txt,groundtruth_eval_v2.json} data/processed/ocr_bakeoff/tone_shift.json data/processed/vjol_reocr_plan data/processed/vjol_font_canary tests/data/vjol_golden.jsonl
+ls -l vjol_s21a.tar.gz
+```
+
+Các lệnh viết từng dòng riêng (không nối `&&`) vì `plan_reocr.py` thoát mã 1 khi có cảnh báo.
+
+**Báo lại cho Claude (Phần A)**: `vjol_s21a.tar.gz` (kiểm bằng `ls -l` trước khi báo), cho biết lệnh nào lỗi. **Cách đọc**: `paired_v7_v8.txt` (số đoạn chung, đổi giữ / loại kèm mã, 20 mẫu đổi chữ); `vjol_reocr_plan/summary.json` (`default`: bài / trang / giờ cho mẫu và cả kho, `warning`, `hyphen_only_docs`, `sweep`: ngưỡng share x bộ tín hiệu); `vjol_font_canary/canary.csv` (nhóm theo độ giống tăng dần, kèm số dòng nhãn sạch / nhãn lỗi font để chọn ngưỡng); `vjol_golden.jsonl` (Claude chép vào repo để test giữ bộ dò không tụt); `groundtruth_eval_v2.json` (`detectors.<tên>.all.precision`, `gate_ok`: bộ dò nào đủ precision >= 0,9 để thành mã loại cứng ở `quality.HARD_DETECTOR_THRESHOLDS`). **Rủi ro cần báo lại**: OCR lại > 15% trang của kho, hoặc nhóm font xấu trùng hơn 1/3 kho (khi đó nên OCR cả nhóm thay vì từng bài).
+
+### Phần B: sau khi chủ dự án chọn ngưỡng (CHỈ chạy khi đã có số X từ Phần A)
+
+```bash
+cd /home/jovyan/dinh/vi-corpus-etl && source /home/jovyan/dinh/env.sh
+V6=data/processed/pipeline_runs/vjol_10k_v6; V8=data/processed/pipeline_runs/vjol_10k_v8
+uv run python scripts/vjol/font_canary.py --data-root data --reuse --threshold X     # ghi font_groups_bad.json từ canary.json đã có, không OCR lại
+[ -d data/interim/vjol_text_s20_backup ] || cp -r data/interim/vjol_text data/interim/vjol_text_s20_backup   # sao lưu một lần
+ls data/interim/vjol_ocr_cache | wc -l             # bộ nhớ đệm OCR đã có từ S-17 / S-18: không cần seed lại
+date; DATA_ROOT=data VLLM_BIN=$(which vllm) SAMPLE_DOCS=3000 ./scripts/vjol/run_extract_vlm.sh; date   # EXTRACT_VERSION 6: mọi checkpoint làm lại; chỉ trang MỚI bị OCR cả bài mới tốn GPU
+uv run python scripts/vjol/extract.py --data-root data --status
+V9=data/processed/pipeline_runs/vjol_10k_v9
+uv run --group curator --group viz python scripts/run_pipeline.py --data-root data --mix vjol=10000 --total 10000 \
+    --run-name vjol_10k_v9 --embed-device cuda --cluster-space umap10 --perplexity-model Qwen/Qwen3-0.6B
+uv run python scripts/vjol/audit_run.py --run-dir $V9
+uv run python scripts/vjol/compare_runs.py --old $V8 --new $V9 --paired | tee $V9/paired_v8_v9.txt
+uv run python scripts/vjol/groundtruth.py evaluate --labels $V6/groundtruth/labeling_sample.csv --data-root data | tee $V9/groundtruth_eval.json
+uv run python scripts/vjol/groundtruth.py check-clean --clean-set $V6/groundtruth/clean_set.jsonl --data-root data   # phải 0 cờ nhầm
+# mẫu thi cuối (hạt giống 20261026, >= 600 đoạn, loại bài đã nằm trong mẫu nhãn cũ): chỉ SINH, KHÔNG chỉnh gì theo nó; gửi cho Claude gán nhãn
+uv run python scripts/vjol/make_final_sample.py sample --run-dir $V9 --exclude-labels $V6/groundtruth/labeling_sample.csv
+tar czf vjol_s21.tar.gz $V9/{manifest.json,report.html,04_quality.parquet,audit,paired_v8_v9.txt,groundtruth_eval.json,final_sample} data/processed/vjol_font_canary data/logs/vjol_extract_gpu*.out
+ls -l vjol_s21.tar.gz
+```
+
+Nếu không có `[ ... ]` sao lưu thì checkpoint cũ bị ghi đè khi trích lại; giữ bước sao lưu. Sau khi Claude gán nhãn mẫu thi cuối: `make_final_sample.py review-sample` (50 dòng cho chủ dự án xem tay) rồi `make_final_sample.py report` (xem docstring script).
+
+**Báo lại cho Claude (Phần B)**: `vjol_s21.tar.gz`, lệnh nào lỗi. **Kỳ vọng so với v8**: `hyphen_lost` thấp hơn (chỗ mơ hồ không còn bị sửa sai, bài lệch dấu / rơi chữ đã OCR); `header_start` / `mid_header` thấp; 0 cờ nhầm ở `check-clean`; ngân sách lỗi chỉ đo trên mẫu thi cuối sau khi gán nhãn (chữ hỏng làm sai nghĩa <= 0,5%, tiêu đề / tham khảo lọt <= 2%, rác hoàn toàn dải A = 0, kèm khoảng tin cậy Wilson 95%).
 
 ---
 

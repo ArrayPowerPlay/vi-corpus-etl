@@ -11,3 +11,6 @@ __pycache__/
 *.out
 # Log job chạy nền (run_with_gpu_keepalive.sh)
 logs/
+
+# Ngoại lệ: dữ liệu mẫu của test (ca thử vàng VJOL, J-42 (1e)) nằm trong repo
+!tests/data/
