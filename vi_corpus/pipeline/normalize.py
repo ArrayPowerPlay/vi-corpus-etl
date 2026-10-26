@@ -4,6 +4,8 @@ Stage prepare, bước 1 (normalize) và đếm từ / token: chỉ chuẩn hóa
 Theo nguyên tắc "không sửa nội dung" của docs/PIPELINE.md: không paraphrase, không sửa số liệu / tên / chính tả.
 Việc làm: NFC, bỏ ký tự điều khiển và ký tự vô hình (zero-width, BOM, soft hyphen), đổi mọi loại khoảng trắng Unicode
 về dấu cách, gộp dấu cách thừa, gộp dòng trống thừa. Vị trí dấu thanh (hòa / hoà) giữ nguyên.
+Chữ "ƣ" / "Ƣ" (U+01A3 / U+01A2, chữ OI của bảng chữ Latinh mở rộng) mà phông Việt cũ dùng thay cho "ư" / "Ư" ("đƣợc", "Hƣng Yên") đổi về "ư" / "Ư" (J-37 E1): chữ này không có trong tiếng Việt;
+đo trên 10.000 đoạn VJOL (79 bài, 1.230 chỗ), mọi từ đổi ra đều là âm tiết thật trong syllables.json.
 Ký tự vùng riêng của font Symbol (U+F020-U+F0FE) đổi về Unicode bằng vi_corpus.pipeline.symbol_font (J-22 (4)): "" -> "±", "" -> "α".
 Văn bản có code (vi_corpus.pipeline.lines.has_code, chạy trên text CÒN thụt lề) giữ khoảng trắng đầu dòng (C-09): thụt lề
 là cú pháp của Python; chỉ gộp khoảng trắng giữa dòng và bỏ khoảng trắng cuối dòng. Văn bản khác bỏ cả khoảng trắng đầu dòng.
@@ -18,7 +20,8 @@ from vi_corpus.pipeline.lines import has_code
 from vi_corpus.pipeline.symbol_font import map_symbol_font
 from vi_corpus.pipeline.tokens import TokenCounter
 
-NORMALIZER_VERSION = "3"  # 2 = giữ thụt lề cho văn bản có code (C-09); 3 = đổi ký tự font Symbol về Unicode (J-22 (4))
+NORMALIZER_VERSION = "4"  # 2 = giữ thụt lề cho văn bản có code (C-09); 3 = đổi ký tự font Symbol về Unicode (J-22 (4)); 4 = đổi "ƣ" thành "ư" (J-37 E1)
+_OI_TO_U = str.maketrans({"ƣ": "ư", "Ƣ": "Ư"})  # U+01A3 / U+01A2 -> ư / Ư
 _SPACES = re.compile(r"[ \t]+")
 _INDENT = re.compile(r"^[ \t]*")
 _BLANK_LINES = re.compile(r"\n{3,}")
@@ -26,7 +29,7 @@ _BLANK_LINES = re.compile(r"\n{3,}")
 
 def _normalize(text: str) -> tuple[str, bool]:
     """Chuẩn hóa một văn bản (xem docstring module). Returns (text mới, có giữ thụt lề vì là code không)."""
-    text = unicodedata.normalize("NFC", text.replace("\r\n", "\n").replace("\r", "\n"))
+    text = unicodedata.normalize("NFC", text.replace("\r\n", "\n").replace("\r", "\n").translate(_OI_TO_U))
     text = map_symbol_font(text)[0]
     out = []
     for ch in text:

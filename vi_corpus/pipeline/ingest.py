@@ -26,9 +26,10 @@ logger = logging.getLogger("vi_corpus")
 
 # Phiên bản code của stage ingest, nằm trong vân tay stage (F-04): nâng khi đổi iter_records / row_to_record / cột meta
 # để 01_ingest.parquet cũ tự chạy lại. 2 = lần đầu đưa vào vân tay (meta stbook có page_lines_removed, commit 24bc92a).
-INGEST_VERSION = "5"  # 3 = J-28: VJOL che số điện thoại chỉ khi đúng dạng số điện thoại (không che số liệu bảng)
+INGEST_VERSION = "6"  # 3 = J-28: VJOL che số điện thoại chỉ khi đúng dạng số điện thoại (không che số liệu bảng)
 # 4 = J-33: VJOL khôi phục "ư" (font gạch nối), lọc câu rác VLM, bỏ trang ban biên tập, cắt tiêu đề tạp chí ở mọi vị trí, năm 1970 coi là thiếu
 # 5 = J-35: khôi phục "ư" thêm dạng liền chữ không cần ngưỡng cả bài, dạng bỏ "-" thừa ("t-ướng"), dạng "đ- ược"; cắt tiêu đề "Tạp chí X số N - năm" ở mọi vị trí
+# 6 = J-37: khôi phục "ư" thêm "V- ơng" viết hoa, " - ơng" / " - ớc", "- u", "nh- “", "xư a" / "nư óc" / "hư ớng" (ư tách rời); cắt tiêu đề tạp chí ở đầu bài (strip_front_headers)
 
 
 def _sample_parquet(path: Path, col: str, k: int, rng: random.Random) -> list[tuple[int, dict]]:

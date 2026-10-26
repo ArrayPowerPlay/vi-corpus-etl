@@ -72,7 +72,7 @@ ODD_MIN_JOURNALS = 3  # J-25 D1: từ lạ xuất hiện ở ít hơn ngần ấ
 ODD_MIN_JOURNALS_RUN = 10  # lần chạy có ít tạp chí hơn ngần ấy thì quay về đếm theo bài (mẫu nhỏ, tạp chí không đại diện)
 ODD_SOFT = 0.08  # tỷ lệ từ lạ vừa phải; kèm perplexity cao (PPL_HIGH) thì thành odd_words (J-25 D3)
 PPL_HIGH = 120.0  # perplexity (Qwen3-0.6B, 512 token đầu) từ mức này là cao; điểm khởi đầu chưa đo, chỉnh bằng nửa chỉnh của bộ đáp án (J-25 Bước 0)
-HYPHEN_HARD_COUNT = 5  # từ ngần này chỗ font mất ư / ơ thành "-" trong một đoạn thì band D (lost_letters, J-25 B)
+HYPHEN_HARD_COUNT = 3  # từ ngần này chỗ font mất ư / ơ thành "-" trong một đoạn thì band D (lost_letters, J-25 B); J-37 D1: hạ 5 -> 3 vì sau hyphen_fix 323 đoạn clean của nhãn chuẩn cao nhất 2 chỗ (0 cờ nhầm), còn đoạn hyphen_font 1 đoạn đạt 3
 
 _PUA = re.compile("[\ue000-\uf8ff]")
 _JUNK_SCRIPT = re.compile("[\u0600-\u06ff\u0900-\u0eff]")

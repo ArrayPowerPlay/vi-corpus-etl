@@ -8,6 +8,7 @@ Công cụ đo cho pipeline VJOL (J-25 Bước 0, chạy CPU, đọc kết quả
   của từng bộ dò theo nhãn. Hạn chế đã biết: nhãn do người đọc gán nên chỉ đo được lỗi mà người đọc thấy.
 - J-33: journal_balance (tỷ lệ bị loại theo từng tạp chí và trung bình theo tạp chí, vì một tạp chí có thể chiếm hơn 1/4 mẫu), year_checks (đoạn thiếu năm, năm mặc định 1970, năm nào chỉ có ở bài không có
   metadata) và font_misread (chữ có dấu bị đọc thành chữ có dấu khác: "NGHIấN", "nghiờn", "nhõn", "Khỏnh"; cần tập âm tiết) để quyết định có cần sửa họ lỗi này không (J-33 H).
+- J-37 D: hai số đo lỗi còn lọt mới: header_start (tiêu đề tạp chí trong 200 ký tự đầu của đoạn) và u_split ("ư" bị tách rời: "xư a", "nư óc"); bộ dò running_header của evaluate_labels = header_start.
 - Tập chữ đúng (make_clean_set, check_clean_set): đoạn kinh tế / luật / y học có dấu đầy đủ; bộ dò nào gắn cờ lên tập này là lỗi (tiêu chí nghiệm thu "0 cờ").
 """
 
@@ -34,6 +35,11 @@ SUSPECT_RULES = (("odd_word", 0.08), ("unaccented", 0.01), ("reversed_gain", 0.1
 KEPT_BANDS = ("A", "B", "C")
 LABELS = ("clean", "lost_diacritics", "hyphen_font", "font_misread", "old_ocr", "reference", "running_header", "other")
 _JOURNAL_HEADER = re.compile(r"Tạp chí[^\n]{3,70}?\bsố\s*\d+", re.IGNORECASE)
+# J-37 D2: tiêu đề tạp chí còn dính ở ĐẦU đoạn (200 ký tự đầu): "Tạp chí ... Số N", "ISSN dddd-dddX", "Số N - năm", "Vol. N, No. M".
+HEADER_START_CHARS = 200
+_HEADER_START = re.compile(r"Tạp chí\b[^\n]{3,90}?\b(?:số|tập)\s*\d+|ISSN\s*\d{4}\s*-\s*\d{3}[\dXx]|(?<!\w)Số\s*\d+\s*(?:\(\d+\))?\s*[-–]\s*(?:19|20)\d{2}|Vol\.\s*\d+,\s*No\.\s*\d+", re.IGNORECASE)
+# J-37 D2: "ư" bị tách rời khỏi âm tiết còn sót ("xư a", "lư u", "hư ớng", "nư óc", "hư ưởng"); đo thô theo hình dạng, nên có thể đếm cả câu thật hiếm gặp ("như ong").
+_U_SPLIT = re.compile(r"(?<![\w-])[^\W\d_]*ư (?:a|u|[ơờớởỡợ](?:ng|c|i)|[oó](?:ng|c|i)|ối|ư[ơờớởỡợ]ng)(?![^\W\d_])")
 CLEAN_KEYWORDS = ("kinh tế", "doanh nghiệp", "ngân hàng", "tài chính", "pháp luật", "điều luật", "luật", "bệnh nhân", "điều trị", "lâm sàng", "thuế")
 HARD_CODES = Q.HARD_REASONS | {"garbled_font"}
 # Họ lỗi đọc font (J-25 (3), J-33 H): chữ có dấu bị thay bằng chữ có dấu khác. Khoá = ký tự sai, giá trị = ký tự đúng ("NGHIấN" -> "NGHIÊN", "nghiờn" -> "nghiên", "nhõn" -> "nhân", "Khỏnh" -> "Khánh").
@@ -97,6 +103,8 @@ ERROR_CHECKS: dict[str, Callable[[dict, dict], bool]] = {
     "reference_label": lambda r, m: "reference_list" in (r.get("reason_codes") or []),
     "reference_heading": lambda r, m: any(is_ref_heading(heading_key(ln)) for ln in _lines(r["text"])),
     "journal_header": lambda r, m: bool(_JOURNAL_HEADER.search(r["text"])),
+    "header_start": lambda r, m: bool(_HEADER_START.search(r["text"][:HEADER_START_CHARS])),
+    "u_split": lambda r, m: bool(_U_SPLIT.search(unicodedata.normalize("NFC", r["text"]))),
     "received_line": lambda r, m: any(len(ln.split()) <= BOILER_MAX_WORDS and _BOILER.match(ln) for ln in _lines(r["text"])),
     "high_perplexity": lambda r, m: m.get("perplexity", 0.0) >= Q.PPL_HIGH,
 }
@@ -112,6 +120,8 @@ def _locate_phone(text: str) -> tuple[int, int] | None:
 # Hàm định vị chỗ lỗi cho mẫu của audit (J-28): trả về (đầu, cuối) hoặc None. Lỗi không có ở đây thì mẫu lấy đầu đoạn.
 HIT_LOCATORS: dict[str, Callable[[str], tuple[int, int] | None]] = {
     "journal_header": lambda t: (m.start(), m.end()) if (m := _JOURNAL_HEADER.search(t)) else None,
+    "header_start": lambda t: (m.start(), m.end()) if (m := _HEADER_START.search(t[:HEADER_START_CHARS])) else None,
+    "u_split": lambda t: (m.start(), m.end()) if (m := _U_SPLIT.search(unicodedata.normalize("NFC", t))) else None,
     "email": lambda t: (m.start(), m.end()) if (m := EMAIL.search(t)) else None,
     "phone": _locate_phone,
     "hyphen_lost": lambda t: (m.start(), m.end()) if (m := _HYPHEN_LOST.search(unicodedata.normalize("NFC", t))) else None,
@@ -398,12 +408,13 @@ def write_labeling_sample(items: list[dict], out_dir: Path) -> None:
             f.write(f"## {i}. {it['doc_id']} [{it['split']}/{it['group']}] {it['journal']} {it['year']} band {it['band']} {it['reason_codes']}\n\n{it['text'][:1500]}\n\n")
 
 
-DETECTORS: dict[str, Callable[[dict], bool]] = {
-    "lost_diacritics": lambda m: m.get("unaccented", 0.0) >= DEFAULT_THRESHOLDS.nodiac,
-    "hyphen_font": lambda m: m.get("hyphen_lost", 0) >= Q.HYPHEN_HARD_COUNT,
-    "font_misread": lambda m: m.get("odd_word", 0.0) >= Q.ODD_SOFT,
-    "old_ocr": lambda m: m.get("odd_word", 0.0) >= Q.ODD_SOFT,
-    "reference": lambda m: m.get("ref_line", 0.0) >= Q.REF_LINE_TAG,
+DETECTORS: dict[str, Callable[[dict, str], bool]] = {  # (số đo quality_metrics, text của đoạn) -> có gắn cờ không
+    "lost_diacritics": lambda m, t: m.get("unaccented", 0.0) >= DEFAULT_THRESHOLDS.nodiac,
+    "hyphen_font": lambda m, t: m.get("hyphen_lost", 0) >= Q.HYPHEN_HARD_COUNT,
+    "font_misread": lambda m, t: m.get("odd_word", 0.0) >= Q.ODD_SOFT,
+    "old_ocr": lambda m, t: m.get("odd_word", 0.0) >= Q.ODD_SOFT,
+    "reference": lambda m, t: m.get("ref_line", 0.0) >= Q.REF_LINE_TAG,
+    "running_header": lambda m, t: bool(_HEADER_START.search(t[:HEADER_START_CHARS])),  # J-37 D4: nhãn chuẩn running_header = tiêu đề ở đầu đoạn
 }
 
 
@@ -422,14 +433,15 @@ def evaluate_labels(items: list[dict]) -> dict:
         per_split = {}
         for split in ("tune", "holdout"):
             sub = [it for it in rows if it["split"] == split]
-            tp = sum(det(json.loads(it["quality_metrics"])) and it["label"] == name for it in sub)
-            fp = sum(det(json.loads(it["quality_metrics"])) and it["label"] != name for it in sub)
-            fn = sum((not det(json.loads(it["quality_metrics"]))) and it["label"] == name for it in sub)
+            hit = [det(json.loads(it["quality_metrics"]), it["text"]) for it in sub]
+            tp = sum(h and it["label"] == name for h, it in zip(hit, sub))
+            fp = sum(h and it["label"] != name for h, it in zip(hit, sub))
+            fn = sum((not h) and it["label"] == name for h, it in zip(hit, sub))
             per_split[split] = {"tp": tp, "fp": fp, "fn": fn, "precision": round(tp / (tp + fp), 3) if tp + fp else None, "recall": round(tp / (tp + fn), 3) if tp + fn else None}
         res["detectors"][name] = per_split
     for split in ("tune", "holdout"):
         clean = [it for it in rows if it["split"] == split and it["label"] == "clean"]
-        res["clean_false_flags"][split] = {name: sum(det(json.loads(it["quality_metrics"])) for it in clean) for name, det in DETECTORS.items()}
+        res["clean_false_flags"][split] = {name: sum(det(json.loads(it["quality_metrics"]), it["text"]) for it in clean) for name, det in DETECTORS.items()}
     return res
 
 

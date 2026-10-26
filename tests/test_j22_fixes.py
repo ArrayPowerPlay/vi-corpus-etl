@@ -53,7 +53,7 @@ def test_normalize_doi_font_symbol_va_dem():
     """normalize_text và normalize_rows đổi ký tự Symbol (bản ghi thống kê symbol_chars), kể cả khi có code (thụt lề giữ)."""
     assert normalize_text("x 5 ") == "x≥ 5 λ"
     rows, st = normalize_rows([{"text": "ab"}, {"text": "không có"}])
-    assert rows[0]["text"] == "a±b" and st["symbol_chars"] == 1 and st["normalizer_version"] == "3"
+    assert rows[0]["text"] == "a±b" and st["symbol_chars"] == 1 and st["normalizer_version"] == "4"
 
 
 # ---- (5) rác font toán, ký tự vùng riêng; (2) mất dấu; (1) đảo ngược
@@ -200,7 +200,7 @@ def test_iter_records_dung_ten_tap_chi_va_meta_journal_language_raw(tmp_path):
     recs = list(iter_records(spec, tmp_path, with_meta=True))
     assert len(recs) == 1 and "Tạp chí Thử Nghiệm" not in recs[0]["text"] and "ai@x.vn" not in recs[0]["text"]
     meta = json.loads(recs[0]["meta"])
-    assert meta["journal_language_raw"] == "en" and "language" not in meta and meta["journal_headers"] == 1 and meta["emails_masked"] == 1
+    assert meta["journal_language_raw"] == "en" and "language" not in meta and meta["journal_headers"] + meta["front_headers"] == 1 and meta["emails_masked"] == 1
     assert isinstance(spec, SourceSpec)
 
 

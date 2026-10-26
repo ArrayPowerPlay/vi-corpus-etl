@@ -33,6 +33,7 @@
 | S-17 | VJOL: trích lại một lần (cache OCR đã nạp) rồi chạy pipeline `vjol_10k_v5` | J-29 | CHẠY SAU S-16 | trích lại vài chục phút trên 4 GPU (3.652 trang nghi + 27 bài ScanGate, nhiều trang có sẵn trong cache); pipeline ~10 phút | 4 |
 | S-18 | VJOL: trích lại một lần sau sửa J-33 (khôi phục "ư", trang không lớp chữ, câu rác VLM, năm 1970 ...) rồi chạy pipeline `vjol_10k_v6` và so với `v5` | J-34 | CHẠY SAU S-17 | trích lại vài chục phút trên 4 GPU (chỉ vài trăm trang mới phải OCR, phần còn lại có trong cache); pipeline ~10 phút | 4 |
 | S-19 | VJOL: chạy lại pipeline `vjol_10k_v7` sau sửa J-35 (không trích lại) và so với `v6` | J-35 | CHẠY SAU S-18 | pipeline ~10 phút | 1 |
+| S-20 | VJOL: chạy lại pipeline `vjol_10k_v8` sau sửa J-37 (không trích lại), so với `v7`, đo bằng nhãn chuẩn | J-38 | CHẠY SAU S-19 | pipeline ~10 phút | 1 |
 
 Thứ tự khuyến nghị: S-10 (VJOL ưu tiên cao nhất, R-15) → S-0 → S-1 → S-2 → S-3 (có đủ số để tính giờ OCR) → S-4 → S-5. S-6 đến S-9 và S-11 làm sau phiên code (S-11 cần script `scripts/dedup_pairs_sample.py`, viết ở gói G-05 bước 2).
 
@@ -536,6 +537,38 @@ tar czf vjol_s19.tar.gz $V7/{manifest.json,report.html,04_quality.parquet,audit,
 Các lệnh viết từng dòng riêng (không nối `&&`) vì `audit_run.py` thoát mã 1 khi còn nhóm tạp chí bất thường.
 
 **Báo lại cho Claude**: gói `vjol_s19.tar.gz` và cho biết lệnh nào lỗi. **Kỳ vọng so với v6**: `hyphen_lost` 1,75% -> khoảng 0,4% (phần còn lại là ký hiệu thật như `t- Statistics`), `journal_header` 4,42% -> khoảng 3,2%, giữ >= 9.768, `lost_letters` vẫn ~3.
+
+---
+
+## S-20. VJOL: chạy lại pipeline `vjol_10k_v8` sau sửa J-37  [CHẠY SAU S-19]
+
+**Mục đích**: J-38 code J-37 (A)-(E1): khôi phục "ư" thêm dạng, ghép "ư" tách rời, cắt tiêu đề tạp chí ở đầu bài, chữ "ƣ", ngưỡng `HYPHEN_HARD_COUNT` 5 -> 3. Không trích lại, không cần vLLM. Không sinh lại mẫu gán nhãn.
+
+```bash
+cd /home/jovyan/dinh/vi-corpus-etl
+git pull
+source /home/jovyan/dinh/env.sh
+uv sync --group curator --group viz --group ocr
+uv run pytest -q                                   # kỳ vọng 306 test qua
+nvidia-smi                                         # không còn tiến trình vLLM nào
+V6=data/processed/pipeline_runs/vjol_10k_v6; V7=data/processed/pipeline_runs/vjol_10k_v7; V8=data/processed/pipeline_runs/vjol_10k_v8
+date
+uv run --group curator --group viz python scripts/run_pipeline.py --data-root data --mix vjol=10000 --total 10000 \
+    --run-name vjol_10k_v8 --embed-device cuda --cluster-space umap10 --perplexity-model Qwen/Qwen3-0.6B
+date
+uv run python scripts/vjol/audit_run.py --run-dir $V8
+uv run python scripts/vjol/compare_runs.py --old $V7 --new $V8 | tee $V8/compare_v7_v8.txt
+# nhãn chuẩn (J-37): đặt labeling_sample_labeled.csv vào $V6/groundtruth/ rồi đo
+cp $V6/groundtruth/labeling_sample.csv $V6/groundtruth/labeling_sample.csv.orig
+cp labeling_sample_labeled.csv $V6/groundtruth/labeling_sample.csv
+uv run python scripts/vjol/groundtruth.py evaluate --labels $V6/groundtruth/labeling_sample.csv | tee $V8/groundtruth_eval.json
+uv run python scripts/vjol/groundtruth.py check-clean --clean-set $V6/groundtruth/clean_set.jsonl --data-root data   # phải 0 cờ nhầm (kiểm ngưỡng 3)
+tar czf vjol_s20.tar.gz $V8/{manifest.json,report.html,04_quality.parquet,audit,compare_v7_v8.txt,groundtruth_eval.json}
+```
+
+Các lệnh viết riêng từng dòng (không `&&`) vì `audit_run.py` và `check-clean` thoát mã 1 khi có cờ.
+
+**Báo lại**: `vjol_s20.tar.gz`, kết quả `check-clean`, lệnh nào lỗi. **Kỳ vọng v8 so với v7**: `hyphen_lost` 1,31% -> <= 0,4%; `header_start` (mới) thấp; `u_split` (mới) thấp; giữ >= 9.781; `lost_letters` không tăng quá vài đoạn (ngưỡng 3 loại thêm ~5 đoạn); 0 cờ nhầm trên tập chữ đúng.
 
 ---
 

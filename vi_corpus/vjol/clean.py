@@ -24,6 +24,11 @@ J-33 (chạy lúc sinh bản ghi, không phải trích lại):
 - E (J-35): GENERIC_HEADER bỏ tiêu đề trang tiếng Việt dạng "Tạp chí X số N - năm" ở mọi vị trí trong dòng (kể cả số trang đứng sau), vì tiêu đề nằm ngoài 3 dòng đầu / cuối của trang thì strip_running_headers không học được.
 - E: strip_running_headers học tiêu đề từ các trang lặp rồi bỏ nó ở MỌI vị trí trong dòng (đầu trang đầu bài không lặp, giữa đoạn do thứ tự khối chữ), không chỉ ở đầu / cuối dòng.
 - F: drop_front_matter nhận trang ban biên tập / bìa mục lục (chức danh, hội đồng biên tập, ISSN) ở vài trang đầu và trang cuối.
+J-37 (C), chạy lúc sinh bản ghi:
+- strip_front_headers cắt tiêu đề tạp chí ở ĐẦU dòng đầu bài (FRONT_SCAN_LINES dòng không rỗng của trang đầu; TOP_SCAN_LINES dòng đầu mỗi trang sau): "Tạp chí ... Số N - năm" mọi kiểu
+  viết (kể cả chữ hoa lẫn thường, "Tập N, Số M (năm): tr", ISSN, trang, địa chỉ web), "Nghiên cứu Tôn giáo. Số 6 - 2001 35", ". Số 3 - 2005 45", "SỐ 12 (206)-2012 NGÔN NGỮ & ĐỜI SỐNG 27",
+  "© Học viện Ngân hàng ISSN 1859 - 011X", "Vietnam J. Agri. Sci. 2016, Vol. 14, No. 6: 843-851", "http://... Bài báo khoa học". Câu trích dẫn ("Tạp chí Nghiên cứu Tôn giáo, số 4/2000, tr. 5")
+  không bị cắt: dạng có dấu phẩy ngay trước "số" chỉ nhận ở trang đầu và không có "tr." mà thiếu ISSN.
 - F (J-25): dòng khuôn mẫu "ngày + động từ + ngày tháng" nói chung ("Ngày phản biện: 12/05/2015"), số điện thoại có mã nước không có dấu + ("84-983226880") có kiểm đầu số
   và loại số liệu bảng.
 """
@@ -99,6 +104,112 @@ _REF_STUCK = re.compile(r"^(?P<h>{heads})(?:\s+{suf})*(?:\s+\[?1[\].):]?(?:\s.*)
 GENERIC_HEADER = re.compile(r"Tạp chí\s+[^\n.,;:()\[\]]{3,60}?\s*(?:[-–]\s*)?số\s*\d+\s*[-–]\s*(?:19|20)\d{2}(?:\s+\d{1,3}(?=\s|$))?", re.IGNORECASE)
 # Dạng viết hoa toàn bộ ("TẠP CHÍ THÔNG TIN KHOA HỌC & CÔNG NGHỆ QUẢNG BÌNH - SỐ 5/2016"): phân biệt hoa thường để câu trích dẫn không khớp.
 GENERIC_HEADER_UPPER = re.compile(r"TẠP CHÍ\s+[A-ZÀ-Ỹ&\s]{5,80}?\s*(?:[-–]\s*)?SỐ\s*\d+\s*[/-]\s*(?:19|20)\d{2}(?:\s+\d{1,3}(?=\s|$))?")
+# Tiêu đề tạp chí ở ĐẦU bài (J-37 C). Chỉ xét FRONT_SCAN_LINES dòng không rỗng đầu của trang đầu và TOP_SCAN_LINES dòng đầu của các trang sau, và chỉ khi dòng BẮT ĐẦU bằng tiêu đề.
+FRONT_SCAN_LINES = 8
+TOP_SCAN_LINES = 2
+_HEAD_LEAD = re.compile(r"^[\d\s.©•*|:]*(?:BÀI BÁO KHOA HỌC\s+)?(?:Tạp chí|TẠP CHÍ)\s+")
+_HEAD_NUM = r"[\dIVXLC]+"
+_HEAD_MARK = rf"(?:số|tập|quyển|năm thứ|tháng|vol\.?|no\.?|t\.)\s*{_HEAD_NUM}(?:\s*[(/&.,-]\s*\d+\)?)*"
+_HEAD_ISSN = r"ISSN[:\s]*\d{4}\s*-\s*\d{3}[\dXx]"
+_HEAD_FIRST = re.compile(rf"\b(?:{_HEAD_MARK}|{_HEAD_ISSN})", re.IGNORECASE)
+_HEAD_TOKEN = re.compile(rf"(?:{_HEAD_MARK}|{_HEAD_ISSN}|(?:19|20)\d{{2}}|\([^)\n]{{1,30}}\)|\d{{1,4}}\s*[-–]\s*\d{{1,4}}|(?:tr|trang|pp)\.?\s*\d+(?:\s*[-–]\s*\d+)?|https?://\S+|www\.\S+|©[^\W\d_][^\n]{{0,40}}?(?=ISSN))", re.IGNORECASE)
+_HEAD_GAP = re.compile(r"[\s,.:;|/&–—-]*")
+_HEAD_YEAR = re.compile(r"(?:19|20)\d{2}")
+_HEAD_PAGE = re.compile(r"\d{1,3}(?=\s|$)")
+_HEAD_LEFT = re.compile(r"^(?:\s|[,.:;|–—-]|o0o)*")
+_YEAR = r"(?:19|20)\d{2}"
+# Các kiểu tiêu đề không bắt đầu bằng "Tạp chí" (mỗi mẫu neo ở đầu dòng, chỉ dùng ở trang đầu).
+FRONT_PATTERNS = (
+    re.compile(rf"^[\W\d]{{0,6}}(?:Số|SỐ)\s*\d+\s*(?:\(\d+\))?\s*[-–]\s*{_YEAR}(?:\s+[A-ZÀ-Ỹ&]+(?:\s+[A-ZÀ-Ỹ&]+){{0,5}}\s+\d{{1,3}}(?=\s|$)|\s+\d{{1,3}}(?=\s|$))?"),  # ". Số 3 - 2005 45", "SỐ 12 (206)-2012 NGÔN NGỮ & ĐỜI SỐNG 27"
+    re.compile(rf"^Nghiên cứu\s+[^\W\d_]+(?:\s+[^\W\d_]+){{0,3}}\s*[.,]\s*[Ss]ố\s*\d+\s*(?:\(\d+\))?\s*[-–]\s*{_YEAR}(?:\s+\d{{1,3}}(?=\s|$))?"),  # "Nghiên cứu Tôn giáo. Số 6 - 2001 35"
+    re.compile(r"^©[^\n]{3,60}?ISSN[:\s]*\d{4}\s*-\s*\d{3}[\dXx]"),  # "© Học viện Ngân hàng ISSN 1859 - 011X"
+    re.compile(rf"^(?:[A-Z&][\w.]*\s+){{1,6}}{_YEAR},\s*Vol\.\s*\d+,\s*No\.\s*\d+\s*:\s*\d+\s*[-–]\s*\d+"),  # "Vietnam J. Agri. Sci. 2016, Vol. 14, No. 6: 843-851", "J. Sci. & Devel. 2015, Vol. 13, No. 8: 1488-1496"
+    re.compile(rf"^(?:(?:[A-Z&][\w.]*|of|and)\s+){{1,9}}ISSN[:\s]*\d{{4}}\s*-\s*\d{{3}}[\dXx]\s+[A-Z]+\s+{_YEAR};\s*\d+\(\d+\)\s*:\s*\d+\s*-\s*\d+(?:\s+https?://\S+)?"),  # "Vietnam Journal of Agricultural Sciences ISSN 2588-1299 VJAS 2018; 1(4): 289-304 https://doi.org/..."
+    re.compile(rf"^(?:(?:[A-Z&][\w.]*|of|and)\s+){{1,9}}Vol\.\s*\d+\s*\({_YEAR}\),\s*pp\.\s*\d+\s*-\s*\d+"),  # "Journal of Science of Lac Hong University Vol. 5 (2016), pp. 19-24"
+    re.compile(r"^(?:https?://|www\.)\S+(?:\s+Bài báo khoa học)?"),  # "http://tapchikttv.vn/ Bài báo khoa học"
+    re.compile(r"^Tạp chí Khoa học (?:ĐHQGHN|DHQGHN|Đại học Quốc gia Hà Nội)\s*,"),  # "Tạp chí Khoa học ĐHQGHN," dính đầu đoạn
+)
+
+
+def _journal_header_end(line: str, front: bool) -> int | None:
+    """
+    Vị trí kết thúc tiêu đề tạp chí nếu `line` BẮT ĐẦU bằng "Tạp chí <tên> <số / tập / ISSN ... năm ...>" (J-37 C), None nếu không.
+
+    Tiêu đề = "Tạp chí" + tên (tối đa 110 ký tự) + một chuỗi liền các mục (số N, tập N, tháng N, năm, "(trang)", "ISSN ...", "tr. 22-31", địa chỉ web) cách nhau tối đa dấu câu; phải có năm
+    (kể cả năm trong tên) hoặc ISSN thì mới cắt ("Tạp chí X số 3 ..." không năm thì giữ). Dạng có dấu phẩy ngay trước mục đầu ("Tạp chí X, số 4/2000, tr. 5") là câu trích dẫn: chỉ nhận ở
+    trang đầu (`front`) và khi không có "tr." hoặc có ISSN.
+    """
+    lead = _HEAD_LEAD.match(line)
+    if not lead:
+        return None
+    window = line[lead.end():lead.end() + 160]
+    first = _HEAD_FIRST.search(window)
+    if not first or first.start() < 3 or first.start() > 110:
+        return None
+    end = first.end()
+    while True:
+        gap = _HEAD_GAP.match(window, end)
+        tok = _HEAD_TOKEN.match(window, gap.end())
+        if not tok and _HEAD_YEAR.search(window[max(0, end - 6):end]):  # số trang in sau năm: "Số 6 – 2005 47"
+            tok = _HEAD_PAGE.match(window, gap.end())
+        if not tok or tok.end() == end:
+            break
+        end = tok.end()
+    run = window[first.start():end]
+    has_issn = bool(re.search(_HEAD_ISSN, run, re.IGNORECASE))
+    if not (_HEAD_YEAR.search(window[:end]) or has_issn):  # năm có thể nằm trong tên ("... Nam 2016, tập 14, số 6")
+        return None
+    if re.search(r"[,;]\s*$", window[:first.start()]):
+        if not front or (re.search(r"\b(?:tr|trang|pp)\.?\s*\d", run, re.IGNORECASE) and not has_issn):
+            return None
+    return lead.end() + end
+
+
+def _strip_front_line(line: str, front: bool) -> tuple[str, int]:
+    """Cắt tiêu đề ở đầu một dòng (lặp tối đa 4 lượt cho tiêu đề nhiều mảnh); trả về (dòng còn lại, số lần cắt)."""
+    cut = 0
+    for _ in range(4):
+        end = _journal_header_end(line, front)
+        if end is None and front:
+            end = next((m.end() for m in (p.match(line) for p in FRONT_PATTERNS) if m), None)
+        if end is None:
+            break
+        line = _HEAD_LEFT.sub("", line[end:], count=1)
+        cut += 1
+        if not line.strip():
+            break
+    return line, cut
+
+
+def strip_front_headers(pages: list[str]) -> tuple[list[str], int]:
+    """
+    Cắt tiêu đề tạp chí / số / ISSN ở đầu dòng đầu bài (J-37 C): FRONT_SCAN_LINES dòng không rỗng đầu của trang có chữ đầu tiên, TOP_SCAN_LINES dòng đầu của mỗi trang sau. Dòng chỉ gồm tiêu đề thì bị bỏ.
+    Trang sau chỉ nhận kiểu "Tạp chí ..." (không có dạng phẩy và FRONT_PATTERNS) vì dòng đầu trang sau có thể là câu văn.
+
+    Returns:
+        (các trang đã cắt, số chỗ đã cắt).
+    """
+    out, total, first_seen = [], 0, False
+    for text in pages:
+        lines = text.splitlines()
+        front = not first_seen and bool(text.strip())
+        first_seen = first_seen or bool(text.strip())
+        scan = FRONT_SCAN_LINES if front else TOP_SCAN_LINES
+        drop, seen = set(), 0
+        for i, line in enumerate(lines):
+            if not line.strip():
+                continue
+            if seen >= scan:
+                break
+            seen += 1
+            lines[i], n = _strip_front_line(line, front)
+            total += n
+            if n and not re.search(r"\w", lines[i]):
+                drop.add(i)
+        out.append("\n".join(ln for i, ln in enumerate(lines) if i not in drop))
+    return out, total
+
+
 AUTHOR_BLOCK_LINES = 40  # khối tác giả chỉ tìm trong ngần ấy dòng không rỗng đầu bài
 # dòng khuôn mẫu của tạp chí; dòng ngắn (<= BOILER_MAX_WORDS từ) mới bị bỏ để câu văn nhắc tới "email" không mất
 BOILER_MAX_WORDS = 25
@@ -449,7 +560,7 @@ def clean_paper_pages(pages: list[str], journal_title: str | None = None, vocab:
         vocab:         Tập âm tiết thật để kiểm khi khôi phục "ư" (vi_corpus.vjol.hyphen_fix); None thì bỏ bước khôi phục.
 
     Returns:
-        (các trang đã làm sạch, {"hyphen_restored", "vlm_noise_removed", "cover_pages", "toc_pages", "editorial_pages", "running_headers", "reference_lines", và các số đếm của strip_boilerplate}).
+        (các trang đã làm sạch, {"hyphen_restored", "vlm_noise_removed", "cover_pages", "toc_pages", "editorial_pages", "running_headers", "front_headers", "reference_lines", và các số đếm của strip_boilerplate}).
     """
     pages, restored = restore_u_in_pages(pages, vocab)
     noise = 0
@@ -461,6 +572,7 @@ def clean_paper_pages(pages: list[str], journal_title: str | None = None, vocab:
     pages, stats = drop_front_matter(cleaned)
     stats = {"hyphen_restored": restored, "vlm_noise_removed": noise, **stats}
     pages, stats["running_headers"] = strip_running_headers(pages)
+    pages, stats["front_headers"] = strip_front_headers(pages)
     pages, stats["reference_lines"] = strip_references(pages)
     pages, tail = strip_trailing_references(pages)
     stats["reference_lines"] += tail
