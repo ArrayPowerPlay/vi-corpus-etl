@@ -334,6 +334,27 @@ def test_do_trung_tu_bat_chu_mat_dau_ma_do_giong_ky_tu_bo_qua():
     assert res["missed"][0]["article_id"] == "1" and res["missed"][0]["pages"] == [[0, 0.05]] and sum(res["histogram"].values()) == 5
 
 
+def test_check_garbled_missed_doc_jsonl_co_ky_tu_ngat_dong_unicode(tmp_path):
+    """Hồi quy J-49: canary_pages.jsonl ghi ensure_ascii=False nên lớp chữ có thể chứa \\u2028 / \\x85 trong chuỗi JSON; script đọc theo "\\n" chứ không dùng splitlines()."""
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    pdf = tmp_path / "raw" / "a.pdf"
+    pdf.parent.mkdir()
+    pdf.touch()
+    (tmp_path / "interim" / "vjol_text").mkdir(parents=True)
+    (tmp_path / "interim" / "vjol_text" / "s.json").write_text(json.dumps({"sha256": "s", "paths": [str(pdf)], "error": None, "skipped": None, "pages": [{"method": "text"}]}), encoding="utf-8")
+    out = tmp_path / "processed" / "vjol_font_canary"
+    out.mkdir(parents=True)
+    row = {"path": str(pdf), "page": 0, "overlap": 0.1, "layer": "chữ\u2028hỏng\x85\x0b", "ocr": "x", "producer": "P", "creator": "C", "article_id": "7"}
+    (out / "canary_pages.jsonl").write_text(json.dumps(row, ensure_ascii=False) + "\n", encoding="utf-8")
+    script = Path(__file__).resolve().parents[1] / "scripts" / "vjol" / "check_garbled_missed.py"
+    run = subprocess.run([sys.executable, str(script), "--data-root", str(tmp_path)], capture_output=True, text=True, encoding="utf-8")
+    assert run.returncode == 0, run.stderr
+    assert json.loads((out / "missed_by_garbled.json").read_text(encoding="utf-8"))["docs_missed"] == 1
+
+
 def test_extract_version_them_dau_nhom_font(tmp_path):
     """extract_version đổi khi danh sách nhóm font xấu đổi (checkpoint cũ bị làm lại) và vẫn được version_is_current nhận ra."""
     from vi_corpus.vjol import extract as vx

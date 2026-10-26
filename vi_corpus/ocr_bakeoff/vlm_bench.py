@@ -135,7 +135,7 @@ def make_retry_dir(out: Path, page_ids: list[str]) -> Path:
     retry = out / "retry"
     retry.mkdir(exist_ok=True)
     keep = set(page_ids)
-    pages = [json.loads(line) for line in (out / "pages.jsonl").read_text(encoding="utf-8").splitlines() if line.strip()]
+    pages = [json.loads(line) for line in (out / "pages.jsonl").read_text(encoding="utf-8").split("\n") if line.strip()]
     with open(retry / "pages.jsonl", "w", encoding="utf-8") as f:
         for p in pages:
             if p["page_id"] in keep:
@@ -191,7 +191,7 @@ def summarize(out: Path, corpus_pages: int = DEFAULT_CORPUS_PAGES, num_gpus: int
     Returns:
         {"sample_pages", "levels": {tên: summarize_run}, "retry": {"pages", "still_flagged", "reasons"} hoặc None, "best_level"}.
     """
-    n = sum(1 for line in (out / "pages.jsonl").read_text(encoding="utf-8").splitlines() if line.strip())
+    n = sum(1 for line in (out / "pages.jsonl").read_text(encoding="utf-8").split("\n") if line.strip())
     runs = sorted((d for d in (out / "runs").glob("c*") if d.is_dir()), key=lambda d: int(d.name[1:]))
     levels = {d.name: summarize_run(d, corpus_pages, num_gpus, n) for d in runs}
     retry = None

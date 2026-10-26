@@ -46,7 +46,8 @@ def main() -> int:
     if not pages_path.is_file():
         print(f"Không thấy {pages_path} (chạy font_canary.py --dump-below 0.7 trước)", file=sys.stderr)
         return 1
-    rows = [json.loads(line) for line in pages_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    # tách theo "\n" chứ không dùng splitlines(): canary_pages.jsonl ghi ensure_ascii=False nên lớp chữ PDF có thể chứa \u2028, \x85... nằm TRONG chuỗi JSON, splitlines() sẽ cắt đôi dòng
+    rows = [json.loads(line) for line in pages_path.read_text(encoding="utf-8").split("\n") if line.strip()]
     methods = load_page_methods(args.data_root)
     if not methods:
         print(f"Không có checkpoint nào trong {args.data_root / TEXT_DIR}", file=sys.stderr)

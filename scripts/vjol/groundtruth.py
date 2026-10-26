@@ -75,7 +75,7 @@ def main() -> int:
         out.write_text("\n".join(json.dumps(i, ensure_ascii=False) for i in items) + "\n", encoding="utf-8")
         print(f"Ghi {len(items)} đoạn chữ đúng vào {out}")
         return 0 if items else 1
-    items = [json.loads(ln) for ln in args.clean_set.read_text(encoding="utf-8").splitlines() if ln.strip()]
+    items = [json.loads(ln) for ln in args.clean_set.read_text(encoding="utf-8").split("\n") if ln.strip()]
     bad = check_clean_set(items, load_vocab(args.data_root / SYLLABLES_REL), load_unaccented(args.data_root / UNACCENTED_REL))
     print(f"{len(items)} đoạn chữ đúng, {len(bad)} bị gắn cờ nhầm")
     for b in bad[:30]:
