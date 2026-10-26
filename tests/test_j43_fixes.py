@@ -293,7 +293,11 @@ def test_nhom_font_xau_ocr_ca_bai_va_phep_thu_canary(tmp_path):
     assert all(x["similarity_mean"] < 0.5 for x in bad) and len(FC.bad_groups(bad, 0.5)) == 2 and FC.bad_groups(ok, 0.5) == []
     labeled = FC.label_reference(bad, docs, [{"article_id": "1", "label": "clean"}, {"article_id": "3", "label": "hyphen_font"}, {"article_id": "2", "label": "garbage"}, {"article_id": "7", "label": "clean"}])
     by_creator = {x["creator"]: (x["labeled_clean"], x["labeled_bad"]) for x in labeled}
-    assert by_creator == {"Creator Y": (1, 1), "Creator Z": (0, 1)}
+    assert by_creator == {"Creator Y": (1, 0), "Creator Z": (0, 1)}  # hyphen_font không tính là lỗi font (OCR không sửa được), đếm ở labeled_hyphen
+    assert {x["creator"]: x["labeled_hyphen"] for x in labeled} == {"Creator Y": 1, "Creator Z": 0}
+    det: list[dict] = []
+    only = FC.run_canary(docs, lambda: _EchoOcr(wrong=True), per_group=2, n_pages=2, only_groups=[("Prod X", "Creator Y")], details=det)
+    assert [x["creator"] for x in only] == ["Creator Y"] and det and all(d["creator"] == "Creator Y" and d["layer"] and d["ocr"] and "similarity" in d for d in det)
     FC.write_canary(labeled, tmp_path / "out")
     assert (tmp_path / "out" / "canary.csv").is_file() and not (tmp_path / "out" / "font_groups_bad.json").exists()
     FC.write_canary(labeled, tmp_path / "out", threshold=0.5)

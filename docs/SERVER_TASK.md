@@ -639,6 +639,22 @@ ls -l vjol_s21a2.tar.gz
 
 Dòng `font_canary.py --reuse` dùng lại số đo của Phần A (không OCR lại, không GPU) nhưng ghép nhãn vào `canary.csv`: hai cột `labeled_clean`, `labeled_bad` của từng nhóm là căn cứ để chốt ngưỡng nhóm font. **Báo lại cho Claude**: `vjol_s21a2.tar.gz`. Phần B vẫn chờ chủ dự án chốt ngưỡng nhóm font.
 
+### Phần A++ (J-46): xem chữ thật của bộ dò báo nhầm và đọc tay nhóm font ở vùng giữa
+
+```bash
+cd /home/jovyan/dinh/vi-corpus-etl
+git pull
+source /home/jovyan/dinh/env.sh
+V6=data/processed/pipeline_runs/vjol_10k_v6; V8=data/processed/pipeline_runs/vjol_10k_v8
+uv run python scripts/vjol/show_flags.py --labels $V6/groundtruth/labeling_sample.csv --data-root data --detectors joined_words,tone_shift,mid_header --kind fp --max 25 | tee $V8/flags_fp.txt
+uv run python scripts/vjol/font_canary.py --data-root data --reuse --labels $V6/groundtruth/labeling_sample.csv      # ghi lại canary.csv với cột labeled_hyphen
+uv run --no-sync python scripts/vjol/font_canary.py --data-root data --gpu 0 --serve --vllm-bin $(which vllm) --dump-below 0.7      # GPU, ~30-40 phút: chỉ các nhóm < 0,7; ghi canary_pages.jsonl
+tar czf vjol_s21a3.tar.gz $V8/flags_fp.txt data/processed/vjol_font_canary data/processed/vjol_reocr_plan data/processed/ocr_bakeoff/tone_shift.json tests/data/vjol_golden.jsonl $V8/groundtruth_eval_v3.json
+ls -l vjol_s21a3.tar.gz
+```
+
+Các lệnh viết từng dòng riêng. Gói `vjol_s21a2.tar.gz` lần trước chỉ nặng 5 KB (câu lệnh `tar` không nằm trong log nên có lẽ chưa chạy đúng); gói mới phải nặng hơn nhiều (có `canary.json`, `canary.csv`, `canary_pages.jsonl`, `vjol_golden.jsonl` hơn 300 ca). **Báo lại cho Claude**: `vjol_s21a3.tar.gz`.
+
 ### Phần B: sau khi chủ dự án chọn ngưỡng (CHỈ chạy khi đã có số X từ Phần A)
 
 ```bash

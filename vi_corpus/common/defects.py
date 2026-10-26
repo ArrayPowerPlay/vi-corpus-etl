@@ -102,32 +102,42 @@ def first_gibberish_span(text: str) -> tuple[int, int] | None:
     return None
 
 
-def joined_words_hits(text: str, vocab: frozenset[str]) -> int:
+def joined_words_found(text: str, vocab: frozenset[str]) -> list[str]:
     """
-    Số từ dính liền hai âm tiết ("tươnghỗ" = "tương" + "hỗ"): từ Latinh >= JOINED_MIN_LEN chữ cái, CÓ dấu / chữ đặc biệt (từ ASCII toàn chữ không xét vì tiếng Anh ghép sẵn nhiều),
+    Các từ dính liền hai âm tiết ("tươnghỗ" = "tương" + "hỗ"): từ Latinh >= JOINED_MIN_LEN chữ cái, CÓ dấu / chữ đặc biệt (từ ASCII toàn chữ không xét vì tiếng Anh ghép sẵn nhiều),
     không có trong `vocab` và tách được thành hai phần, mỗi phần >= 2 chữ cái và đều là âm tiết trong `vocab`.
     """
-    hits = 0
+    found = []
     for tok in latin_tokens(text):
         low = tok.lower()
         if len(low) < JOINED_MIN_LEN or low.isascii() or low in vocab:
             continue
-        hits += any(low[:i] in vocab and low[i:] in vocab for i in range(2, len(low) - 1))
-    return hits
+        if any(low[:i] in vocab and low[i:] in vocab for i in range(2, len(low) - 1)):
+            found.append(tok)
+    return found
+
+
+def joined_words_hits(text: str, vocab: frozenset[str]) -> int:
+    """Số từ dính liền (xem joined_words_found)."""
+    return len(joined_words_found(text, vocab))
+
+
+def tone_shift_found(text: str, vocab: frozenset[str], mapping: Mapping[str, str] | None = None) -> list[str]:
+    """
+    Các từ lệch dấu: từ Latinh KHÔNG có trong `vocab` nhưng thành âm tiết thật khi đổi MỘT ký tự theo `mapping` (khoá = ký tự sai, giá trị = ký tự đúng; mặc định TONE_SHIFT_MAP).
+    """
+    table = TONE_SHIFT_MAP if mapping is None else mapping
+    found = []
+    for tok in latin_tokens(text):
+        low = tok.lower()
+        if low not in vocab and any(c in table and low[:i] + table[c] + low[i + 1:] in vocab for i, c in enumerate(low)):
+            found.append(tok)
+    return found
 
 
 def tone_shift_hits(text: str, vocab: frozenset[str], mapping: Mapping[str, str] | None = None) -> int:
-    """
-    Số từ lệch dấu: từ Latinh KHÔNG có trong `vocab` nhưng thành âm tiết thật khi đổi MỘT ký tự theo `mapping` (khoá = ký tự sai, giá trị = ký tự đúng; mặc định TONE_SHIFT_MAP).
-    """
-    table = TONE_SHIFT_MAP if mapping is None else mapping
-    hits = 0
-    for tok in latin_tokens(text):
-        low = tok.lower()
-        if low in vocab:
-            continue
-        hits += any(c in table and low[:i] + table[c] + low[i + 1:] in vocab for i, c in enumerate(low))
-    return hits
+    """Số từ lệch dấu (xem tone_shift_found)."""
+    return len(tone_shift_found(text, vocab, mapping))
 
 
 def load_tone_shift_map(path: Path) -> dict[str, str] | None:

@@ -478,6 +478,15 @@ def _scores(hits: list[bool], rows: list[dict], targets: frozenset[str]) -> dict
     return {"tp": tp, "fp": fp, "fn": fn, "precision": round(tp / (tp + fp), 3) if tp + fp else None, "recall": round(tp / (tp + fn), 3) if tp + fn else None}
 
 
+def build_detectors(vocab: frozenset[str] | None = None, tone_map: Mapping[str, str] | None = None) -> dict[str, Callable[[dict, str], bool]]:
+    """Mọi bộ dò dùng để đo nhãn chuẩn: DETECTORS, thêm tone_shift và joined_words khi có `vocab` (tập âm tiết); `tone_map` None = bảng mặc định."""
+    dets: dict[str, Callable[[dict, str], bool]] = dict(DETECTORS)
+    if vocab is not None:
+        dets["tone_shift"] = lambda m, t: Df.tone_shift_hits(t, vocab, tone_map) >= Df.SHIFT_MIN_HITS
+        dets["joined_words"] = lambda m, t: Df.joined_words_hits(t, vocab) >= Df.JOINED_MIN_HITS
+    return dets
+
+
 def evaluate_labels(items: list[dict], vocab: frozenset[str] | None = None, tone_map: Mapping[str, str] | None = None, seed: int = 0) -> dict:
     """
     Độ chính xác / độ bao phủ của từng bộ dò (DETECTORS, thêm tone_shift và joined_words khi có `vocab`) theo nhãn, tách hai nửa "tune" và "holdout" và gộp cả hai ("all").
@@ -494,10 +503,7 @@ def evaluate_labels(items: list[dict], vocab: frozenset[str] | None = None, tone
          "detectors": {tên: {nửa | "all": {tp, fp, fn, precision, recall}, "targets": [nhãn], "gate_ok": precision gộp >= quality.DETECTOR_GATE_PRECISION và gắn cờ >= GATE_MIN_FLAGGED đoạn}},
          "clean_false_flags": {nửa: {tên: số}}}.
     """
-    dets: dict[str, Callable[[dict, str], bool]] = dict(DETECTORS)
-    if vocab is not None:
-        dets["tone_shift"] = lambda m, t: Df.tone_shift_hits(t, vocab, tone_map) >= Df.SHIFT_MIN_HITS
-        dets["joined_words"] = lambda m, t: Df.joined_words_hits(t, vocab) >= Df.JOINED_MIN_HITS
+    dets = build_detectors(vocab, tone_map)
     valid = [it for it in items if it.get("label") in LABELS]
     rows = [{**it, "label": refine_label(it)} for it in valid]
     others = [(it, r) for it, r in zip(valid, rows) if it["label"] == "other"]

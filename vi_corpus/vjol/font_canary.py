@@ -8,7 +8,9 @@ J-32) cho độ giống CAO, đúng như mong muốn vì OCR không sửa đư�
 - group_of / pick_docs: gom bài theo nhóm, chọn tối đa `per_group` bài mỗi nhóm bằng băm (seed, sha256) nên không phụ thuộc thứ tự liệt kê.
 - measure_doc: OCR `n_pages` trang chữ giữa bài, trả về độ giống từng trang (chỉ trang OCR đọc được, status ok và có chữ).
 - run_canary: chạy trên danh sách bài, trả về thống kê từng nhóm.
-- label_reference: đối chiếu nhóm với nhãn chuẩn (bài nào được gán nhãn lỗi font / sạch) để chủ dự án chọn ngưỡng; ngưỡng KHÔNG đoán trước.
+- label_reference: đối chiếu nhóm với nhãn chuẩn (bài nào được gán nhãn lỗi font / sạch / gạch nối thay ư) để chủ dự án chọn ngưỡng; ngưỡng KHÔNG đoán trước.
+- measure_doc(details=...) / run_canary(details=..., only_groups=...): lưu cặp (lớp chữ, OCR) của từng trang đã đo để ĐỌC TAY nhóm nằm giữa vùng lỗi và vùng sạch (J-46): độ giống thấp
+  cũng có thể do thứ tự đọc nhiều cột hay chữ gạch nối cuối dòng, không phải lớp chữ hỏng.
 - bad_groups / write_groups: nhóm dưới ngưỡng ghi vào font_groups_bad.json (extract_pdf đọc qua reocr.load_font_groups).
 """
 
@@ -31,7 +33,9 @@ PAGES_PER_DOC = 2  # số trang giữa bài mỗi bài
 MIN_LAYER_CHARS = 200  # trang phải có ít nhất ngần này ký tự (không tính khoảng trắng) lớp chữ mới đem so
 SIM_CHARS = 1500  # chỉ so ngần này ký tự đầu của mỗi bên (SequenceMatcher chậm với trang dài)
 # Nhãn chuẩn (audit.LABELS) coi là lỗi do font / lớp chữ, để đối chiếu nhóm; `reference` và `running_header` là lỗi làm sạch, không phải lỗi font.
-FONT_BAD_LABELS = frozenset({"lost_diacritics", "hyphen_font", "font_misread", "old_ocr", "font_shift", "dropped_letters", "joined_words", "garbage"})
+# `hyphen_font` KHÔNG nằm trong đây: ảnh trang cũng in "-" nên độ giống cao và OCR không sửa được (J-32); đếm riêng ở cột labeled_hyphen (J-46).
+FONT_BAD_LABELS = frozenset({"lost_diacritics", "font_misread", "old_ocr", "font_shift", "dropped_letters", "joined_words", "garbage"})
+DETAIL_CHARS = 700  # số ký tự đầu của lớp chữ / OCR lưu trong `details`
 
 
 def char_similarity(a: str, b: str, limit: int = SIM_CHARS) -> float:
@@ -69,9 +73,10 @@ def middle_text_pages(texts: Sequence[str], n: int = PAGES_PER_DOC, min_chars: i
     return sorted(sorted(ok, key=lambda i: (abs(i - mid), i))[:n])
 
 
-def measure_doc(path: Path, get_ocr: Callable[[], object | None], n_pages: int = PAGES_PER_DOC) -> list[float]:
+def measure_doc(path: Path, get_ocr: Callable[[], object | None], n_pages: int = PAGES_PER_DOC, details: list[dict] | None = None) -> list[float]:
     """
     Độ giống giữa lớp chữ và OCR của `n_pages` trang chữ giữa bài (mỗi trang một số). Trang OCR không đọc được (status khác ok hoặc rỗng) bị bỏ.
+    Có `details` thì thêm vào đó {"path", "page", "similarity", "layer", "ocr"} của từng trang đã đo (DETAIL_CHARS ký tự đầu mỗi bên) để đọc tay.
 
     Raises:
         ServerDown, EngineUnavailable: chuỗi OCR hỏng (lỗi hệ thống) — để dừng cả lượt như vi_corpus.vjol.extract.extract_file; PDF hỏng thì trả [].
@@ -94,12 +99,23 @@ def measure_doc(path: Path, get_ocr: Callable[[], object | None], n_pages: int =
         if not idx or ocr is None:
             return []
         results = ocr.ocr_pages([doc[i] for i in idx], render=[True] * len(idx))
-    return [char_similarity(texts[i], r["text"]) for i, r in zip(idx, results) if r.get("status") == "ok" and (r.get("text") or "").strip()]
+    sims = []
+    for i, r in zip(idx, results):
+        if r.get("status") == "ok" and (r.get("text") or "").strip():
+            sims.append(char_similarity(texts[i], r["text"]))
+            if details is not None:
+                details.append({"path": str(path), "page": i, "similarity": round(sims[-1], 4), "layer": texts[i][:DETAIL_CHARS], "ocr": r["text"][:DETAIL_CHARS]})
+    return sims
 
 
-def run_canary(docs: Iterable[dict], get_ocr: Callable[[], object | None], per_group: int = PER_GROUP, n_pages: int = PAGES_PER_DOC, seed: int = 0) -> list[dict]:
+def run_canary(docs: Iterable[dict], get_ocr: Callable[[], object | None], per_group: int = PER_GROUP, n_pages: int = PAGES_PER_DOC, seed: int = 0,
+               only_groups: Iterable[tuple[str, str]] | None = None, details: list[dict] | None = None) -> list[dict]:
     """
     Chạy phép thử trên danh sách bài {sha256, path, article_id, producer, creator}.
+
+    Args:
+        only_groups: Chỉ chạy các nhóm (producer, creator) này (None = mọi nhóm). Cùng `seed` thì chọn đúng các bài của lần đo đầu.
+        details:     Danh sách nhận cặp (lớp chữ, OCR) từng trang, mỗi phần tử thêm khoá "producer", "creator" (xem measure_doc).
 
     Returns:
         [{"producer", "creator", "docs_total", "docs_tested", "pages", "similarity_mean", "similarity_min", "article_ids"}] theo độ giống tăng dần (nhóm không đo được trang nào ở cuối,
@@ -108,11 +124,17 @@ def run_canary(docs: Iterable[dict], get_ocr: Callable[[], object | None], per_g
     docs = list(docs)
     sizes = Counter(group_of(d) for d in docs)
     out = []
+    wanted = None if only_groups is None else {tuple(g) for g in only_groups}
     for group, picked in pick_docs(docs, per_group, seed).items():
+        if wanted is not None and group not in wanted:
+            continue
         sims: list[float] = []
         tested = 0
         for d in picked:
-            got = measure_doc(Path(d["path"]), get_ocr, n_pages)
+            page_details: list[dict] | None = [] if details is not None else None
+            got = measure_doc(Path(d["path"]), get_ocr, n_pages, page_details)
+            if details is not None and page_details is not None:
+                details.extend({"producer": group[0], "creator": group[1], "article_id": d.get("article_id"), **x} for x in page_details)
             tested += bool(got)
             sims += got
         out.append({"producer": group[0], "creator": group[1], "docs_total": sizes[group], "docs_tested": tested, "pages": len(sims),
@@ -130,18 +152,20 @@ def label_reference(groups: list[dict], docs: Iterable[dict], labels: Iterable[d
         labels: Dòng nhãn chuẩn (cột article_id, label; nhãn `other` đã chia nhỏ nên truyền qua audit.refine_label trước nếu muốn).
 
     Returns:
-        `groups` thêm hai khoá "labeled_clean", "labeled_bad".
+        `groups` thêm ba khoá "labeled_clean", "labeled_bad" (nhãn trong FONT_BAD_LABELS), "labeled_hyphen" (nhãn hyphen_font: OCR không sửa được).
     """
     group_by_article = {str(d.get("article_id")): group_of(d) for d in docs}
     clean: Counter = Counter()
     bad: Counter = Counter()
+    hyphen: Counter = Counter()
     for row in labels:
         g = group_by_article.get(str(row.get("article_id")))
         if g is None:
             continue
         clean[g] += row.get("label") == "clean"
         bad[g] += row.get("label") in FONT_BAD_LABELS
-    return [{**g, "labeled_clean": clean[(g["producer"], g["creator"])], "labeled_bad": bad[(g["producer"], g["creator"])]} for g in groups]
+        hyphen[g] += row.get("label") == "hyphen_font"
+    return [{**g, "labeled_clean": clean[(g["producer"], g["creator"])], "labeled_bad": bad[(g["producer"], g["creator"])], "labeled_hyphen": hyphen[(g["producer"], g["creator"])]} for g in groups]
 
 
 def bad_groups(groups: list[dict], threshold: float) -> list[dict]:
@@ -155,7 +179,7 @@ def write_canary(groups: list[dict], out_dir: Path, threshold: float | None = No
     """
     out_dir.mkdir(parents=True, exist_ok=True)
     write_json_atomic(out_dir / "canary.json", groups)
-    cols = ["producer", "creator", "docs_total", "docs_tested", "pages", "similarity_mean", "similarity_min", "labeled_clean", "labeled_bad"]
+    cols = ["producer", "creator", "docs_total", "docs_tested", "pages", "similarity_mean", "similarity_min", "labeled_clean", "labeled_bad", "labeled_hyphen"]
     with open(out_dir / "canary.csv", "w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=cols, extrasaction="ignore")
         w.writeheader()
