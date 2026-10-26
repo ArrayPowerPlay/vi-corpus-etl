@@ -30,7 +30,7 @@ GPUS = 4
 CORPUS_PDFS = 177_031  # số PDF của cả kho VJOL (J-41), để nhân ra ước lượng cả kho
 REOCR_WARN_SHARE = 0.15  # trang OCR lại vượt tỷ lệ này số trang của mẫu thì báo chủ dự án chọn lại ngưỡng trước khi chạy GPU (J-42)
 SHARE_SWEEP = (0.05, 0.10, 0.15, 0.25, 0.50)
-SIGNAL_SETS = {"mặc định": REOCR_SIGNALS, "+gibberish": REOCR_SIGNALS + ("gibberish",), "+hyphen": REOCR_SIGNALS + ("hyphen",), "tất cả": ALL_SIGNALS}
+SIGNAL_SETS = {"mặc định": REOCR_SIGNALS, "+gibberish": REOCR_SIGNALS + ("gibberish",), "+hyphen": REOCR_SIGNALS + ("hyphen",), "+joined_words": REOCR_SIGNALS + ("joined_words",), "tất cả": ALL_SIGNALS}
 TOP_GROUPS = 25
 
 

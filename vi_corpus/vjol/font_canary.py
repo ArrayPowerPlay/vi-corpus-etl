@@ -11,6 +11,9 @@ J-32) cho độ giống CAO, đúng như mong muốn vì OCR không sửa đư�
 - label_reference: đối chiếu nhóm với nhãn chuẩn (bài nào được gán nhãn lỗi font / sạch / gạch nối thay ư) để chủ dự án chọn ngưỡng; ngưỡng KHÔNG đoán trước.
 - measure_doc(details=...) / run_canary(details=..., only_groups=...): lưu cặp (lớp chữ, OCR) của từng trang đã đo để ĐỌC TAY nhóm nằm giữa vùng lỗi và vùng sạch (J-46): độ giống thấp
   cũng có thể do thứ tự đọc nhiều cột hay chữ gạch nối cuối dòng, không phải lớp chữ hỏng.
+- word_overlap (J-48 b): độ trùng TỪ (túi từ, không xét thứ tự) giữa lớp chữ và OCR, bắt được chữ mất dấu / lệch dấu mà độ giống ký tự đánh giá thấp mức hỏng (chữ mất dấu vẫn giống OCR 0,55-0,70
+  theo ký tự nhưng chỉ trùng 0,05-0,2 theo từ). Mỗi trang đo cả hai số; nhóm có thêm overlap_mean / overlap_min / pages_overlap_low (số trang dưới WORD_OVERLAP_LOW). Ngưỡng 0,3 là ĐIỂM KHỞI ĐẦU, chưa chốt.
+- missed_by_garbled (J-48 c): từ các trang đã đo và checkpoint trích text, đếm bài có trang độ trùng từ thấp mà trang vẫn là `text` (bộ dò `garbled` hiện tại BỎ SÓT); là cơ sở chọn ngưỡng theo bài.
 - bad_groups / write_groups: nhóm dưới ngưỡng ghi vào font_groups_bad.json (extract_pdf đọc qua reocr.load_font_groups).
 """
 
@@ -18,7 +21,9 @@ import csv
 import difflib
 import hashlib
 import logging
+import re
 import statistics
+import unicodedata
 from collections import Counter, defaultdict
 from collections.abc import Callable, Iterable, Sequence
 from pathlib import Path
@@ -36,6 +41,8 @@ SIM_CHARS = 1500  # chỉ so ngần này ký tự đầu của mỗi bên (Seque
 # `hyphen_font` KHÔNG nằm trong đây: ảnh trang cũng in "-" nên độ giống cao và OCR không sửa được (J-32); đếm riêng ở cột labeled_hyphen (J-46).
 FONT_BAD_LABELS = frozenset({"lost_diacritics", "font_misread", "old_ocr", "font_shift", "dropped_letters", "joined_words", "garbage"})
 DETAIL_CHARS = 700  # số ký tự đầu của lớp chữ / OCR lưu trong `details`
+WORD_OVERLAP_LOW = 0.3  # trang có độ trùng từ dưới ngưỡng này coi là lớp chữ hỏng (J-48 b; điểm khởi đầu, chốt sau khi chạy missed_by_garbled)
+_WORD_RE = re.compile(r"\w+")
 
 
 def char_similarity(a: str, b: str, limit: int = SIM_CHARS) -> float:
@@ -45,6 +52,17 @@ def char_similarity(a: str, b: str, limit: int = SIM_CHARS) -> float:
     if not x or not y:
         return 0.0
     return difflib.SequenceMatcher(None, x, y, autojunk=False).ratio()
+
+
+def word_overlap(a: str, b: str) -> float:
+    """
+    Độ trùng từ trong [0, 1] của hai văn bản: hệ số Dice trên túi từ (NFC, chữ thường, từ = chuỗi \\w+) = 2 x số từ chung (tính cả lần lặp) / (số từ của a + số từ của b); không xét thứ tự từ nên
+    không bị thứ tự đọc nhiều cột làm nhiễu. Một bên không có từ nào thì 0.
+    """
+    x = Counter(_WORD_RE.findall(unicodedata.normalize("NFC", a).lower()))
+    y = Counter(_WORD_RE.findall(unicodedata.normalize("NFC", b).lower()))
+    total = x.total() + y.total()
+    return 2 * (x & y).total() / total if x and y else 0.0
 
 
 def group_of(doc: dict) -> tuple[str, str]:
@@ -76,7 +94,7 @@ def middle_text_pages(texts: Sequence[str], n: int = PAGES_PER_DOC, min_chars: i
 def measure_doc(path: Path, get_ocr: Callable[[], object | None], n_pages: int = PAGES_PER_DOC, details: list[dict] | None = None) -> list[float]:
     """
     Độ giống giữa lớp chữ và OCR của `n_pages` trang chữ giữa bài (mỗi trang một số). Trang OCR không đọc được (status khác ok hoặc rỗng) bị bỏ.
-    Có `details` thì thêm vào đó {"path", "page", "similarity", "layer", "ocr"} của từng trang đã đo (DETAIL_CHARS ký tự đầu mỗi bên) để đọc tay.
+    Có `details` thì thêm vào đó {"path", "page", "similarity", "overlap" (word_overlap), "layer", "ocr"} của từng trang đã đo (DETAIL_CHARS ký tự đầu mỗi bên) để đọc tay.
 
     Raises:
         ServerDown, EngineUnavailable: chuỗi OCR hỏng (lỗi hệ thống) — để dừng cả lượt như vi_corpus.vjol.extract.extract_file; PDF hỏng thì trả [].
@@ -104,7 +122,7 @@ def measure_doc(path: Path, get_ocr: Callable[[], object | None], n_pages: int =
         if r.get("status") == "ok" and (r.get("text") or "").strip():
             sims.append(char_similarity(texts[i], r["text"]))
             if details is not None:
-                details.append({"path": str(path), "page": i, "similarity": round(sims[-1], 4), "layer": texts[i][:DETAIL_CHARS], "ocr": r["text"][:DETAIL_CHARS]})
+                details.append({"path": str(path), "page": i, "similarity": round(sims[-1], 4), "overlap": round(word_overlap(texts[i], r["text"]), 4), "layer": texts[i][:DETAIL_CHARS], "ocr": r["text"][:DETAIL_CHARS]})
     return sims
 
 
@@ -118,7 +136,7 @@ def run_canary(docs: Iterable[dict], get_ocr: Callable[[], object | None], per_g
         details:     Danh sách nhận cặp (lớp chữ, OCR) từng trang, mỗi phần tử thêm khoá "producer", "creator" (xem measure_doc).
 
     Returns:
-        [{"producer", "creator", "docs_total", "docs_tested", "pages", "similarity_mean", "similarity_min", "article_ids"}] theo độ giống tăng dần (nhóm không đo được trang nào ở cuối,
+        [{"producer", "creator", "docs_total", "docs_tested", "pages", "similarity_mean", "similarity_min", "overlap_mean", "overlap_min", "pages_overlap_low", "article_ids"}] theo độ giống tăng dần (nhóm không đo được trang nào ở cuối,
         similarity_mean None).
     """
     docs = list(docs)
@@ -129,17 +147,20 @@ def run_canary(docs: Iterable[dict], get_ocr: Callable[[], object | None], per_g
         if wanted is not None and group not in wanted:
             continue
         sims: list[float] = []
+        overlaps: list[float] = []
         tested = 0
         for d in picked:
-            page_details: list[dict] | None = [] if details is not None else None
+            page_details: list[dict] = []
             got = measure_doc(Path(d["path"]), get_ocr, n_pages, page_details)
-            if details is not None and page_details is not None:
+            overlaps += [x["overlap"] for x in page_details]
+            if details is not None:
                 details.extend({"producer": group[0], "creator": group[1], "article_id": d.get("article_id"), **x} for x in page_details)
             tested += bool(got)
             sims += got
         out.append({"producer": group[0], "creator": group[1], "docs_total": sizes[group], "docs_tested": tested, "pages": len(sims),
                     "similarity_mean": round(statistics.mean(sims), 4) if sims else None, "similarity_min": round(min(sims), 4) if sims else None,
-                    "article_ids": [d.get("article_id") for d in picked]})
+                    "overlap_mean": round(statistics.mean(overlaps), 4) if overlaps else None, "overlap_min": round(min(overlaps), 4) if overlaps else None,
+                    "pages_overlap_low": sum(o < WORD_OVERLAP_LOW for o in overlaps), "article_ids": [d.get("article_id") for d in picked]})
     return sorted(out, key=lambda g: (g["similarity_mean"] is None, g["similarity_mean"] or 0.0))
 
 
@@ -179,7 +200,7 @@ def write_canary(groups: list[dict], out_dir: Path, threshold: float | None = No
     """
     out_dir.mkdir(parents=True, exist_ok=True)
     write_json_atomic(out_dir / "canary.json", groups)
-    cols = ["producer", "creator", "docs_total", "docs_tested", "pages", "similarity_mean", "similarity_min", "labeled_clean", "labeled_bad", "labeled_hyphen"]
+    cols = ["producer", "creator", "docs_total", "docs_tested", "pages", "similarity_mean", "similarity_min", "overlap_mean", "overlap_min", "pages_overlap_low", "labeled_clean", "labeled_bad", "labeled_hyphen"]
     with open(out_dir / "canary.csv", "w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=cols, extrasaction="ignore")
         w.writeheader()
@@ -198,3 +219,41 @@ def read_labels(path: Path) -> list[dict]:
         rows = list(csv.DictReader(f))
     return [{**r, "label": refine_label(r)} for r in rows]
 
+
+
+def missed_by_garbled(rows: Iterable[dict], page_methods: dict[str, Sequence[str]], threshold: float = WORD_OVERLAP_LOW) -> dict:
+    """
+    Trong các trang đã đo (dòng của canary_pages.jsonl), đếm bài có trang độ trùng từ < `threshold` mà bộ dò `garbled` BỎ SÓT (trang vẫn là `text` trong checkpoint) (J-48 c).
+
+    Args:
+        rows:         Dòng {"path", "page", "overlap" hoặc "layer" + "ocr", "producer", "creator", "article_id"}; dòng cũ chưa có "overlap" thì tính từ chữ đã cắt (DETAIL_CHARS), gần đúng.
+        page_methods: {đường dẫn PDF: [method của từng trang trong checkpoint]}; bài không có trong đây tính vào `no_checkpoint` và không xét.
+        threshold:    Ngưỡng độ trùng từ.
+
+    Returns:
+        {"threshold", "pages_measured", "pages_low", "pages_low_text" (bỏ sót), "docs_measured", "docs_low", "docs_missed" (có ít nhất một trang thấp mà vẫn text), "no_checkpoint",
+        "missed": [{"path", "article_id", "producer", "creator", "pages": [[trang, độ trùng]]}] của bài bị bỏ sót, "histogram": {"[0.0,0.1)": số trang, ...}}.
+    """
+    pages_measured = pages_low = pages_low_text = no_ckpt = 0
+    seen: set[str] = set()
+    low_docs: set[str] = set()
+    missed: dict[str, dict] = {}
+    hist: Counter = Counter()
+    for r in rows:
+        overlap = r["overlap"] if r.get("overlap") is not None else word_overlap(r.get("layer", ""), r.get("ocr", ""))
+        hist[f"[{min(int(overlap * 10), 9) / 10:.1f},{min(int(overlap * 10), 9) / 10 + 0.1:.1f})"] += 1
+        methods = page_methods.get(r["path"])
+        if methods is None or not 0 <= r["page"] < len(methods):
+            no_ckpt += 1
+            continue
+        pages_measured += 1
+        seen.add(r["path"])
+        if overlap < threshold:
+            pages_low += 1
+            low_docs.add(r["path"])
+            if methods[r["page"]] == "text":
+                pages_low_text += 1
+                m = missed.setdefault(r["path"], {"path": r["path"], "article_id": r.get("article_id"), "producer": r.get("producer"), "creator": r.get("creator"), "pages": []})
+                m["pages"].append([r["page"], round(overlap, 4)])
+    return {"threshold": threshold, "pages_measured": pages_measured, "pages_low": pages_low, "pages_low_text": pages_low_text, "docs_measured": len(seen), "docs_low": len(low_docs),
+            "docs_missed": len(missed), "no_checkpoint": no_ckpt, "missed": list(missed.values()), "histogram": dict(sorted(hist.items()))}

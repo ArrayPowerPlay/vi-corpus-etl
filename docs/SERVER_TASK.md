@@ -646,7 +646,8 @@ cd /home/jovyan/dinh/vi-corpus-etl
 git pull
 source /home/jovyan/dinh/env.sh
 V6=data/processed/pipeline_runs/vjol_10k_v6; V8=data/processed/pipeline_runs/vjol_10k_v8
-uv run python scripts/vjol/show_flags.py --labels $V6/groundtruth/labeling_sample.csv --data-root data --detectors joined_words,tone_shift,mid_header --kind fp --max 25 | tee $V8/flags_fp.txt
+L=$V6/groundtruth/labeling_sample.csv
+uv run python scripts/vjol/show_flags.py --labels $L --data-root data --detectors joined_words,tone_shift,mid_header | tee $V8/flags_fp.txt   # bản ngắn: --kind fp --max 25 là mặc định (lệnh dài bị terminal ngắt dòng ở J-47)
 uv run python scripts/vjol/font_canary.py --data-root data --reuse --labels $V6/groundtruth/labeling_sample.csv      # ghi lại canary.csv với cột labeled_hyphen
 uv run --no-sync python scripts/vjol/font_canary.py --data-root data --gpu 0 --serve --vllm-bin $(which vllm) --dump-below 0.7      # GPU, ~30-40 phút: chỉ các nhóm < 0,7; ghi canary_pages.jsonl
 tar czf vjol_s21a3.tar.gz $V8/flags_fp.txt data/processed/vjol_font_canary data/processed/vjol_reocr_plan data/processed/ocr_bakeoff/tone_shift.json tests/data/vjol_golden.jsonl $V8/groundtruth_eval_v3.json
@@ -655,15 +656,36 @@ ls -l vjol_s21a3.tar.gz
 
 Các lệnh viết từng dòng riêng. Gói `vjol_s21a2.tar.gz` lần trước chỉ nặng 5 KB (câu lệnh `tar` không nằm trong log nên có lẽ chưa chạy đúng); gói mới phải nặng hơn nhiều (có `canary.json`, `canary.csv`, `canary_pages.jsonl`, `vjol_golden.jsonl` hơn 300 ca). **Báo lại cho Claude**: `vjol_s21a3.tar.gz`.
 
+**Kết quả A++ (J-47, gói `vjol_s21a4`)**: `canary_pages.jsonl` 136 trang của 36 nhóm dưới 0,7; `groundtruth_eval_v3.json` giống J-46; `flags_fp.txt` rỗng (lệnh bị ngắt), chạy lại bằng bản ngắn ở trên nếu còn cần xem từ trúng của `joined_words`.
+
+### Phần A+++ (J-48 c): bài có lớp chữ hỏng (độ trùng TỪ thấp) mà bộ dò `garbled` bỏ sót; CPU, vài giây, KHÔNG cần GPU
+
+Dùng lại `canary_pages.jsonl` của A++ (136 trang), tra `method` từng trang trong `interim/vjol_text/`. Dòng cũ chưa có cột `overlap` nên độ trùng được tính từ chữ đã cắt 700 ký tự đầu (gần đúng, đủ để xem có bao nhiêu bài bị bỏ sót).
+
+```bash
+cd /home/jovyan/dinh/vi-corpus-etl
+git pull
+source /home/jovyan/dinh/env.sh
+uv run pytest -q                                   # kỳ vọng 347 test (344 qua + 3 bỏ qua như lần trước)
+uv run python scripts/vjol/check_garbled_missed.py --data-root data | tee data/processed/vjol_font_canary/missed_by_garbled.txt
+uv run python scripts/vjol/check_garbled_missed.py --data-root data --threshold 0.2 | tail -4      # thử ngưỡng chặt hơn (tuỳ chọn)
+# Chỉ nếu muốn số tính trên CẢ TRANG thay vì 700 ký tự (GPU ~35 phút; cũng thêm overlap_mean / pages_overlap_low vào canary.json): chạy lại bước --dump-below của A++ rồi chạy lại hai lệnh trên
+tar czf vjol_s21a5.tar.gz data/processed/vjol_font_canary/{missed_by_garbled.json,missed_by_garbled.txt}
+ls -l vjol_s21a5.tar.gz
+```
+
+**Báo lại cho Claude**: `vjol_s21a5.tar.gz`. **Cách đọc**: dòng "garbled bỏ sót: N trang, M bài". M nhỏ (gần 0) thì ngưỡng theo bài ít giá trị, bộ dò `garbled` đã bắt gần hết; M lớn thì danh sách `BỎ SÓT` và histogram là cơ sở để chủ dự án duyệt số ngưỡng (khoảng 0,3), rồi Claude đổi `font_groups_bad.json` sang danh sách bài (J-48 việc 3). Phần B bên dưới CHƯA chạy được cho đến khi đó.
+
 ### Phần B: sau khi chủ dự án chọn ngưỡng (CHỈ chạy khi đã có số X từ Phần A)
 
 ```bash
 cd /home/jovyan/dinh/vi-corpus-etl && source /home/jovyan/dinh/env.sh
 V6=data/processed/pipeline_runs/vjol_10k_v6; V8=data/processed/pipeline_runs/vjol_10k_v8
 uv run python scripts/vjol/font_canary.py --data-root data --reuse --threshold X     # ghi font_groups_bad.json từ canary.json đã có, không OCR lại
+# J-48: ngưỡng theo NHÓM font bị bỏ; lệnh trên sẽ được thay bằng danh sách bài sau khi chủ dự án duyệt số ở A+++ (chưa chạy dòng này)
 [ -d data/interim/vjol_text_s20_backup ] || cp -r data/interim/vjol_text data/interim/vjol_text_s20_backup   # sao lưu một lần
 ls data/interim/vjol_ocr_cache | wc -l             # bộ nhớ đệm OCR đã có từ S-17 / S-18: không cần seed lại
-date; DATA_ROOT=data VLLM_BIN=$(which vllm) SAMPLE_DOCS=3000 ./scripts/vjol/run_extract_vlm.sh; date   # EXTRACT_VERSION 6: mọi checkpoint làm lại; chỉ trang MỚI bị OCR cả bài mới tốn GPU
+date; DATA_ROOT=data VLLM_BIN=$(which vllm) SAMPLE_DOCS=3000 ./scripts/vjol/run_extract_vlm.sh; date   # EXTRACT_VERSION 7 (J-48 a: bỏ joined_words khỏi tín hiệu OCR lại cả bài): mọi checkpoint làm lại; chỉ trang MỚI bị OCR cả bài mới tốn GPU
 uv run python scripts/vjol/extract.py --data-root data --status
 V9=data/processed/pipeline_runs/vjol_10k_v9
 uv run --group curator --group viz python scripts/run_pipeline.py --data-root data --mix vjol=10000 --total 10000 \
@@ -700,6 +722,7 @@ Nếu không có `[ ... ]` sao lưu thì checkpoint cũ bị ghi đè khi trích
 | S-7 | | | |
 | S-8 | | | |
 | S-9 | | | |
+| S-21 | | A (J-44): 91 bài / 740 trang OCR lại (2,0 giờ cả kho); A++ (J-47, `vjol_s21a4`): 101 / 136 trang nhóm < 0,7 có độ trùng từ < 0,3; A+++ (J-48 c, `vjol_s21a5`): bài bị `garbled` bỏ sót = ? | Phần B chờ ngưỡng theo bài |
 | S-14 | | inspect: nguồn chữ đảo ngược (text / ocr_vlm); producer top: ; embed giây/640 đoạn và device: ; extract giờ: ; v3 so với v2: | |
 | S-10 | | số file: ; dung lượng: GB; thời gian chép: ; số trang: ; tỉ lệ text / scan / tcvn3 theo năm: ; số dòng metadata: | |
 | S-12 | | PDF trích / lỗi / bỏ qua: ; trang theo method: ; ocr_vlm ok / blank / flagged: ; trang baseline: ; giờ trích text: ; đoạn mỗi bài: ; ngôn ngữ vi / en / khác: | |

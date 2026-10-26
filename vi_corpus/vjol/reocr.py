@@ -7,6 +7,8 @@ Thay vì vá chữ hỏng bằng regex ("sửa im lặng" có thể ra chữ sai
   vi_corpus.common.pdf_text.extract_pdf; ngưỡng là điểm khởi đầu, scripts/vjol/plan_reocr.py quét ngưỡng trên dữ liệu thật để chốt (J-42 (2)).
 - Dấu gạch nối thay ư ("hyphen") KHÔNG nằm trong REOCR_SIGNALS mặc định: ảnh trang cũng in dấu "-" nên OCR không đọc ra "ư" (J-32, J-37); gửi những bài đó đi OCR chỉ tốn GPU. plan_reocr vẫn đếm riêng.
   Dấu hiệu "gibberish" cũng bỏ ngoài mặc định vì công thức dàn phẳng là nguồn báo nhầm chính; đưa vào khi số đo plan_reocr cho thấy nên.
+- "joined_words" (từ dính liền) cũng KHÔNG nằm trong REOCR_SIGNALS từ J-48 (a): precision 0,077 trên nhãn chuẩn, hai phần ba lượt OCR lại là do tên riêng / phiên âm (Pleikrông, Lênin, mômen).
+  Vẫn nằm trong ALL_SIGNALS để plan_reocr đếm và đo.
 - Nhóm font xấu (J-42 (4)): font_canary.py ghi `font_groups_bad.json` (danh sách cặp producer / creator), load_font_groups đọc, font_groups_tag cho dấu nhận dạng ghi vào extract_version.
 - pdf_producer_creator: đọc (producer, creator) của PDF; checkpoint không lưu hai trường này.
 """
@@ -20,7 +22,7 @@ from pathlib import Path
 from vi_corpus.common import defects as Df
 from vi_corpus.common.garbled import REASON_DEFECT, hyphen_lost
 
-REOCR_SIGNALS = ("tone_shift", "dropped_letters", "joined_words")  # tín hiệu trang quyết định OCR lại cả bài (xem docstring module)
+REOCR_SIGNALS = ("tone_shift", "dropped_letters")  # tín hiệu trang quyết định OCR lại cả bài (xem docstring module); joined_words chỉ đo (J-48 a)
 ALL_SIGNALS = ("tone_shift", "dropped_letters", "joined_words", "gibberish", "hyphen")  # mọi tín hiệu plan_reocr đo
 REOCR_MIN_PAGES = 2  # bài cần ít nhất ngần này trang trúng tín hiệu ...
 REOCR_SHARE = 0.15  # ... và ít nhất tỷ lệ này số trang có chữ (điểm khởi đầu chưa đo; plan_reocr quét)

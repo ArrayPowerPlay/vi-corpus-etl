@@ -291,19 +291,47 @@ def test_nhom_font_xau_ocr_ca_bai_va_phep_thu_canary(tmp_path):
     assert {(x["producer"], x["creator"]) for x in ok} == {("Prod X", "Creator Y"), ("Prod X", "Creator Z")} and all(x["similarity_mean"] > 0.95 and x["pages"] >= 2 for x in ok)
     bad = FC.run_canary(docs, lambda: _EchoOcr(wrong=True), per_group=2, n_pages=2)
     assert all(x["similarity_mean"] < 0.5 for x in bad) and len(FC.bad_groups(bad, 0.5)) == 2 and FC.bad_groups(ok, 0.5) == []
+    assert all(x["overlap_mean"] > 0.95 and x["pages_overlap_low"] == 0 for x in ok) and all(x["overlap_mean"] < FC.WORD_OVERLAP_LOW and x["pages_overlap_low"] >= 2 for x in bad)  # J-48 (b)
     labeled = FC.label_reference(bad, docs, [{"article_id": "1", "label": "clean"}, {"article_id": "3", "label": "hyphen_font"}, {"article_id": "2", "label": "garbage"}, {"article_id": "7", "label": "clean"}])
     by_creator = {x["creator"]: (x["labeled_clean"], x["labeled_bad"]) for x in labeled}
     assert by_creator == {"Creator Y": (1, 0), "Creator Z": (0, 1)}  # hyphen_font không tính là lỗi font (OCR không sửa được), đếm ở labeled_hyphen
     assert {x["creator"]: x["labeled_hyphen"] for x in labeled} == {"Creator Y": 1, "Creator Z": 0}
     det: list[dict] = []
     only = FC.run_canary(docs, lambda: _EchoOcr(wrong=True), per_group=2, n_pages=2, only_groups=[("Prod X", "Creator Y")], details=det)
-    assert [x["creator"] for x in only] == ["Creator Y"] and det and all(d["creator"] == "Creator Y" and d["layer"] and d["ocr"] and "similarity" in d for d in det)
+    assert [x["creator"] for x in only] == ["Creator Y"] and det and all(d["creator"] == "Creator Y" and d["layer"] and d["ocr"] and "similarity" in d and "overlap" in d for d in det)
     FC.write_canary(labeled, tmp_path / "out")
     assert (tmp_path / "out" / "canary.csv").is_file() and not (tmp_path / "out" / "font_groups_bad.json").exists()
     FC.write_canary(labeled, tmp_path / "out", threshold=0.5)
     groups = R.load_font_groups(tmp_path / "out" / "font_groups_bad.json")
     assert set(groups) == {("Prod X", "Creator Y"), ("Prod X", "Creator Z")} and R.font_groups_tag(groups) != "" and R.font_groups_tag([]) == ""
     assert R.load_font_groups(tmp_path / "khong_co.json") == []
+
+
+def test_joined_words_khong_con_la_tin_hieu_ocr_lai_ca_bai():
+    """J-48 (a): bài toàn tên riêng / từ dính liền KHÔNG bị OCR lại; joined_words vẫn được đo (ALL_SIGNALS) và quét trong plan_reocr; EXTRACT_VERSION đã tăng."""
+    from vi_corpus.vjol.extract import EXTRACT_VERSION
+
+    joined = "mối quan hệ tươnghỗ và Tómtắt " * 8
+    assert "joined_words" in R.page_flags(R.page_defects(joined, VOCAB))
+    assert R.reocr_reason([joined] * 4, VOCAB) is None and "joined_words" not in R.REOCR_SIGNALS and "joined_words" in R.ALL_SIGNALS
+    assert R.reocr_reason([joined] * 4, VOCAB, signals=R.ALL_SIGNALS) == g.REASON_DEFECT  # vẫn bật lại được khi muốn đo
+    assert any("joined_words" in name for name in PR.SIGNAL_SETS) and int(EXTRACT_VERSION) >= 7
+
+
+def test_do_trung_tu_bat_chu_mat_dau_ma_do_giong_ky_tu_bo_qua():
+    """J-48 (b): word_overlap không xét thứ tự từ, thấp khi mất dấu; canary ghi overlap từng trang và nhóm; missed_by_garbled đếm bài có trang trùng thấp mà vẫn là `text` (J-48 c)."""
+    ocr = "Ảnh hưởng của tỉ lệ vốn đến luật đầu tư của các doanh nghiệp nhỏ " * 4
+    lost = "Anh huong cua ti le von den luat dau tu cua cac doanh nghiep nho " * 4
+    assert FC.word_overlap(ocr, ocr) == 1.0 and FC.word_overlap(ocr, "") == 0.0 and FC.word_overlap("a b c d", "d c b a") == 1.0  # không xét thứ tự đọc
+    assert FC.word_overlap(ocr, lost) < 0.3 < FC.char_similarity(ocr, lost)  # đúng ca J-47: giống ký tự cao, trùng từ thấp
+    rows = [{"path": "/x/a.pdf", "page": 0, "overlap": 0.05, "producer": "P", "creator": "C", "article_id": "1"},
+            {"path": "/x/a.pdf", "page": 1, "layer": lost, "ocr": ocr, "producer": "P", "creator": "C", "article_id": "1"},  # dòng cũ: tính từ chữ đã cắt
+            {"path": "/x/a.pdf", "page": 2, "overlap": 0.9, "producer": "P", "creator": "C", "article_id": "1"},
+            {"path": "/x/b.pdf", "page": 0, "overlap": 0.1, "producer": "P", "creator": "C", "article_id": "2"},
+            {"path": "/x/c.pdf", "page": 0, "overlap": 0.1, "producer": "P", "creator": "C", "article_id": "3"}]
+    res = FC.missed_by_garbled(rows, {"/x/a.pdf": ["text", "ocr_vlm", "text"], "/x/b.pdf": ["ocr_vlm"]})
+    assert (res["pages_measured"], res["pages_low"], res["pages_low_text"], res["docs_measured"], res["docs_low"], res["docs_missed"], res["no_checkpoint"]) == (4, 3, 1, 2, 2, 1, 1)
+    assert res["missed"][0]["article_id"] == "1" and res["missed"][0]["pages"] == [[0, 0.05]] and sum(res["histogram"].values()) == 5
 
 
 def test_extract_version_them_dau_nhom_font(tmp_path):
