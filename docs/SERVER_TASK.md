@@ -584,7 +584,7 @@ cd /home/jovyan/dinh/vi-corpus-etl
 git fetch origin && git checkout worktree-vjol-pipeline && git pull
 source /home/jovyan/dinh/env.sh
 uv sync --group curator --group viz --group ocr
-uv run pytest -q                                   # kỳ vọng 343 test qua
+uv run pytest -q                                   # kỳ vọng 343 test qua (đã chạy: 340 qua + 3 bỏ qua)
 nvidia-smi                                         # không còn tiến trình vLLM nào
 V6=data/processed/pipeline_runs/vjol_10k_v6; V7=data/processed/pipeline_runs/vjol_10k_v7; V8=data/processed/pipeline_runs/vjol_10k_v8
 
@@ -611,6 +611,33 @@ ls -l vjol_s21a.tar.gz
 Các lệnh viết từng dòng riêng (không nối `&&`) vì `plan_reocr.py` thoát mã 1 khi có cảnh báo.
 
 **Báo lại cho Claude (Phần A)**: `vjol_s21a.tar.gz` (kiểm bằng `ls -l` trước khi báo), cho biết lệnh nào lỗi. **Cách đọc**: `paired_v7_v8.txt` (số đoạn chung, đổi giữ / loại kèm mã, 20 mẫu đổi chữ); `vjol_reocr_plan/summary.json` (`default`: bài / trang / giờ cho mẫu và cả kho, `warning`, `hyphen_only_docs`, `sweep`: ngưỡng share x bộ tín hiệu); `vjol_font_canary/canary.csv` (nhóm theo độ giống tăng dần, kèm số dòng nhãn sạch / nhãn lỗi font để chọn ngưỡng); `vjol_golden.jsonl` (Claude chép vào repo để test giữ bộ dò không tụt); `groundtruth_eval_v2.json` (`detectors.<tên>.all.precision`, `gate_ok`: bộ dò nào đủ precision >= 0,9 để thành mã loại cứng ở `quality.HARD_DETECTOR_THRESHOLDS`). **Rủi ro cần báo lại**: OCR lại > 15% trang của kho, hoặc nhóm font xấu trùng hơn 1/3 kho (khi đó nên OCR cả nhóm thay vì từng bài).
+
+### Phần A+ (J-44): chạy lại các bước CPU sau khi Phần A lộ ba lỗi (nhãn chưa gán, bảng lệch dấu nhiễu, so ghép đôi đọc nhầm biên); KHÔNG cần GPU
+
+Phần A trên server đọc `labeling_sample.csv` CHƯA gán nhãn nên `evaluate`, `make_golden` và cột nhãn của canary ra 0. Chép bản đã gán nhãn lên server (file `labeling_sample_labeled.csv` của chủ dự án, đặt ở thư mục repo trên server) rồi:
+
+```bash
+cd /home/jovyan/dinh/vi-corpus-etl
+git pull
+source /home/jovyan/dinh/env.sh
+uv run pytest -q                                   # kỳ vọng 345 test (342 qua + 3 bỏ qua như lần trước)
+V6=data/processed/pipeline_runs/vjol_10k_v6; V7=data/processed/pipeline_runs/vjol_10k_v7; V8=data/processed/pipeline_runs/vjol_10k_v8
+[ -f $V6/groundtruth/labeling_sample.csv.orig ] || cp $V6/groundtruth/labeling_sample.csv $V6/groundtruth/labeling_sample.csv.orig
+cp labeling_sample_labeled.csv $V6/groundtruth/labeling_sample.csv
+python3 -c "import csv,collections;r=list(csv.DictReader(open('$V6/groundtruth/labeling_sample.csv',encoding='utf-8')));print(len(r),collections.Counter(x['label'] for x in r).most_common(4))"   # phải thấy 'clean' ~323, KHÔNG phải '' 400
+
+uv run python scripts/vjol/compare_runs.py --old $V7 --new $V8 --paired --samples 20 | tee $V8/paired_v7_v8_b.txt
+uv run python scripts/vjol/learn_tone_shift.py --data-root data --run-dir $V8 | tee $V8/tone_shift_pairs_b.txt
+uv run python scripts/vjol/groundtruth.py evaluate --labels $V6/groundtruth/labeling_sample.csv --data-root data | tee $V8/groundtruth_eval_v3.json
+uv run python scripts/vjol/make_golden.py --labels $V6/groundtruth/labeling_sample.csv --data-root data
+uv run python scripts/vjol/plan_reocr.py --data-root data ; echo "plan_reocr exit=$?"
+uv run python scripts/vjol/font_canary.py --data-root data --reuse --labels $V6/groundtruth/labeling_sample.csv
+
+tar czf vjol_s21a2.tar.gz $V8/{paired_v7_v8_b.txt,tone_shift_pairs_b.txt,groundtruth_eval_v3.json} data/processed/ocr_bakeoff/tone_shift.json data/processed/vjol_reocr_plan data/processed/vjol_font_canary tests/data/vjol_golden.jsonl
+ls -l vjol_s21a2.tar.gz
+```
+
+Dòng `font_canary.py --reuse` dùng lại số đo của Phần A (không OCR lại, không GPU) nhưng ghép nhãn vào `canary.csv`: hai cột `labeled_clean`, `labeled_bad` của từng nhóm là căn cứ để chốt ngưỡng nhóm font. **Báo lại cho Claude**: `vjol_s21a2.tar.gz`. Phần B vẫn chờ chủ dự án chốt ngưỡng nhóm font.
 
 ### Phần B: sau khi chủ dự án chọn ngưỡng (CHỈ chạy khi đã có số X từ Phần A)
 

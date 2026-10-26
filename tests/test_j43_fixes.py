@@ -21,7 +21,7 @@ from vi_corpus.vjol import plan_reocr as PR
 from vi_corpus.vjol import reocr as R
 from vi_corpus.vjol.clean import clean_paper_pages, find_journal_headers, is_junk_line, strip_junk_lines, strip_mid_headers
 from vi_corpus.vjol.hyphen_fix import restore_u_in_pages, restore_u_in_text
-from vi_corpus.vjol.paired import diff_excerpt, format_paired, paired_compare
+from vi_corpus.vjol.paired import diff_excerpt, edit_kind, format_paired, paired_compare
 from vi_corpus.vjol.records import repairs_of
 
 VOCAB = frozenset("tương hỗ tóm tắt nghiên nhân khánh cứu bệnh trường người được nhưng như ương trung tối ưu mương mường vương vưởng vượng hương hưởng hường".split())
@@ -76,6 +76,19 @@ def test_so_ghep_doi_chi_xet_doan_chung():
     assert "chung 4" in format_paired(res) and diff_excerpt("a b", "a b") == ""
 
 
+def test_so_ghep_doi_tach_xe_dich_bien_khoi_doi_chu():
+    """J-44: đoạn chỉ thừa / thiếu chữ ở đầu hoặc cuối (biên đoạn xê dịch khi cắt tiêu đề phía trước) là "edge", không tính vào đổi chữ ở thân và không vào mẫu; đoạn dài được rút gọn."""
+    assert edit_kind("a b c", "a b c") == "same"
+    assert edit_kind("a b c d e f", "a b c") == "edge" and edit_kind("H a b c", "a b c") == "edge" and edit_kind("a b c", "a b c d e") == "edge"
+    assert edit_kind("a b c d", "a X c d") == "inner" and edit_kind("H a b c d e", "a X c") == "inner"
+    old = [_row(0, "a b c d e f g h"), _row(1, "p q r s t u v w")]
+    new = [_row(0, "a b c d"), _row(1, "p q Z s t u v w")]
+    res = paired_compare(old, new, samples=5)
+    assert (res["text_changed"], res["text_changed_inner"], res["text_changed_edge"]) == (2, 1, 1)
+    assert [s["doc_id"] for s in res["samples"]] == ["vjol:1:0#c0"]
+    assert "biên" in diff_excerpt("a b c d e f g h", "a b c d") and "…" in diff_excerpt(" ".join(f"w{i}" for i in range(40)) + " end", "end")
+
+
 # ---------------------------------------------------------------------------------------------------------------- (1c) bộ dò mới
 
 
@@ -84,6 +97,10 @@ def test_bo_do_chu_roi_rac_dinh_lech_dau():
     assert Df.gibberish_ratio("/, N9 = < 0 e H ; : " * 10)[0] > 0.9 and Df.gibberish_ratio("Nghiên cứu này trình bày kết quả khảo sát " * 5)[0] < 0.05
     assert Df.dropped_letters_runs("cho thấy kh n th và nh ng điều khác") == 2
     assert Df.dropped_letters_runs("liều 5 mm cm kg mg và các biến x y z") == 0
+    # J-44: chuỗi sát ký hiệu toán (công thức dàn phẳng) không phải chữ rơi; chữ rơi thật trong văn xuôi vẫn đếm
+    assert Df.dropped_letters_runs("nhiệt độ trung bình tháng t tb = 20,5 – 25,7 độ") == 0
+    assert Df.dropped_letters_runs("liên tục theo độ sâu: h dz z w x u ∫ − η và (6)") == 0
+    assert Df.dropped_letters_runs("có nh ng s thay đổi về tâm sinh l , s thay đổi này k o theo nh ng") >= 2
     assert Df.joined_words_hits("mối quan hệ tươnghỗ và Tómtắt", VOCAB) == 2 and Df.joined_words_hits("tương hỗ tóm tắt nghiên cứu", VOCAB) == 0
     assert Df.tone_shift_hits("NGHIấN cứu bệnh nhõn Khỏnh", VOCAB) == 3 and Df.tone_shift_hits("nghiên cứu bệnh nhân", VOCAB) == 0
     assert Df.first_dropped_span("cho thấy kh n th ok") == (9, 16) and Df.first_gibberish_span("abc def = ghi")[0] == 8
@@ -95,6 +112,18 @@ def test_hoc_bang_doi_lech_dau_tu_du_lieu():
     texts = ["phỏt triển nhõn thỏi khỏnh " * 12, "phát triển xyz abc"]
     res = Df.learn_tone_shift_map(texts, vocab, min_count=10, min_share=0.2)
     assert res["map"].get("ỏ") == "á" and res["map"].get("õ") == "â" and res["unknown_tokens"] > 0
+
+
+def test_bang_lech_dau_chi_hoc_chu_co_dau_va_bang_rong_dung_bang_mac_dinh(tmp_path):
+    """J-44: lỗi gõ ở chữ không dấu ("d" thay "r") không vào bảng học; file bảng rỗng được đọc thành None để tone_shift dùng TONE_SHIFT_MAP chứ không tắt hẳn."""
+    vocab = frozenset("rừng đàn".split())
+    res = Df.learn_tone_shift_map(["dừng " * 80], vocab, min_count=10, min_share=0.1)
+    assert res["map"] == {} and all(p["wrong"].isascii() is False for p in res["pairs"])
+    f = tmp_path / "tone_shift.json"
+    f.write_text(json.dumps({"map": {}, "pairs": []}), encoding="utf-8")
+    assert Df.load_tone_shift_map(f) is None and Df.load_tone_shift_map(tmp_path / "none.json") is None
+    f.write_text(json.dumps({"map": {"ỏ": "á"}, "pairs": []}), encoding="utf-8")
+    assert Df.load_tone_shift_map(f) == {"ỏ": "á"}
 
 
 def test_tieu_de_giua_doan_khong_dem_trich_dan():

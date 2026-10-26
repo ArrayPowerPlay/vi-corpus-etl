@@ -35,8 +35,11 @@ _NEUTRAL = re.compile(r"^[\d.,;:()\[\]%+\-–—/\"'“”‘’…°*•]*$")  
 _WORDLIKE = re.compile(r"[A-Za-zÀ-ɏḀ-ỿ]{2,}")
 _VOWELS = frozenset("aeiouyàáảãạăắằẳẵặâấầẩẫậèéẻẽẹêếềểễệìíỉĩịòóỏõọôốồổỗộơớờởỡợùúủũụưứừửữựỳýỷỹỵ")
 # Đơn vị / viết tắt thường gồm 1-2 chữ cái không nguyên âm; không tính là chữ rơi mất.
+MATH_WINDOW = 30  # số ký tự hai bên chuỗi rơi chữ được xét có ký hiệu toán hay không
+_MATH_CONTEXT = re.compile("[=+\u2212\u00d7\u00f7^\u0370-\u03ff\u2190-\u21ff\u2200-\u22ff]")  # dấu toán, chữ Hy Lạp, mũi tên, toán tử: dấu hiệu công thức dàn phẳng
 _UNITS = frozenset("mm cm km kg mg ml dl pp tr tp vs st hz pm kv kw mw".split())
 _VI_ALPHABET = frozenset("abcdefghijklmnopqrstuvxyzàáảãạăắằẳẵặâấầẩẫậèéẻẽẹêếềểễệìíỉĩịòóỏõọôốồổỗộơớờởỡợùúủũụưứừửữựỳýỷỹỵđ")
+_VI_ACCENTED = frozenset(c for c in _VI_ALPHABET if not c.isascii() and c != "đ")  # chữ có dấu (bỏ đ): lệch dấu chỉ đổi chữ có dấu này thành chữ có dấu khác
 
 
 def gibberish_ratio(text: str) -> tuple[float, int]:
@@ -59,34 +62,35 @@ def _consonant_only(token: str) -> bool:
     return token.isalpha() and 1 <= len(token) <= 2 and token == token.lower() and not any(c in _VOWELS for c in token) and token not in _UNITS
 
 
-def dropped_letters_runs(text: str) -> int:
+def _dropped_spans(text: str) -> list[tuple[int, int]]:
     """
-    Số chuỗi chữ rơi mất ("kh n th", "nh ng"): chuỗi >= 2 từ liền nhau (không dấu câu dính vào) mà mỗi từ là 1-2 chữ cái thường không có nguyên âm, và có ít nhất một từ 2 chữ cái
-    (chuỗi toàn chữ đơn "x y z" là ký hiệu toán).
+    Vị trí (đầu, cuối) của mọi chuỗi chữ rơi mất trong `text` đã NFC: >= 2 từ liền nhau mà mỗi từ là 1-2 chữ cái thường không nguyên âm (_consonant_only), có ít nhất một từ 2 chữ cái
+    (chuỗi toàn chữ đơn "x y z" là ký hiệu toán). Chuỗi nằm sát ký hiệu toán (_MATH_CONTEXT trong MATH_WINDOW ký tự hai bên: "t tb = 20,5", "h dz z w x u" cạnh ∫ ∂) bị bỏ vì là công thức
+    dàn phẳng, không phải chữ rơi (J-44: 5 đoạn chữ đúng / công thức báo nhầm trong 400 nhãn, còn bài rơi chữ thật có hàng chục chuỗi như vậy).
     """
-    runs = 0
-    cur: list[str] = []
-    for tok in unicodedata.normalize("NFC", text).split() + [""]:
-        if _consonant_only(tok):
-            cur.append(tok)
-            continue
-        runs += len(cur) >= 2 and any(len(t) == 2 for t in cur)
-        cur = []
-    return runs
-
-
-def first_dropped_span(text: str) -> tuple[int, int] | None:
-    """Vị trí (đầu, cuối) của chuỗi chữ rơi mất đầu tiên (xem dropped_letters_runs) trong `text` đã NFC; None nếu không có. Dùng để trích mẫu quanh chỗ lỗi."""
-    text = unicodedata.normalize("NFC", text)
+    spans: list[tuple[int, int]] = []
     cur: list[re.Match] = []
     for m in list(re.finditer(r"\S+", text)) + [None]:
         if m is not None and _consonant_only(m.group(0)):
             cur.append(m)
             continue
         if len(cur) >= 2 and any(len(x.group(0)) == 2 for x in cur):
-            return cur[0].start(), cur[-1].end()
+            a, b = cur[0].start(), cur[-1].end()
+            if not _MATH_CONTEXT.search(text[max(0, a - MATH_WINDOW):b + MATH_WINDOW]):
+                spans.append((a, b))
         cur = []
-    return None
+    return spans
+
+
+def dropped_letters_runs(text: str) -> int:
+    """Số chuỗi chữ rơi mất ("kh n th", "nh ng") trong `text`, bỏ chuỗi nằm sát ký hiệu toán (xem _dropped_spans)."""
+    return len(_dropped_spans(unicodedata.normalize("NFC", text)))
+
+
+def first_dropped_span(text: str) -> tuple[int, int] | None:
+    """Vị trí (đầu, cuối) của chuỗi chữ rơi mất đầu tiên (xem _dropped_spans) trong `text` đã NFC; None nếu không có. Dùng để trích mẫu quanh chỗ lỗi."""
+    spans = _dropped_spans(unicodedata.normalize("NFC", text))
+    return spans[0] if spans else None
 
 
 def first_gibberish_span(text: str) -> tuple[int, int] | None:
@@ -127,18 +131,18 @@ def tone_shift_hits(text: str, vocab: frozenset[str], mapping: Mapping[str, str]
 
 
 def load_tone_shift_map(path: Path) -> dict[str, str] | None:
-    """Đọc bảng đổi lệch dấu do learn_tone_shift_map sinh (khoá "map"); None nếu file không tồn tại."""
+    """Đọc bảng đổi lệch dấu do learn_tone_shift_map sinh (khoá "map"); None (= dùng TONE_SHIFT_MAP mặc định) nếu file không tồn tại HOẶC bảng học được rỗng (J-44: bảng rỗng từng làm tone_shift tắt hẳn)."""
     path = Path(path)
     if not path.is_file():
         return None
-    return dict(json.loads(path.read_text(encoding="utf-8"))["map"])
+    return dict(json.loads(path.read_text(encoding="utf-8"))["map"]) or None
 
 
 def learn_tone_shift_map(texts: Iterable[str], vocab: frozenset[str], min_count: int = 30, min_share: float = 0.3, top: int = 60) -> dict:
     """
     Học bảng đổi lệch dấu từ dữ liệu (J-42 (1c): "chọn bảng đổi bằng dữ liệu, không đoán").
 
-    Với mỗi từ Latinh không có trong `vocab` mà đúng MỘT phép đổi một ký tự (c -> c', cả hai là chữ cái tiếng Việt) cho âm tiết thật, đếm cặp (c, c'). Giữ cặp có count >= min_count và
+    Với mỗi từ Latinh không có trong `vocab` mà đúng MỘT phép đổi một ký tự (c -> c', cả hai là chữ CÓ DẤU tiếng Việt, không tính đ; J-44: lần đầu cho cả chữ không dấu nên ra "d -> r" toàn nhiễu) cho âm tiết thật, đếm cặp (c, c'). Giữ cặp có count >= min_count và
     share >= min_share (share = số lần cặp đó / số từ lạ có chứa ký tự c): ký tự sai thật (ỏ thay á) hầu như chỉ đổi theo một cách, còn lỗi gõ ngẫu nhiên thì rải đều nhiều cặp.
     Mỗi ký tự sai chỉ giữ cặp có count lớn nhất.
 
@@ -156,7 +160,7 @@ def learn_tone_shift_map(texts: Iterable[str], vocab: frozenset[str], min_count:
             unknown += 1
             for c in set(low):
                 contain[c] += 1
-            found = {(c, alt) for i, c in enumerate(low) if c in _VI_ALPHABET for alt in _VI_ALPHABET if alt != c and low[:i] + alt + low[i + 1:] in vocab}
+            found = {(c, alt) for i, c in enumerate(low) if c in _VI_ACCENTED for alt in _VI_ACCENTED if alt != c and low[:i] + alt + low[i + 1:] in vocab}
             if len(found) == 1:
                 pairs[next(iter(found))] += 1
     rows = [{"wrong": c, "right": alt, "count": n, "share": round(n / contain[c], 3)} for (c, alt), n in pairs.most_common()]
