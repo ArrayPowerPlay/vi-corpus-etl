@@ -722,7 +722,7 @@ Nếu không có `[ ... ]` sao lưu thì checkpoint cũ bị ghi đè khi trích
 | S-7 | | | |
 | S-8 | | | |
 | S-9 | | | |
-| S-21 | | A (J-44): 91 bài / 740 trang OCR lại (2,0 giờ cả kho); A++ (J-47, `vjol_s21a4`): 101 / 136 trang nhóm < 0,7 có độ trùng từ < 0,3; A+++ (J-48 c, `vjol_s21a5`): bài bị `garbled` bỏ sót = ? | Phần B chờ ngưỡng theo bài |
+| S-21 | | A (J-44): 91 bài / 740 trang OCR lại (2,0 giờ cả kho); A++ (J-47, `vjol_s21a4`): 101 / 136 trang nhóm < 0,7 có độ trùng từ < 0,3; A+++ (J-48 c, `vjol_s21a5`): bài bị `garbled` bỏ sót = 7 / 71 bài đã đo (10 trang; 100 trang dưới ngưỡng thì `garbled` đã bắt 90), 4 bài Ghostscript độ trùng ~0, 3 bài InDesign CS6 độ trùng 0,21-0,26 (J-50) | Phần B chờ ngưỡng theo bài |
 | S-14 | | inspect: nguồn chữ đảo ngược (text / ocr_vlm); producer top: ; embed giây/640 đoạn và device: ; extract giờ: ; v3 so với v2: | |
 | S-10 | | số file: ; dung lượng: GB; thời gian chép: ; số trang: ; tỉ lệ text / scan / tcvn3 theo năm: ; số dòng metadata: | |
 | S-12 | | PDF trích / lỗi / bỏ qua: ; trang theo method: ; ocr_vlm ok / blank / flagged: ; trang baseline: ; giờ trích text: ; đoạn mỗi bài: ; ngôn ngữ vi / en / khác: | |
