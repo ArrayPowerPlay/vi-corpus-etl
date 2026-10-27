@@ -26,10 +26,11 @@ logger = logging.getLogger("vi_corpus")
 
 # Phiên bản code của stage ingest, nằm trong vân tay stage (F-04): nâng khi đổi iter_records / row_to_record / cột meta
 # để 01_ingest.parquet cũ tự chạy lại. 2 = lần đầu đưa vào vân tay (meta stbook có page_lines_removed, commit 24bc92a).
-INGEST_VERSION = "7"  # 3 = J-28: VJOL che số điện thoại chỉ khi đúng dạng số điện thoại (không che số liệu bảng)
+INGEST_VERSION = "8"  # 3 = J-28: VJOL che số điện thoại chỉ khi đúng dạng số điện thoại (không che số liệu bảng)
 # 4 = J-33: VJOL khôi phục "ư" (font gạch nối), lọc câu rác VLM, bỏ trang ban biên tập, cắt tiêu đề tạp chí ở mọi vị trí, năm 1970 coi là thiếu
 # 5 = J-35: khôi phục "ư" thêm dạng liền chữ không cần ngưỡng cả bài, dạng bỏ "-" thừa ("t-ướng"), dạng "đ- ược"; cắt tiêu đề "Tạp chí X số N - năm" ở mọi vị trí
 # 6 = J-37: khôi phục "ư" thêm "V- ơng" viết hoa, " - ơng" / " - ớc", "- u", "nh- “", "xư a" / "nư óc" / "hư ớng" (ư tách rời); cắt tiêu đề tạp chí ở đầu bài (strip_front_headers)
+# 8 = J-57: khôi phục "ư" gỡ chỗ "ph-ơng" mơ hồ bằng bằng chứng dấu thanh cả bài và bộ chọn LM (cfg.hyphen_lm_model)
 # 7 = J-42: khôi phục "ư" bỏ chỗ mơ hồ ("M- ơng": Mương / Mường), cắt tiêu đề tạp chí ở mọi vị trí trong dòng (strip_mid_headers), bỏ dòng rác (strip_junk_lines), meta.repairs
 
 
@@ -102,7 +103,7 @@ def sample_text_source(spec: SourceSpec, data_root: Path, n: int, cfg: RunConfig
     return records
 
 
-def iter_book_source(spec: SourceSpec, data_root: Path) -> Iterator[dict]:
+def iter_book_source(spec: SourceSpec, data_root: Path, cfg: RunConfig | None = None) -> Iterator[dict]:
     """Sinh bản ghi từng cuốn sách / tài liệu của nguồn dài (stbook đã làm sạch theo trang; giao_trinh, vjol đã làm sạch sẵn)."""
     if spec.key == "stbook":
         from vi_corpus.stbook.ocr_books import iter_records
@@ -112,7 +113,11 @@ def iter_book_source(spec: SourceSpec, data_root: Path) -> Iterator[dict]:
         yield from iter_records(spec, data_root, with_meta=True)
     elif spec.key == "vjol":
         from vi_corpus.vjol.records import iter_records
-        yield from iter_records(spec, data_root, with_meta=True)
+        chooser = None
+        if cfg is not None and cfg.hyphen_lm_model:
+            from vi_corpus.vjol.hyphen_lm import LmChooser
+            chooser = LmChooser(cfg.hyphen_lm_model, cfg.hyphen_lm_device)
+        yield from iter_records(spec, data_root, with_meta=True, hyphen_chooser=chooser)
     else:
         raise ValueError(f"Chưa có adapter nguồn sách cho {spec.key}")
 
@@ -153,7 +158,7 @@ def ingest(specs: dict[str, SourceSpec], data_root: Path, cfg: RunConfig) -> lis
     for key, n in cfg.mix.items():
         spec = specs[key]
         if cfg.profile(key).chunked:
-            rows = list(iter_book_source(spec, data_root))
+            rows = list(iter_book_source(spec, data_root, cfg))
             if not rows:
                 logger.warning("Nguồn %s: chưa có sách nào (đã OCR / trích text chưa?)", key)
         else:

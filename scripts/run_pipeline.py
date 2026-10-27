@@ -68,6 +68,9 @@ def build_parser() -> argparse.ArgumentParser:
                    help="Danh sách từ không dấu cho mã lost_diacritics (mặc định <data-root>/processed/ocr_bakeoff/unaccented.json, sinh bằng scripts/build_unaccented.py; thiếu thì dùng danh sách tối thiểu).")
     p.add_argument("--perplexity-model", default=None,
                    help="Chấm perplexity đoạn bài báo khoa học (J-25 D3) bằng mô hình này, vd Qwen/Qwen3-0.6B; mặc định tắt. Cần GPU (--perplexity-device).")
+    p.add_argument("--hyphen-lm-model", default=None,
+                   help="Gỡ chỗ \"ph-ơng / l-ơng\" mơ hồ của VJOL (J-57) bằng mô hình này, vd Qwen/Qwen3-0.6B; mặc định tắt (chỉ dùng bằng chứng dấu thanh cả bài).")
+    p.add_argument("--hyphen-lm-device", default="cuda", choices=["cuda", "cpu", "auto"], help="Thiết bị của --hyphen-lm-model (mặc định cuda).")
     p.add_argument("--perplexity-device", default="cuda", choices=["cuda", "cpu", "auto"], help="Thiết bị chấm perplexity (mặc định cuda, không rơi xuống CPU lặng lẽ).")
     p.add_argument("--syllables", type=Path, default=None,
                    help="Tập âm tiết cho chỉ số chữ đảo ngược / từ lạ ở stage quality (mặc định <data-root>/processed/ocr_bakeoff/syllables.json nếu có).")
@@ -122,7 +125,7 @@ def main() -> int:
         logging.getLogger("vi_corpus").warning("Không thấy danh sách từ không dấu %s: mã lost_diacritics dùng danh sách tối thiểu (chạy scripts/build_unaccented.py)", unaccented)
         unaccented = None
     cfg = RunConfig(mix=mix, syllables=str(syllables) if syllables else None, unaccented=str(unaccented) if unaccented else None,
-                    perplexity_model=args.perplexity_model, perplexity_device=args.perplexity_device, seed=args.seed, tokenizer=args.tokenizer,
+                    hyphen_lm_model=args.hyphen_lm_model, hyphen_lm_device=args.hyphen_lm_device, perplexity_model=args.perplexity_model, perplexity_device=args.perplexity_device, seed=args.seed, tokenizer=args.tokenizer,
                     compare_tokenizers=tuple(t.strip() for t in args.compare_tokenizers.split(",") if t.strip()),
                     lang_model=args.lang_model, rights_gate=args.rights_gate, dedup_index=not args.no_dedup_index,
                     global_verdict=str(args.global_verdict) if args.global_verdict else None,

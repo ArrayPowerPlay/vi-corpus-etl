@@ -102,7 +102,7 @@ def load_metadata(path: Path, stems: set[str]) -> dict[str, dict]:
 
 
 def iter_records(spec: SourceSpec, data_root: Path, limit_files: int | None = None, with_meta: bool = False,
-                 metadata_path: Path | None = None) -> Iterator[dict]:
+                 metadata_path: Path | None = None, hyphen_chooser=None) -> Iterator[dict]:
     """
     Sinh bản ghi CORPUS_SCHEMA từ interim/vjol_text/, mỗi bài một bản ghi.
 
@@ -116,6 +116,7 @@ def iter_records(spec: SourceSpec, data_root: Path, limit_files: int | None = No
         with_meta:     Thêm khoá "meta" (JSON): article_id, galley_id, journal_slug, journal_title, year, journal_language_raw, doi, title, keywords,
                        có/không metadata, số trang lỗi font phải OCR lại (J-10), số trang / dòng bị bỏ (bìa, mục lục, tài liệu tham khảo, tiêu đề chạy).
         metadata_path: File metadata (mặc định <data-root>/<spec.path>/metadata/vjol_merged.jsonl); chỉ đọc khi with_meta.
+        hyphen_chooser: Bộ chọn cách đọc cho chỗ "ph-ơng" mơ hồ (vi_corpus.vjol.hyphen_lm.LmChooser, J-57); None thì chỉ dùng bằng chứng dấu thanh cả bài.
 
     Cuối lượt ghi log số bài bị bỏ theo lý do (lỗi / bỏ qua / không có chữ), để bài không mất im lặng trước ingest (J-33 B).
     Tập âm tiết (<data-root>/processed/ocr_bakeoff/syllables.json) dùng để khôi phục "ư" bị font vẽ thành "-" (vi_corpus.vjol.hyphen_fix, J-33 A); thiếu file thì bỏ bước đó (ghi cảnh báo).
@@ -140,7 +141,7 @@ def iter_records(spec: SourceSpec, data_root: Path, limit_files: int | None = No
     for done in checkpoints:
         pages = ["" if p["method"] == "needs_ocr" else p["text"] for p in done["pages"]]  # giữ chỉ số trang cho heuristic bìa
         md = meta_rows.get(Path(done["paths"][0]).stem)
-        pages, clean_stats = clean_paper_pages(pages, (md or {}).get("journal_title"), vocab)
+        pages, clean_stats = clean_paper_pages(pages, (md or {}).get("journal_title"), vocab, hyphen_chooser)
         page_stats: dict = {}
         text = clean_pages(pages, stats=page_stats)
         if not text:

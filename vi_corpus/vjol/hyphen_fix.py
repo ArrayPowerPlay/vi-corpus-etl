@@ -32,10 +32,17 @@ J-42 (5), P6 — chỉ sửa khi phép sửa xác định: ngoài điều kiện
 mất cùng chữ ư, và "M- ơng" đọc được cả "Mương" lẫn "Mường": nếu đổi dấu thanh của "ơ" thành ờ / ớ / ở / ỡ / ợ cho một âm tiết thật khác trong tập âm tiết thì KHÔNG sửa (để nguyên chữ hỏng, đoạn bị
 `lost_letters` loại hoặc bài đi OCR; sửa im lặng thành chữ sai nghĩa nguy hiểm hơn chữ hỏng thấy được, J-41 (4)). Các dạng có dấu thanh rõ ("tr-ờng", "h- ớng", "đ- ược") không bị ảnh hưởng. Số chỗ bỏ qua vì
 mơ hồ đếm vào `stats["ambiguous"]`.
+
+J-57 — gỡ mơ hồ thay vì bỏ qua (đo trên v9: 220 đoạn / 79 bài bị `lost_letters` loại, 78% chỗ "-" là "-ơng" với "ơ" trần: ph-ơng, l-ơng, ch-ơng, t-ơng):
+- (1) Bằng chứng cả bài: nếu bài còn nhiều dạng mang dấu thanh ("tr-ờng", "đ-ợc", "h-ớng": ít nhất TONE_EVIDENCE_MIN chỗ và không ít hơn một nửa số chỗ "ơ" trần) thì font KHÔNG làm mất dấu thanh, "ơ" trần
+  đúng là thanh ngang và "ph-ơng" chắc chắn là "phương" -> sửa luôn. Bài không có bằng chứng này (83/94 bài đo được) mất cả dấu thanh cùng chữ ư nên vẫn mơ hồ.
+- (2) Chọn bằng ngữ cảnh: nếu truyền `chooser` (vi_corpus.vjol.hyphen_lm.LmChooser) thì chỗ mơ hồ được chấm cho từng cách đọc (ơ / ờ / ớ / ở / ỡ / ợ, chỉ lấy âm tiết có trong tập âm tiết) trong câu
+  và chỉ sửa khi cách đọc tốt nhất hơn hẳn cách nhì; chưa đủ chắc thì giữ nguyên chữ hỏng như cũ.
 """
 
 import re
 import unicodedata
+from typing import Callable
 
 # Phụ âm đầu của tiếng Việt đứng trước "ư" bị mất. Chữ đơn dạng viết hoa ("N- TiO2", "C- section") là tiếng Anh / hoá học nên chỉ nhận chữ đơn viết thường trong dạng có khoảng trắng (J-28).
 _MULTI = ("ngh", "ng", "nh", "ch", "kh", "th", "tr", "gh", "gi", "ph", "qu")
@@ -68,7 +75,12 @@ _SPLIT_O = re.compile(r"(?:[oó](?:ng|c|i)|ối)")  # ơ bị đọc thành o / 
 _O_TO_HORN = {"o": "ơ", "ó": "ớ", "ố": "ớ"}
 _SPLIT_O_SKIP = frozenset({"như", "sư", "ngư", "thư"})  # "như ong", "sư ong", "ngư ông", "ung thư óc / ống" là câu thật
 _TONED_HORN = "ờớởỡợ"  # "ơ" đã mang dấu thanh: đổi "ơ" trần thành các chữ này cho ra các cách đọc khác (J-42 P6)
-AMBIGUOUS = object()  # giá trị trả về của các hàm _restore_*: phép sửa ra âm tiết thật nhưng có cách đọc khác, nên bỏ qua (khác None = không áp dụng quy tắc)
+# Bộ chọn cách đọc cho chỗ mơ hồ: (ngữ cảnh trái, các cách đọc, ngữ cảnh phải) -> cách đọc được chọn hoặc None (chưa đủ chắc).
+Chooser = Callable[[str, list[str], str], "str | None"]
+CONTEXT_LEFT, CONTEXT_RIGHT = 100, 40  # số ký tự ngữ cảnh đưa cho Chooser
+TONE_EVIDENCE_MIN = 3  # số chỗ "-ờ / -ớ / -ợ ..." tối thiểu của cả bài để coi font còn giữ dấu thanh (J-57 (1))
+_TONED_HYPHEN = re.compile(rf"(?<![\w-]){_LETTERS}{{1,3}}- ?[ờớởỡợ]")
+_BARE_HYPHEN = re.compile(rf"(?<![\w-]){_LETTERS}{{1,3}}- ?ơ")
 MIN_DOC_HITS = 2  # dạng có khoảng trắng chỉ sửa khi cả bài có ít nhất ngần ấy chỗ sửa được (tránh sửa nhầm cách viết thật lẻ tẻ)
 
 
@@ -91,14 +103,39 @@ def _upper_u(tail: str) -> str:
     return "Ư" if letters and all(c.isupper() for c in letters) else "ư"
 
 
-def _guard(word: str, vocab: frozenset[str]) -> "str | object":
+class Ambiguous:
     """
-    `word` nếu phép sửa xác định, AMBIGUOUS nếu không (J-42 P6): `word` có "ơ" không dấu mà đổi nó thành ờ / ớ / ở / ỡ / ợ cho một âm tiết thật khác trong `vocab` ("Mương" / "Mường").
+    Kết quả của các hàm _restore_*: phép sửa ra âm tiết thật nhưng có cách đọc khác ("Mương" / "Mường"), nên mặc định bỏ qua. Giữ lại `word` (cách đọc thanh ngang) và `prefix` (phần đứng trước
+    từ trong chuỗi thay thế, vd " " của dạng " - ơng") để bước gỡ mơ hồ dựng được các cách đọc khác.
+    """
+
+    def __init__(self, word: str, prefix: str = "") -> None:
+        """Ghi `word` (từ sau khi sửa, thanh ngang) và `prefix` (chuỗi đứng trước từ trong kết quả thay)."""
+        self.word, self.prefix = word, prefix
+
+    def alternatives(self, vocab: frozenset[str]) -> list[str]:
+        """
+        Mọi cách đọc có trong `vocab`: `word` và các từ đổi "ơ" trần đầu tiên thành ờ / ớ / ở / ỡ / ợ; giữ kiểu chữ hoa / thường của `word`. Có thanh ngang đứng đầu.
+        """
+        base = unicodedata.normalize("NFC", self.word)
+        low = base.lower()
+        i = low.index("ơ")
+        out = []
+        for t in "ơ" + _TONED_HORN:
+            cand = low[:i] + t + low[i + 1:]
+            if cand in vocab:
+                out.append("".join(c.upper() if o.isupper() else c for c, o in zip(cand, base)) if len(cand) == len(base) else cand)
+        return out
+
+
+def _guard(word: str, vocab: frozenset[str]) -> "str | Ambiguous":
+    """
+    `word` nếu phép sửa xác định, `Ambiguous(word)` nếu không (J-42 P6): `word` có "ơ" không dấu mà đổi nó thành ờ / ớ / ở / ỡ / ợ cho một âm tiết thật khác trong `vocab` ("Mương" / "Mường").
     """
     low = unicodedata.normalize("NFC", word).lower()
     for i, c in enumerate(low):
         if c == "ơ" and any(low[:i] + t + low[i + 1:] in vocab for t in _TONED_HORN):
-            return AMBIGUOUS
+            return Ambiguous(word)
     return word
 
 
@@ -159,7 +196,7 @@ def _restore_lone(m: re.Match, vocab: frozenset[str]) -> str | None:
         return f" {tail}" if low in _LONE_U else None
     if tail == low and _LONE_O.fullmatch(low) and _valid("ư" + low, vocab):
         fixed = _guard("ư" + low, vocab)
-        return AMBIGUOUS if fixed is AMBIGUOUS else f" ư{tail}"
+        return Ambiguous(fixed.word, prefix=" ") if isinstance(fixed, Ambiguous) else f" ư{tail}"
     return None
 
 
@@ -197,7 +234,27 @@ def _restore_split(m: re.Match, vocab: frozenset[str]) -> str | None:
     return None
 
 
-def restore_u_in_text(text: str, vocab: frozenset[str], spaced: bool = True, stats: dict | None = None) -> tuple[str, int]:
+def _resolve(amb: Ambiguous, m: re.Match, vocab: frozenset[str], chooser: Chooser | None, trust_flat: bool, stats: dict | None) -> str | None:
+    """
+    Gỡ một chỗ mơ hồ: thanh ngang nếu bài còn dấu thanh (`trust_flat`), nếu không thì hỏi `chooser` trong ngữ cảnh quanh chỗ khớp; None (và đếm vào stats["ambiguous"]) khi chưa đủ chắc.
+    """
+    if trust_flat:
+        return amb.prefix + amb.word
+    if chooser is not None:
+        cands = amb.alternatives(vocab)
+        left = m.string[max(0, m.start() - CONTEXT_LEFT):m.start()] + amb.prefix
+        picked = chooser(left, cands, m.string[m.end():m.end() + CONTEXT_RIGHT]) if len(cands) > 1 else None
+        if picked is not None:
+            if stats is not None:
+                stats["chosen"] = stats.get("chosen", 0) + 1
+            return amb.prefix + picked
+    if stats is not None:
+        stats["ambiguous"] = stats.get("ambiguous", 0) + 1
+    return None
+
+
+def restore_u_in_text(text: str, vocab: frozenset[str], spaced: bool = True, stats: dict | None = None, chooser: Chooser | None = None,
+                      trust_flat: bool = False) -> tuple[str, int]:
     """
     Sửa mọi chỗ "-" thay "ư" trong một đoạn văn bản (không áp ngưỡng cả bài, xem restore_u_in_pages).
 
@@ -205,7 +262,9 @@ def restore_u_in_text(text: str, vocab: frozenset[str], spaced: bool = True, sta
         text:   Văn bản (đã NFC hoặc chưa; kết quả đã NFC).
         vocab:  Tập âm tiết thật (chữ thường, NFC).
         spaced: False thì chỉ sửa dạng liền chữ ("tr-ờng") và ư bị tách rời ("xư a"), bỏ dạng có khoảng trắng ("t- liệu", "trung - ơng", "tối - u"). Dạng "nh- " luôn được sửa.
-        stats:  Có thì cộng số chỗ bỏ qua vì mơ hồ (AMBIGUOUS) vào stats["ambiguous"].
+        stats:  Có thì cộng số chỗ bỏ qua vì mơ hồ vào stats["ambiguous"] và số chỗ gỡ được nhờ `chooser` vào stats["chosen"].
+        chooser: Bộ chọn cách đọc cho chỗ mơ hồ (J-57 (2)); None thì chỗ mơ hồ giữ nguyên.
+        trust_flat: True khi bài còn dấu thanh (J-57 (1)): chỗ mơ hồ sửa luôn theo thanh ngang.
 
     Returns:
         (văn bản đã sửa, số chỗ đã sửa).
@@ -219,9 +278,9 @@ def restore_u_in_text(text: str, vocab: frozenset[str], spaced: bool = True, sta
             """Thay một chỗ khớp."""
             nonlocal n
             fixed = restore(m, vocab)
-            if fixed is AMBIGUOUS and stats is not None:
-                stats["ambiguous"] = stats.get("ambiguous", 0) + 1
-            if fixed is None or fixed is AMBIGUOUS:
+            if isinstance(fixed, Ambiguous):
+                fixed = _resolve(fixed, m, vocab, chooser, trust_flat, stats)
+            if fixed is None:
                 return m.group(0)
             n += 1
             return fixed
@@ -238,30 +297,45 @@ def restore_u_in_text(text: str, vocab: frozenset[str], spaced: bool = True, sta
     return text, n
 
 
-def restore_u_in_pages(pages: list[str], vocab: frozenset[str] | None, min_hits: int = MIN_DOC_HITS, stats: dict | None = None) -> tuple[list[str], int]:
+def has_tone_evidence(pages: list[str]) -> bool:
+    """
+    True nếu font của bài còn giữ dấu thanh sau "-" (J-57 (1)): có ít nhất TONE_EVIDENCE_MIN chỗ "tr-ờng" / "đ-ợc" / "h-ớng" và số đó không ít hơn một nửa số chỗ "ơ" trần ("ph-ơng").
+    Khi đó "ơ" trần đúng là thanh ngang. Đếm trên cả bài, không trên từng đoạn.
+    """
+    text = unicodedata.normalize("NFC", "\n".join(pages))
+    toned, bare = len(_TONED_HYPHEN.findall(text)), len(_BARE_HYPHEN.findall(text))
+    return toned >= TONE_EVIDENCE_MIN and toned * 2 >= bare
+
+
+def restore_u_in_pages(pages: list[str], vocab: frozenset[str] | None, min_hits: int = MIN_DOC_HITS, stats: dict | None = None,
+                       chooser: Chooser | None = None) -> tuple[list[str], int]:
     """
     Khôi phục "ư" trong các trang của MỘT bài: dạng liền chữ ("ng-ời") sửa luôn; dạng có khoảng trắng ("t- liệu") chỉ sửa khi cả bài có ít nhất `min_hits` chỗ sửa được
-    (tính cả dạng liền chữ), vì một chỗ lẻ có thể là cách viết thật.
+    (tính cả dạng liền chữ), vì một chỗ lẻ có thể là cách viết thật. Chỗ mơ hồ ("ph-ơng") được gỡ bằng bằng chứng cả bài (`has_tone_evidence`) hoặc `chooser` (J-57).
 
     Args:
         pages:    Text từng trang.
         vocab:    Tập âm tiết thật; None thì không làm gì (thiếu syllables.json).
         min_hits: Ngưỡng số chỗ sửa được của cả bài cho dạng có khoảng trắng.
-        stats:    Có thì ghi stats["ambiguous"] = số chỗ bỏ qua vì mơ hồ ở lượt sửa được dùng (J-42 P6).
+        stats:    Có thì ghi stats["ambiguous"] = số chỗ bỏ qua vì mơ hồ và stats["chosen"] = số chỗ gỡ được nhờ `chooser` ở lượt sửa được dùng (J-42 P6, J-57), stats["tone_evidence"] = 1 nếu bài còn dấu thanh.
+        chooser:  Bộ chọn cách đọc cho chỗ mơ hồ (vi_corpus.vjol.hyphen_lm.LmChooser); None thì chỉ dùng bằng chứng cả bài.
 
     Returns:
         (các trang đã sửa, số chỗ đã sửa).
     """
     if not vocab:
         return pages, 0
+    trust = has_tone_evidence(pages)
     s_glued: dict = {}
     s_full: dict = {}
-    glued = [restore_u_in_text(p, vocab, spaced=False, stats=s_glued) for p in pages]
-    full = [restore_u_in_text(p, vocab, stats=s_full) for p in pages]
+    glued = [restore_u_in_text(p, vocab, spaced=False, stats=s_glued, chooser=chooser, trust_flat=trust) for p in pages]
+    full = [restore_u_in_text(p, vocab, stats=s_full, chooser=chooser, trust_flat=trust) for p in pages]
     n_glued, n_full = sum(n for _, n in glued), sum(n for _, n in full)
     used = s_full if n_full >= min_hits else s_glued
     if stats is not None:
         stats["ambiguous"] = used.get("ambiguous", 0)
+        stats["chosen"] = used.get("chosen", 0)
+        stats["tone_evidence"] = int(trust)
     if n_full >= min_hits:
         return [t for t, _ in full], n_full
     return ([t for t, _ in glued], n_glued) if n_glued else (pages, 0)

@@ -35,6 +35,7 @@
 | S-19 | VJOL: chạy lại pipeline `vjol_10k_v7` sau sửa J-35 (không trích lại) và so với `v6` | J-35 | CHẠY SAU S-18 | pipeline ~10 phút | 1 |
 | S-20 | VJOL: chạy lại pipeline `vjol_10k_v8` sau sửa J-37 (không trích lại), so với `v7`, đo bằng nhãn chuẩn | J-38 | CHẠY SAU S-19 | pipeline ~10 phút | 1 |
 | S-21 | VJOL: đo CPU kế hoạch OCR lại cả bài, so ghép đôi v7 / v8, học bảng lệch dấu, phép thử nhóm font (GPU); SAU KHI chốt ngưỡng: trích lại, pipeline `vjol_10k_v9`, đo bằng nhãn chuẩn, sinh mẫu thi cuối | J-43 (code J-40 / J-42) | CHẠY SAU S-20 | Phần A: CPU vài chục phút + canary ~30-60 phút GPU; Phần B: trích lại + pipeline vài chục phút | 4 |
+| S-22 | VJOL: đo độ chính xác bộ chọn "ph-ơng / l-ơng" (J-57), chạy `vjol_10k_v10` và so với `v9` | J-57 | CHẠY SAU S-21 | đo vài phút GPU + pipeline ~15 phút | 1 |
 
 Thứ tự khuyến nghị: S-10 (VJOL ưu tiên cao nhất, R-15) → S-0 → S-1 → S-2 → S-3 (có đủ số để tính giờ OCR) → S-4 → S-5. S-6 đến S-9 và S-11 làm sau phiên code (S-11 cần script `scripts/dedup_pairs_sample.py`, viết ở gói G-05 bước 2).
 
@@ -721,6 +722,36 @@ In ra: biểu đồ cột tỷ lệ ký tự điều khiển, số trang vượt
 
 ---
 
+## S-22. VJOL: bộ chọn cách đọc "ph-ơng / l-ơng" và `vjol_10k_v10`  [CHẠY SAU S-21]
+
+**Mục đích**: J-57. Ở v9, 220 đoạn / 79 bài bị `lost_letters` loại vì font mất chữ ư và dấu thanh ("ph-ơng"). Bước 1 đo xem bộ chọn bằng mô hình ngôn ngữ đoán đúng bao nhiêu (dùng chữ đúng có sẵn, không gán nhãn). Bước 2 chạy pipeline có bộ chọn. Không trích lại PDF.
+
+```bash
+cd /home/jovyan/dinh/vi-corpus-etl
+git fetch origin && git checkout worktree-vjol-pipeline && git pull
+source /home/jovyan/dinh/env.sh
+uv sync --group curator --group viz
+uv run pytest -q
+V9=data/processed/pipeline_runs/vjol_10k_v9
+
+# 1) đo độ chính xác theo từng ngưỡng margin (GPU, vài phút); cần SAI = 0 hoặc gần 0 ở margin được chọn
+uv run python scripts/vjol/eval_hyphen_lm.py --run-dir $V9 --device cuda --spots 800 --margins 1,2,3,4,6
+cat $V9/hyphen_lm_eval.json
+```
+Gửi lại `$V9/hyphen_lm_eval.json`. Chọn `margin` nhỏ nhất có "SAI" gần 0 (mặc định trong code là 4,0, đo thử trên CPU 150 chỗ còn 1 sai ở margin 4; muốn đổi thì báo để sửa `DEFAULT_MARGIN`). Chỉ chạy bước 2 sau khi có số đo.
+
+```bash
+# 2) pipeline v10 có bộ chọn (chỉ ingest chạy lại vì vân tay đổi; các stage sau chạy lại theo)
+V10=data/processed/pipeline_runs/vjol_10k_v10
+uv run --group curator --group viz python scripts/run_pipeline.py --data-root data --mix vjol=10000 --total 10000 --run-name vjol_10k_v10 \
+  --embed-device cuda --cluster-space umap10 --perplexity-model Qwen/Qwen3-0.6B --hyphen-lm-model Qwen/Qwen3-0.6B
+uv run python scripts/vjol/audit_run.py --run-dir $V10
+uv run python scripts/vjol/compare_runs.py --old $V9 --new $V10 --paired | tee $V10/paired_v9_v10.txt
+uv run python scripts/vjol/groundtruth.py check-clean --clean-set data/processed/pipeline_runs/vjol_10k_v6/groundtruth/clean_set.jsonl --data-root data
+tar czf vjol_s22.tar.gz $V9/hyphen_lm_eval.json $V10/{manifest.json,report.html,04_quality.parquet,audit,paired_v9_v10.txt}
+```
+Kỳ vọng: số đoạn bị loại bởi `lost_letters` giảm từ 220 xuống rõ rệt, `check-clean` vẫn 0 cờ nhầm, `paired_v9_v10.txt` cho thấy phần "đổi chữ" chủ yếu là "-ơ" thành "ươ" có dấu hợp lý (đọc 20 mẫu).
+
 ## Bảng ghi kết quả
 
 (Điền sau khi chạy. Ghi ngày, người chạy, lệnh đã chạy nếu khác hướng dẫn.)
@@ -742,3 +773,4 @@ In ra: biểu đồ cột tỷ lệ ký tự điều khiển, số trang vượt
 | S-10 | | số file: ; dung lượng: GB; thời gian chép: ; số trang: ; tỉ lệ text / scan / tcvn3 theo năm: ; số dòng metadata: | |
 | S-12 | | PDF trích / lỗi / bỏ qua: ; trang theo method: ; ocr_vlm ok / blank / flagged: ; trang baseline: ; giờ trích text: ; đoạn mỗi bài: ; ngôn ngữ vi / en / khác: | |
 | S-11 | | số cặp A bắt: ; C bắt: ; chỉ C bắt: (cùng nguồn / khác nguồn); nhóm 2 (0,7–0,8): trung / cung-mau / khac = ; nhóm 1: ; nhóm 3: | |
+| S-22 | | độ chính xác theo margin (đúng / SAI / bỏ qua): ; lost_letters v9 -> v10: ; check-clean: ; 20 mẫu đọc tay: | |

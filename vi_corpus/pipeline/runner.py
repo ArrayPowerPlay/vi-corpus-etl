@@ -91,7 +91,7 @@ def stage_params(name: str, cfg: RunConfig) -> dict:
     """
     return {
         "ingest": lambda: {"version": INGEST_VERSION, "mix": cfg.mix, "seed": cfg.seed, "rows_per_file": cfg.rows_per_file,
-                           "profiles": _profiles(cfg, "ingest")},
+                           "profiles": _profiles(cfg, "ingest"), "hyphen_lm": cfg.hyphen_lm_model},
         "prepare": lambda: {"normalizer": normalize.NORMALIZER_VERSION, "lines": lines.LINES_VERSION,
                             "chunk": chunk.CHUNK_VERSION, "minhash": dedup.MINHASH_VERSION, "tokenizer": cfg.tokenizer,
                             "chunk_tokens": [cfg.chunk_target_tokens, cfg.chunk_max_tokens, cfg.chunk_min_tokens],

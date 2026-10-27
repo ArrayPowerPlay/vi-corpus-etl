@@ -625,7 +625,7 @@ def strip_boilerplate(pages: list[str], journal_title: str | None = None) -> tup
     return out, stats
 
 
-def clean_paper_pages(pages: list[str], journal_title: str | None = None, vocab: frozenset[str] | None = None) -> tuple[list[str], dict]:
+def clean_paper_pages(pages: list[str], journal_title: str | None = None, vocab: frozenset[str] | None = None, chooser=None) -> tuple[list[str], dict]:
     """
     Bỏ trang bìa, mục lục, trang ban biên tập, tiêu đề / chân trang lặp, phần tài liệu tham khảo và khuôn mẫu tạp chí của một bài báo; khôi phục "ư" cho trang font gạch nối
     và bỏ câu rác của OCR VLM trước tiên (J-33 A, C).
@@ -634,12 +634,13 @@ def clean_paper_pages(pages: list[str], journal_title: str | None = None, vocab:
         pages:         Text từng trang.
         journal_title: Tên tạp chí trong metadata (để bỏ tiêu đề trang tạp chí dính giữa dòng); None thì không bỏ.
         vocab:         Tập âm tiết thật để kiểm khi khôi phục "ư" (vi_corpus.vjol.hyphen_fix); None thì bỏ bước khôi phục.
+        chooser:       Bộ chọn cách đọc cho chỗ "ph-ơng" mơ hồ (vi_corpus.vjol.hyphen_lm.LmChooser, J-57); None thì chỉ dùng bằng chứng dấu thanh cả bài.
 
     Returns:
-        (các trang đã làm sạch, {"hyphen_restored", "hyphen_ambiguous" (chỗ bỏ qua vì mơ hồ, J-42 P6), "mid_headers", "junk_lines" (J-42 (6)), "vlm_noise_removed", "cover_pages", "toc_pages", "editorial_pages", "running_headers", "front_headers", "reference_lines", và các số đếm của strip_boilerplate}).
+        (các trang đã làm sạch, {"hyphen_restored", "hyphen_ambiguous" (chỗ bỏ qua vì mơ hồ, J-42 P6), "hyphen_chosen" (chỗ mơ hồ gỡ được nhờ bộ chọn, J-57), "hyphen_tone_evidence" (1 nếu bài còn dấu thanh), "mid_headers", "junk_lines" (J-42 (6)), "vlm_noise_removed", "cover_pages", "toc_pages", "editorial_pages", "running_headers", "front_headers", "reference_lines", và các số đếm của strip_boilerplate}).
     """
     hyphen_stats: dict = {}
-    pages, restored = restore_u_in_pages(pages, vocab, stats=hyphen_stats)
+    pages, restored = restore_u_in_pages(pages, vocab, stats=hyphen_stats, chooser=chooser)
     noise = 0
     cleaned = []
     for text in pages:
@@ -647,7 +648,8 @@ def clean_paper_pages(pages: list[str], journal_title: str | None = None, vocab:
         cleaned.append(text)
         noise += n
     pages, stats = drop_front_matter(cleaned)
-    stats = {"hyphen_restored": restored, "hyphen_ambiguous": hyphen_stats.get("ambiguous", 0), "vlm_noise_removed": noise, **stats}
+    stats = {"hyphen_restored": restored, "hyphen_ambiguous": hyphen_stats.get("ambiguous", 0), "hyphen_chosen": hyphen_stats.get("chosen", 0),
+             "hyphen_tone_evidence": hyphen_stats.get("tone_evidence", 0), "vlm_noise_removed": noise, **stats}
     pages, stats["running_headers"] = strip_running_headers(pages)
     pages, stats["front_headers"] = strip_front_headers(pages)
     pages, stats["mid_headers"] = strip_mid_headers(pages)

@@ -152,6 +152,8 @@ class RunConfig:
                               None = danh sách tối thiểu trong vi_corpus.common.garbled.
         perplexity_model:     Mô hình chấm perplexity cho các nguồn bật SourceProfile.perplexity (J-25 D3), vd "Qwen/Qwen3-0.6B"; None = tắt (không GPU).
         perplexity_device:    "cuda" | "cpu" | "auto" cho mô hình trên.
+        hyphen_lm_model:      Mô hình chọn cách đọc cho chỗ "ph-ơng" mơ hồ khi ingest VJOL (J-57), vd "Qwen/Qwen3-0.6B"; None = chỉ dùng bằng chứng dấu thanh cả bài (không GPU).
+        hyphen_lm_device:     "cuda" | "cpu" | "auto" cho mô hình trên.
         global_verdict:       Đường dẫn verdict.parquet của dedup vòng 2 (D-09); có thì áp vào trước khi sinh knowledge unit.
         profiles:             Hồ sơ theo nguồn.
     """
@@ -195,6 +197,8 @@ class RunConfig:
     unaccented: str | None = None
     perplexity_model: str | None = None
     perplexity_device: str = "cuda"
+    hyphen_lm_model: str | None = None
+    hyphen_lm_device: str = "cuda"
     profiles: dict[str, SourceProfile] = field(default_factory=lambda: dict(PROFILES))
 
     def profile(self, source_key: str) -> SourceProfile:
