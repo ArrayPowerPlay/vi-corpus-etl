@@ -738,7 +738,7 @@ V9=data/processed/pipeline_runs/vjol_10k_v9
 uv run python scripts/vjol/eval_hyphen_lm.py --run-dir $V9 --device cuda --spots 800 --margins 1,2,3,4,6
 cat $V9/hyphen_lm_eval.json
 ```
-Gửi lại `$V9/hyphen_lm_eval.json`. Chọn `margin` nhỏ nhất có "SAI" gần 0 (mặc định trong code là 4,0, đo thử trên CPU 150 chỗ còn 1 sai ở margin 4; muốn đổi thì báo để sửa `DEFAULT_MARGIN`). Chỉ chạy bước 2 sau khi có số đo.
+Gửi lại `$V9/hyphen_lm_eval.json`. `margin` đã chốt 4,0 (J-58, bước 1 đã chạy). Phần cũ: chọn `margin` nhỏ nhất có "SAI" gần 0 (mặc định trong code là 4,0, đo thử trên CPU 150 chỗ còn 1 sai ở margin 4; muốn đổi thì báo để sửa `DEFAULT_MARGIN`). Bước 1 đã chạy xong, chạy tiếp bước 2.
 
 ```bash
 # 2) pipeline v10 có bộ chọn (chỉ ingest chạy lại vì vân tay đổi; các stage sau chạy lại theo)
