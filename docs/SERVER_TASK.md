@@ -717,7 +717,7 @@ tar czf vjol_s21a7.tar.gz data/processed/vjol_font_canary/control_chars.json dat
 ls -l vjol_s21a7.tar.gz
 ```
 
-In ra: biểu đồ cột tỷ lệ ký tự điều khiển, số trang vượt ngưỡng (sẽ thêm đi OCR), số bài có trang vượt, số bài cả bài đi OCR, 20 bài đầu, và (nhờ `--pages`) band + mã lý do của các trang canary vượt ngưỡng, kèm số trang KHÔNG bị band D (lọt vào kho). Muốn thử ngưỡng khác thêm `--threshold 0.1`. **Báo lại cho Claude**: `vjol_s21a7.tar.gz`. Phần B vẫn chưa chạy; chờ số đo này, rồi Claude thêm tín hiệu `control_chars` (`EXTRACT_VERSION` 8).
+In ra: biểu đồ cột tỷ lệ ký tự điều khiển, số trang vượt ngưỡng (sẽ thêm đi OCR), số bài có trang vượt, số bài cả bài đi OCR, 20 bài đầu, và (nhờ `--pages`) band + mã lý do của các trang canary vượt ngưỡng, kèm số trang KHÔNG bị band D (lọt vào kho). Muốn thử ngưỡng khác thêm `--threshold 0.1`. Thêm `--dump 0.1` để ghi các trang tỷ lệ >= 0,1 (kèm producer, 400 ký tự đầu) vào `control_chars_pages.jsonl`, đọc tay vùng 0,1-0,3. **Báo lại cho Claude**: `vjol_s21a7.tar.gz`. Phần B vẫn chưa chạy; chờ số đo này, rồi Claude thêm tín hiệu `control_chars` (`EXTRACT_VERSION` 8).
 
 ---
 

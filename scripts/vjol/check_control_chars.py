@@ -2,7 +2,7 @@
 Đo tỷ lệ ký tự điều khiển C0 của mọi trang `text` trong checkpoint `interim/vjol_text/` (J-53 bước 1 và 4), TRƯỚC khi thêm tín hiệu `control_chars` vào garbled.py.
 Chạy bằng CPU, chỉ đọc. Trả lời: (a) phân bố tỷ lệ ký tự điều khiển của trang `text` (ngưỡng 20% có bắt oan trang tốt không), (b) ngưỡng đó sẽ đưa thêm bao nhiêu trang / bài đi OCR
 (bài có >= GARBLED_DOC_SHARE số trang chữ vượt ngưỡng thì cả bài đi OCR), (c) khi có --pages: stage quality (mã `symbol_heavy` ...) có chặn các trang kiểu ký tự điều khiển không.
-    uv run python scripts/vjol/check_control_chars.py --data-root data [--threshold 0.2] [--pages <canary_pages.jsonl>]
+    uv run python scripts/vjol/check_control_chars.py --data-root data [--threshold 0.2] [--pages <canary_pages.jsonl>] [--dump 0.1]
 Ghi <data-root>/processed/vjol_font_canary/control_chars.json. Không đổi checkpoint, không đổi ngưỡng nào của pipeline.
 (c) dùng `layer` trong canary_pages.jsonl; dòng cũ chỉ có 700 ký tự đầu của lớp chữ nên số đo gần đúng.
 """
@@ -69,6 +69,40 @@ def scan_checkpoints(data_root: Path, threshold: float) -> dict:
     return {"pages": pages, "docs": docs, "hist": {k: hist[k] for k in order}, "pages_over": pages_over, "docs_over": len(over_docs), "docs_whole": whole, "top": over_docs}
 
 
+def dump_pages(data_root: Path, low: float, out: Path, head: int = 400) -> int:
+    """
+    Ghi các trang `text` có tỷ lệ ký tự điều khiển >= `low` ra JSONL để đọc tay (vùng 0,1-0,3 chưa biết chữ tốt hay hỏng): bài, trang, tỷ lệ, producer / creator của PDF (nếu mở được) và `head` ký tự đầu của lớp chữ (ensure_ascii nên ký tự điều khiển hiện rõ dạng \\u00xx).
+
+    Returns:
+        Số trang đã ghi.
+    """
+    import pymupdf  # chỉ cần khi --dump
+
+    n = 0
+    out.parent.mkdir(parents=True, exist_ok=True)
+    with open(out, "w", encoding="utf-8") as f:
+        for ckpt in sorted((data_root / TEXT_DIR).glob("*.json")):
+            done = read_json(ckpt)
+            if not done or done.get("error") or done.get("skipped"):
+                continue
+            hits = [(i, control_char_ratio(p["text"])[0]) for i, p in enumerate(done["pages"]) if p.get("method") == "text" and p["text"].strip()]
+            hits = [(i, r) for i, r in hits if r >= low]
+            if not hits:
+                continue
+            meta = {}
+            try:
+                path = Path(done["paths"][0])
+                with pymupdf.open(path if path.is_file() else data_root / path) as doc:
+                    meta = doc.metadata or {}
+            except Exception:  # noqa: BLE001 - chỉ là thông tin phụ
+                pass
+            for i, r in hits:
+                f.write(json.dumps({"article_id": done.get("article_id"), "page": i, "ratio": round(r, 4), "producer": meta.get("producer"), "creator": meta.get("creator"),
+                                    "text": done["pages"][i]["text"][:head]}, ensure_ascii=True) + "\n")
+                n += 1
+    return n
+
+
 def check_quality(pages_path: Path, threshold: float) -> dict:
     """
     (J-53 bước 4) Chấm các trang của canary_pages.jsonl bằng stage quality (hồ sơ vjol) và đếm mã lý do, riêng nhóm có tỷ lệ ký tự điều khiển >= `threshold`.
@@ -102,6 +136,7 @@ def main() -> int:
     p.add_argument("--data-root", type=Path, default=Path(os.getenv("SEA_DATA_ROOT", "data")))
     p.add_argument("--threshold", type=float, default=DEFAULT_THRESHOLD, help="Ngưỡng tỷ lệ ký tự điều khiển (mặc định %(default)s).")
     p.add_argument("--pages", type=Path, default=None, help="canary_pages.jsonl để kiểm stage quality (J-53 bước 4); bỏ qua nếu không đưa.")
+    p.add_argument("--dump", type=float, default=None, metavar="LOW", help="Ghi trang có tỷ lệ >= LOW vào control_chars_pages.jsonl để đọc tay (vd 0.1).")
     args = p.parse_args()
     res = scan_checkpoints(args.data_root, args.threshold)
     if not res["docs"]:
@@ -122,6 +157,9 @@ def main() -> int:
         res["quality"] = q
         print(f"Stage quality trên {q['pages_ctrl']}/{q['pages']} trang canary có tỷ lệ >= {args.threshold:g}: band {q['ctrl_band']}; KHÔNG bị band D (lọt vào kho): {q['ctrl_not_hard']}")
         print(f"  mã lý do: {q['ctrl_reasons']}")
+    if args.dump is not None:
+        dump = args.data_root / OUT_REL / "control_chars_pages.jsonl"
+        print(f"Ghi {dump_pages(args.data_root, args.dump, dump)} trang vào {dump}")
     out = args.data_root / OUT_REL / "control_chars.json"
     write_json_atomic(out, res)
     print(f"Ghi {out}")
