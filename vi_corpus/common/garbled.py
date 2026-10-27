@@ -46,7 +46,7 @@ GARBLED_HARD_RATIO = 0.08
 GARBLED_MIN_WORDS = 10
 GARBLED_DOC_SHARE = 0.30
 FOREIGN_LETTERS = frozenset("ñöïøåæÑÖÏØÅÆ")  # chữ cái Latin-1 không có trong tiếng Việt; trong chữ VNI chúng thay cho ư, ị, ờ, ả ...
-SIGNALS = ("tone", "case", "foreign", "unknown", "nodiac", "hyphen")  # tên các tín hiệu, theo thứ tự page_signals trả về
+SIGNALS = ("tone", "case", "foreign", "unknown", "nodiac", "hyphen", "control")  # tên các tín hiệu, theo thứ tự page_signals trả về
 
 
 class Thresholds(NamedTuple):
@@ -65,6 +65,8 @@ class Thresholds(NamedTuple):
     hyphen: float = 0.004  # tỷ lệ từ Latinh có dạng "đ-ợc" / "th- viện" (J-25 B, điểm khởi đầu chưa đo trên bài thật)
     hyphen_min_count: int = 4  # số chỗ gạch nối thay ư / ơ tối thiểu (một vài "x-ray", "N-acetyl" không kích hoạt)
     hyphen_min_words: int = 50  # số từ Latinh tối thiểu để xét tín hiệu hyphen
+    control: float = 0.10  # tỷ lệ ký tự điều khiển C0 trên ký tự khác khoảng trắng (J-56: 13.904/14.015 trang `text` dưới 0,1; kiểu hỏng nặng 0,14-1,0; không dựa min_words vì ký tự điều khiển cắt vụn từ)
+    control_min_count: int = 5  # số ký tự điều khiển tối thiểu (trang cực ngắn có 1-2 ký tự lạ không kích hoạt)
 
 
 DEFAULT_THRESHOLDS = Thresholds()
@@ -127,7 +129,7 @@ def control_char_ratio(text: str) -> tuple[float, int]:
     """
     Tỷ lệ ký tự điều khiển C0 (`\\x00`-`\\x1f`, trừ `\\n \\t \\r`) trên số ký tự không phải khoảng trắng của trang (J-52, J-53 bước 1).
 
-    Font ghi mã glyph thay vì Unicode (Ghostscript + PScript5) cho lớp chữ gần như toàn ký tự điều khiển. Các ký tự này cắt vụn mọi từ nên các tín hiệu đếm từ không đủ mẫu để kết luận; tỷ lệ này không dựa vào đếm từ. Hiện CHỈ ĐO (scripts/vjol/check_control_chars.py), chưa là tín hiệu OCR lại.
+    Font ghi mã glyph thay vì Unicode (Ghostscript + PScript5) cho lớp chữ gần như toàn ký tự điều khiển. Các ký tự này cắt vụn mọi từ nên các tín hiệu đếm từ không đủ mẫu để kết luận; tỷ lệ này không dựa vào đếm từ. Là tín hiệu "control" của page_signals (J-56); scripts/vjol/check_control_chars.py đo phân bố.
 
     Returns:
         (tỷ lệ, số ký tự điều khiển); (0.0, 0) với trang không có ký tự nào ngoài khoảng trắng.
@@ -294,15 +296,15 @@ def reversed_gain(text: str, vocab: frozenset[str], min_len: int = 3) -> tuple[f
 
 def page_measures(text: str, vocab: frozenset[str] | None = None, unaccented: frozenset[str] | None = None) -> dict:
     """
-    Số đo thô của sáu tín hiệu cho một trang: {"tone" | "case" | "foreign" | "unknown" | "nodiac" | "hyphen": (tỷ lệ, số mẫu[, số chữ cái lạ / số chỗ lỗi])}; "unknown" là None khi không có vocab.
+    Số đo thô của bảy tín hiệu cho một trang: {"tone" | "case" | "foreign" | "unknown" | "nodiac" | "hyphen" | "control": (tỷ lệ, số mẫu[, số chữ cái lạ / số chỗ lỗi])}; "unknown" là None khi không có vocab.
 
     Số mẫu là số từ (tone), số từ >= 4 chữ cái (case), số chữ cái (foreign, kèm số chữ cái lạ ở phần tử thứ ba), số từ Latinh (unknown, nodiac,
-    hyphen; hyphen kèm số chỗ lỗi ở phần tử thứ ba). Tách khỏi page_signals để script đo tính một lần rồi thử nhiều ngưỡng.
+    hyphen; hyphen kèm số chỗ lỗi ở phần tử thứ ba; control: (tỷ lệ, số ký tự điều khiển)). Tách khỏi page_signals để script đo tính một lần rồi thử nhiều ngưỡng.
     `unaccented`: danh sách từ không dấu (None = UNACCENTED_WORDS).
     """
     return {"tone": garbled_ratio(text), "case": case_mix_ratio(text), "foreign": foreign_letter_ratio(text),
             "unknown": unknown_syllable_rate(text, vocab) if vocab is not None else None, "nodiac": unaccented_ratio(text, unaccented),
-            "hyphen": hyphen_lost(text)}
+            "hyphen": hyphen_lost(text), "control": control_char_ratio(text)}
 
 
 def signals_from_measures(m: dict, th: Thresholds = DEFAULT_THRESHOLDS) -> list[str]:
@@ -320,6 +322,8 @@ def signals_from_measures(m: dict, th: Thresholds = DEFAULT_THRESHOLDS) -> list[
         out.append("nodiac")
     if m["hyphen"][1] >= th.hyphen_min_words and m["hyphen"][2] >= th.hyphen_min_count and m["hyphen"][0] >= th.hyphen:
         out.append("hyphen")
+    if m["control"][1] >= th.control_min_count and m["control"][0] >= th.control:
+        out.append("control")
     return out
 
 

@@ -55,7 +55,8 @@ OCR_ALL_PRODUCERS = (("ABBYY FineReader 11", "ScanGate"),)
 # 5 = J-33 B, C: trang không có lớp chữ và không có ảnh nhúng được vẽ ra thử (có nội dung thì OCR, trắng thì reason "blank_page"), câu "There is no text in the image" của VLM bị lọc.
 # 6 = J-42 (3), (4): bài có lớp chữ lệch dấu / rơi chữ / dính liền ở đủ nhiều trang (reason "defect_doc") và bài thuộc nhóm font xấu của phép thử font_canary (reason "font_group_bad") đi OCR cả bài.
 # 7 = J-48 (a): joined_words (từ dính liền) không còn là tín hiệu OCR lại cả bài (REOCR_SIGNALS chỉ còn tone_shift, dropped_letters).
-EXTRACT_VERSION = "7"
+# 8 = J-56: tín hiệu "control" (>= 10% ký tự điều khiển C0) của bộ dò chữ hỏng; trang font ghi mã glyph / dấu cách thành ký tự điều khiển đi OCR.
+EXTRACT_VERSION = "8"
 VOCAB_TAG = "+vocab"  # hậu tố extract_version khi bộ dò có tín hiệu âm tiết lạ (J-16)
 FONT_TAG = "+fg"  # hậu tố (kèm băm danh sách) khi có file nhóm font xấu (J-42 (4)): đổi danh sách thì checkpoint cũ bị làm lại
 UNACC_TAG = "+unacc"  # hậu tố (kèm băm nội dung) khi bộ dò dùng danh sách từ không dấu sinh từ dữ liệu thay cho danh sách tối thiểu (J-25 A)

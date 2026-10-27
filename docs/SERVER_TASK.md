@@ -681,11 +681,11 @@ ls -l vjol_s21a5.tar.gz
 ```bash
 cd /home/jovyan/dinh/vi-corpus-etl && source /home/jovyan/dinh/env.sh
 V6=data/processed/pipeline_runs/vjol_10k_v6; V8=data/processed/pipeline_runs/vjol_10k_v8
-uv run python scripts/vjol/font_canary.py --data-root data --reuse --threshold X     # ghi font_groups_bad.json từ canary.json đã có, không OCR lại
-# J-48: ngưỡng theo NHÓM font bị bỏ; lệnh trên sẽ được thay bằng danh sách bài sau khi chủ dự án duyệt số ở A+++ (chưa chạy dòng này)
+# J-48 (b), J-51: KHÔNG ghi font_groups_bad.json (ngưỡng theo nhóm font đã bỏ); không có file này thì bộ dò bỏ qua phần đó
+F=data/processed/vjol_font_canary/font_groups_bad.json; [ -f $F ] && mv $F $F.off   # nếu lần chạy cũ đã ghi file này thì tạm đổi tên
 [ -d data/interim/vjol_text_s20_backup ] || cp -r data/interim/vjol_text data/interim/vjol_text_s20_backup   # sao lưu một lần
 ls data/interim/vjol_ocr_cache | wc -l             # bộ nhớ đệm OCR đã có từ S-17 / S-18: không cần seed lại
-date; DATA_ROOT=data VLLM_BIN=$(which vllm) SAMPLE_DOCS=3000 ./scripts/vjol/run_extract_vlm.sh; date   # EXTRACT_VERSION 7 (J-48 a: bỏ joined_words khỏi tín hiệu OCR lại cả bài): mọi checkpoint làm lại; chỉ trang MỚI bị OCR cả bài mới tốn GPU
+date; DATA_ROOT=data VLLM_BIN=$(which vllm) SAMPLE_DOCS=3000 ./scripts/vjol/run_extract_vlm.sh; date   # EXTRACT_VERSION 8 (J-56: thêm tín hiệu control >= 10% ký tự điều khiển; trước đó J-48 a bỏ joined_words): mọi checkpoint làm lại; chỉ trang MỚI bị OCR (khoảng 111 trang kiểu control) mới tốn GPU
 uv run python scripts/vjol/extract.py --data-root data --status
 V9=data/processed/pipeline_runs/vjol_10k_v9
 uv run --group curator --group viz python scripts/run_pipeline.py --data-root data --mix vjol=10000 --total 10000 \
@@ -737,7 +737,7 @@ In ra: biểu đồ cột tỷ lệ ký tự điều khiển, số trang vượt
 | S-7 | | | |
 | S-8 | | | |
 | S-9 | | | |
-| S-21 | | A (J-44): 91 bài / 740 trang OCR lại (2,0 giờ cả kho); A++ (J-47, `vjol_s21a4`): 101 / 136 trang nhóm < 0,7 có độ trùng từ < 0,3; A+++ (J-48 c, `vjol_s21a5`): bài bị `garbled` bỏ sót = 7 / 71 bài đã đo (10 trang; 100 trang dưới ngưỡng thì `garbled` đã bắt 90), 4 bài Ghostscript độ trùng ~0, 3 bài InDesign CS6 độ trùng 0,21-0,26 (J-50) | Phần B chờ ngưỡng theo bài; A++++ (J-53, `vjol_s21a7`): chưa chạy |
+| S-21 | | A (J-44): 91 bài / 740 trang OCR lại (2,0 giờ cả kho); A++ (J-47, `vjol_s21a4`): 101 / 136 trang nhóm < 0,7 có độ trùng từ < 0,3; A+++ (J-48 c, `vjol_s21a5`): bài bị `garbled` bỏ sót = 7 / 71 bài đã đo (10 trang; 100 trang dưới ngưỡng thì `garbled` đã bắt 90), 4 bài Ghostscript độ trùng ~0, 3 bài InDesign CS6 độ trùng 0,21-0,26 (J-50) | Phần B chờ ngưỡng theo bài; A++++ (J-53, J-55, `vjol_s21a8`): 111 trang >= 0,1; ngưỡng 0,1 chốt ở J-56 |
 | S-14 | | inspect: nguồn chữ đảo ngược (text / ocr_vlm); producer top: ; embed giây/640 đoạn và device: ; extract giờ: ; v3 so với v2: | |
 | S-10 | | số file: ; dung lượng: GB; thời gian chép: ; số trang: ; tỉ lệ text / scan / tcvn3 theo năm: ; số dòng metadata: | |
 | S-12 | | PDF trích / lỗi / bỏ qua: ; trang theo method: ; ocr_vlm ok / blank / flagged: ; trang baseline: ; giờ trích text: ; đoạn mỗi bài: ; ngôn ngữ vi / en / khác: | |

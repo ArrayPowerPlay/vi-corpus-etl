@@ -526,3 +526,13 @@ def test_check_control_chars_do_phan_bo_va_dem_bai_di_ocr(tmp_path):
     res = json.loads((tmp_path / "processed/vjol_font_canary/control_chars.json").read_text(encoding="utf-8"))
     assert (res["docs"], res["pages"], res["pages_over"], res["docs_over"], res["docs_whole"]) == (2, 4, 1, 1, 1)
     assert res["top"][0]["article_id"] == "2"
+
+
+def test_tin_hieu_control_bat_trang_nhieu_ky_tu_dieu_khien_khong_can_min_words():
+    """J-56: trang >= 10% ký tự điều khiển (kể cả khi chỉ còn vài "từ") bị nghi bởi tín hiệu control; trang sạch hoặc chỉ 1-2 ký tự lạ thì không."""
+    good = "Việt Nam là một quốc gia ở Đông Nam Á. " * 5
+    assert "control" in g.page_signals("ab\x01\x02\x03\x04\x05 " * 6)
+    assert "control" in g.page_signals(good.replace(" ", "\x04"))  # dấu cách thành ký tự điều khiển
+    assert "control" not in g.page_signals(good)
+    assert "control" not in g.page_signals(good + "\x01\x02")
+    assert "control" in g.SIGNALS
