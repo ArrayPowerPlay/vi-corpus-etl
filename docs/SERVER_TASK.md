@@ -704,6 +704,21 @@ Nếu không có `[ ... ]` sao lưu thì checkpoint cũ bị ghi đè khi trích
 
 **Báo lại cho Claude (Phần B)**: `vjol_s21.tar.gz`, lệnh nào lỗi. **Kỳ vọng so với v8**: `hyphen_lost` thấp hơn (chỗ mơ hồ không còn bị sửa sai, bài lệch dấu / rơi chữ đã OCR); `header_start` / `mid_header` thấp; 0 cờ nhầm ở `check-clean`; ngân sách lỗi chỉ đo trên mẫu thi cuối sau khi gán nhãn (chữ hỏng làm sai nghĩa <= 0,5%, tiêu đề / tham khảo lọt <= 2%, rác hoàn toàn dải A = 0, kèm khoảng tin cậy Wilson 95%).
 
+### Phần A++++ (J-53 bước 1 và 4): đo tỷ lệ ký tự điều khiển của mọi trang `text`; CPU, vài phút, KHÔNG cần GPU
+
+Đo TRƯỚC khi thêm tín hiệu `control_chars` vào `garbled.py`: ngưỡng 20% có bắt oan trang tốt không, thêm bao nhiêu trang / bài đi OCR, và stage quality (`symbol_heavy`...) có chặn trang kiểu ký tự điều khiển không. Không đổi checkpoint, không đổi ngưỡng nào.
+
+```bash
+cd /home/jovyan/dinh/vi-corpus-etl
+git pull
+source /home/jovyan/dinh/env.sh
+uv run python scripts/vjol/check_control_chars.py --data-root data --pages data/processed/vjol_font_canary/canary_pages.jsonl | tee data/processed/vjol_font_canary/control_chars.txt
+tar czf vjol_s21a7.tar.gz data/processed/vjol_font_canary/control_chars.json data/processed/vjol_font_canary/control_chars.txt
+ls -l vjol_s21a7.tar.gz
+```
+
+In ra: biểu đồ cột tỷ lệ ký tự điều khiển, số trang vượt ngưỡng (sẽ thêm đi OCR), số bài có trang vượt, số bài cả bài đi OCR, 20 bài đầu, và (nhờ `--pages`) band + mã lý do của các trang canary vượt ngưỡng, kèm số trang KHÔNG bị band D (lọt vào kho). Muốn thử ngưỡng khác thêm `--threshold 0.1`. **Báo lại cho Claude**: `vjol_s21a7.tar.gz`. Phần B vẫn chưa chạy; chờ số đo này, rồi Claude thêm tín hiệu `control_chars` (`EXTRACT_VERSION` 8).
+
 ---
 
 ## Bảng ghi kết quả
@@ -722,7 +737,7 @@ Nếu không có `[ ... ]` sao lưu thì checkpoint cũ bị ghi đè khi trích
 | S-7 | | | |
 | S-8 | | | |
 | S-9 | | | |
-| S-21 | | A (J-44): 91 bài / 740 trang OCR lại (2,0 giờ cả kho); A++ (J-47, `vjol_s21a4`): 101 / 136 trang nhóm < 0,7 có độ trùng từ < 0,3; A+++ (J-48 c, `vjol_s21a5`): bài bị `garbled` bỏ sót = 7 / 71 bài đã đo (10 trang; 100 trang dưới ngưỡng thì `garbled` đã bắt 90), 4 bài Ghostscript độ trùng ~0, 3 bài InDesign CS6 độ trùng 0,21-0,26 (J-50) | Phần B chờ ngưỡng theo bài |
+| S-21 | | A (J-44): 91 bài / 740 trang OCR lại (2,0 giờ cả kho); A++ (J-47, `vjol_s21a4`): 101 / 136 trang nhóm < 0,7 có độ trùng từ < 0,3; A+++ (J-48 c, `vjol_s21a5`): bài bị `garbled` bỏ sót = 7 / 71 bài đã đo (10 trang; 100 trang dưới ngưỡng thì `garbled` đã bắt 90), 4 bài Ghostscript độ trùng ~0, 3 bài InDesign CS6 độ trùng 0,21-0,26 (J-50) | Phần B chờ ngưỡng theo bài; A++++ (J-53, `vjol_s21a7`): chưa chạy |
 | S-14 | | inspect: nguồn chữ đảo ngược (text / ocr_vlm); producer top: ; embed giây/640 đoạn và device: ; extract giờ: ; v3 so với v2: | |
 | S-10 | | số file: ; dung lượng: GB; thời gian chép: ; số trang: ; tỉ lệ text / scan / tcvn3 theo năm: ; số dòng metadata: | |
 | S-12 | | PDF trích / lỗi / bỏ qua: ; trang theo method: ; ocr_vlm ok / blank / flagged: ; trang baseline: ; giờ trích text: ; đoạn mỗi bài: ; ngôn ngữ vi / en / khác: | |

@@ -123,6 +123,25 @@ def _tone_count(word: str) -> int:
     return sum(c in _TONES for c in unicodedata.normalize("NFD", word))
 
 
+def control_char_ratio(text: str) -> tuple[float, int]:
+    """
+    Tỷ lệ ký tự điều khiển C0 (`\\x00`-`\\x1f`, trừ `\\n \\t \\r`) trên số ký tự không phải khoảng trắng của trang (J-52, J-53 bước 1).
+
+    Font ghi mã glyph thay vì Unicode (Ghostscript + PScript5) cho lớp chữ gần như toàn ký tự điều khiển. Các ký tự này cắt vụn mọi từ nên các tín hiệu đếm từ không đủ mẫu để kết luận; tỷ lệ này không dựa vào đếm từ. Hiện CHỈ ĐO (scripts/vjol/check_control_chars.py), chưa là tín hiệu OCR lại.
+
+    Returns:
+        (tỷ lệ, số ký tự điều khiển); (0.0, 0) với trang không có ký tự nào ngoài khoảng trắng.
+    """
+    # str.isspace() coi \x1c-\x1f là khoảng trắng, nên ký tự điều khiển phải được đếm trước khi xét khoảng trắng
+    ctrl = total = 0
+    for c in text:
+        is_ctrl = c < "\x20" and c not in "\n\t\r"
+        if is_ctrl or not c.isspace():
+            total += 1
+            ctrl += is_ctrl
+    return (ctrl / total if total else 0.0), ctrl
+
+
 def garbled_ratio(text: str) -> tuple[float, int]:
     """
     Tỷ lệ từ có >= 2 dấu thanh trong các từ >= 2 chữ cái.

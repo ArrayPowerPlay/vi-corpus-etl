@@ -505,3 +505,24 @@ def test_dong_lenh_trich_in_loi_font_va_checkpoint_cu(tmp_path):
     r = subprocess.run([sys.executable, str(REPO / "scripts/vjol/extract.py"), "--data-root", str(tmp_path), "--status"],
                        capture_output=True, text=True, timeout=300, check=False)
     assert "1 checkpoint do bản trích text cũ" in r.stdout
+
+
+def test_control_char_ratio_dem_ca_x1c_x1f_va_bo_qua_xuong_dong():
+    """J-53: \\x01-\\x1f (kể cả \\x1c-\\x1f mà str.isspace coi là khoảng trắng) được đếm; \\n \\t \\r và dấu cách không tính vào cả tử lẫn mẫu."""
+    assert g.control_char_ratio("") == (0.0, 0)
+    assert g.control_char_ratio("Xin chào \n\t\r bạn") == (0.0, 0)
+    ratio, n = g.control_char_ratio("ab\x01\x1f \n")
+    assert n == 2 and ratio == pytest.approx(0.5)
+
+
+def test_check_control_chars_do_phan_bo_va_dem_bai_di_ocr(tmp_path):
+    """J-53: bài có trang toàn ký tự điều khiển vượt ngưỡng 0,2 thì được đếm; bài sạch thì không; script ghi control_chars.json."""
+    good = "Việt Nam là một quốc gia ở Đông Nam Á. " * 5
+    bad = ("ab\x01\x02\x03\x04\x05" * 20)
+    write_ckpt(tmp_path, "a" * 64, "raw/vjol/2020/1_1.pdf", [good, good])
+    write_ckpt(tmp_path, "b" * 64, "raw/vjol/2020/2_2.pdf", [good, bad])
+    r = subprocess.run([sys.executable, str(REPO / "scripts/vjol/check_control_chars.py"), "--data-root", str(tmp_path)], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    res = json.loads((tmp_path / "processed/vjol_font_canary/control_chars.json").read_text(encoding="utf-8"))
+    assert (res["docs"], res["pages"], res["pages_over"], res["docs_over"], res["docs_whole"]) == (2, 4, 1, 1, 1)
+    assert res["top"][0]["article_id"] == "2"
