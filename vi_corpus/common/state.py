@@ -10,6 +10,7 @@ import json
 import logging
 import os
 import sys
+import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import Any, TextIO
@@ -23,14 +24,20 @@ def write_json_atomic(path: Path, data: Any) -> None:
 
     Ghi vào file tạm cùng thư mục, fsync xuống đĩa, rồi os.replace sang tên thật.
     os.replace là thao tác nguyên tử, nên người đọc chỉ thấy bản cũ hoặc bản mới hoàn chỉnh.
+    Tên file tạm có pid và chuỗi ngẫu nhiên: nhiều tiến trình (hoặc luồng) ghi cùng một `path` không giẫm lên
+    file tạm của nhau (tên cố định từng làm os.replace của tiến trình sau báo FileNotFoundError và dừng cả lượt).
     """
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(path.name + ".tmp")
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-        f.flush()
-        os.fsync(f.fileno())
-    os.replace(tmp, path)
+    tmp = path.with_name(f"{path.name}.{os.getpid()}.{uuid.uuid4().hex[:8]}.tmp")
+    try:
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, path)
+    except BaseException:
+        tmp.unlink(missing_ok=True)  # không để file tạm mồ côi khi ghi lỗi
+        raise
 
 
 def read_json(path: Path) -> Any | None:

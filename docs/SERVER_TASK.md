@@ -36,6 +36,7 @@
 | S-20 | VJOL: chạy lại pipeline `vjol_10k_v8` sau sửa J-37 (không trích lại), so với `v7`, đo bằng nhãn chuẩn | J-38 | CHẠY SAU S-19 | pipeline ~10 phút | 1 |
 | S-21 | VJOL: đo CPU kế hoạch OCR lại cả bài, so ghép đôi v7 / v8, học bảng lệch dấu, phép thử nhóm font (GPU); SAU KHI chốt ngưỡng: trích lại, pipeline `vjol_10k_v9`, đo bằng nhãn chuẩn, sinh mẫu thi cuối | J-43 (code J-40 / J-42) | CHẠY SAU S-20 | Phần A: CPU vài chục phút + canary ~30-60 phút GPU; Phần B: trích lại + pipeline vài chục phút | 4 |
 | S-22 | VJOL: đo độ chính xác bộ chọn "ph-ơng / l-ơng" (J-57), chạy `vjol_10k_v10` và so với `v9` | J-57 | CHẠY SAU S-21 | đo vài phút GPU + pipeline ~15 phút | 1 |
+| S-23 | VJOL: trích text CẢ KHO (177.031 PDF) và theo dõi 1–2 giờ đầu | J-60 | CHẠY SAU S-22 | chưa ước được (đo trong chính lần chạy này) | 4 |
 
 Thứ tự khuyến nghị: S-10 (VJOL ưu tiên cao nhất, R-15) → S-0 → S-1 → S-2 → S-3 (có đủ số để tính giờ OCR) → S-4 → S-5. S-6 đến S-9 và S-11 làm sau phiên code (S-11 cần script `scripts/dedup_pairs_sample.py`, viết ở gói G-05 bước 2).
 
@@ -752,6 +753,83 @@ tar czf vjol_s22.tar.gz $V9/hyphen_lm_eval.json $V10/{manifest.json,report.html,
 ```
 Kỳ vọng: số đoạn bị loại bởi `lost_letters` giảm từ 220 xuống rõ rệt, `check-clean` vẫn 0 cờ nhầm, `paired_v9_v10.txt` cho thấy phần "đổi chữ" chủ yếu là "-ơ" thành "ươ" có dấu hợp lý (đọc 20 mẫu).
 
+## S-23. VJOL: trích text cả kho và theo dõi 1–2 giờ đầu  [CHẠY SAU S-22]
+
+**Mục đích**: J-60. Chạy trích text cho mọi PDF (bỏ `SAMPLE_DOCS`), không qua bước thử 20.000 bài riêng. Chạy lại được vì checkpoint theo từng file, nên 1–2 giờ đầu đóng vai phép thử: đo tốc độ, tỉ lệ trang OCR, dung lượng đĩa, và đọc tay một mẫu bài mới. Chỉ TRÍCH TEXT; KHÔNG chạy `run_pipeline.py` cả kho ở bước này (chờ đo RAM, xem F-04 / F-05 trong J-60). Mẫu 3.000 bài đã có ở `EXTRACT_VERSION` hiện tại nên được bỏ qua, chỉ làm bài mới.
+
+```bash
+cd /home/jovyan/dinh/vi-corpus-etl
+git fetch origin && git checkout worktree-vjol-pipeline && git pull
+source /home/jovyan/dinh/env.sh
+
+# 0) trước khi chạy: ghi lại đĩa trống và số checkpoint hiện có
+df -h data | tail -1; ls data/interim/vjol_text | wc -l; du -sh data/interim/vjol_text
+# KHÔNG đặt font_groups_bad.json (J-51 đã bỏ); nếu còn file này thì đổi tên như S-21 Phần B:
+F=data/processed/vjol_font_canary/font_groups_bad.json; [ -f $F ] && mv $F $F.off
+
+# 1) chạy trong tmux (cửa sổ 1). Bỏ trống SAMPLE_DOCS = mọi PDF.
+tmux new -s vjol_full
+date; DATA_ROOT=data VLLM_BIN=$(which vllm) ./scripts/vjol/run_extract_vlm.sh 2>&1 | tee data/logs/vjol_full.log; date
+```
+
+**Theo dõi (cửa sổ tmux thứ hai, mỗi 10 phút trong 1–2 giờ đầu)**. Dùng `uv run --no-sync`, đừng dùng `uv run` thường (nó gỡ nhóm `ocr` khi tiến trình khác đang dùng).
+
+```bash
+cd /home/jovyan/dinh/vi-corpus-etl
+while true; do
+  echo "== $(date '+%F %H:%M') checkpoint=$(ls data/interim/vjol_text | wc -l)  $(du -sh data/interim/vjol_text | cut -f1)  đĩa: $(df -h data | tail -1 | awk '{print $4" trống, "$5" đầy"}')"
+  tail -qn 1 data/logs/vjol_extract_gpu*.out | cut -c1-160
+  sleep 600
+done | tee -a data/logs/vjol_full_watch.log
+# thỉnh thoảng (chậm khi nhiều checkpoint): thống kê trang theo method, lỗi, bỏ qua, OCR theo tầng
+uv run --no-sync python scripts/vjol/extract.py --data-root data --status
+nvidia-smi --query-gpu=index,utilization.gpu,memory.used --format=csv
+```
+
+**Khởi động lại GPU 0-2 (J-61)**: lần chạy đầu (2026-10-28) chỉ còn GPU 3 vì ba tiến trình kia chết ở `FileNotFoundError` (lỗi đua ghi checkpoint, đã sửa). GPU 3 cứ để chạy (nó dùng code cũ trong bộ nhớ, không sao). Chạy thêm ba tiến trình còn lại trong tmux mới; lần đầu chúng băm lại cả kho (song song, nhanh hơn trước) rồi lưu cache `data/state/inventory_vjol_text.json`.
+
+```bash
+cd /home/jovyan/dinh/vi-corpus-etl
+git pull
+source /home/jovyan/dinh/env.sh
+tmux new -s vjol_gpu012
+GPUS="0 1 2" DATA_ROOT=data VLLM_BIN=$(which vllm) ./scripts/vjol/run_extract_vlm.sh 2>&1 | tee data/logs/vjol_full_gpu012.log
+# kiểm: phải thấy 4 tiến trình và 4 GPU bận
+ps aux | grep -c "[e]xtract.py"; nvidia-smi --query-gpu=index,utilization.gpu,memory.used --format=csv
+```
+Script in thống kê và xuất Parquet ở cuối; lúc đó GPU 3 vẫn chạy nên bản xuất chỉ là tạm, chạy lại `--export-only` khi tất cả xong. Dòng theo dõi cũ vẫn dùng được.
+
+**Tốc độ và giờ ước tính**: lấy hai dòng `checkpoint=` cách nhau 10 phút, trừ nhau ra bài mỗi giờ. Giờ còn lại = (177.031 - checkpoint) / bài mỗi giờ. Đo vài lần, bỏ lần đầu (đang dựng server vLLM, chưa trích gì).
+
+**Đọc tay 30 bài mới sau 1 giờ** (3.000 file mới nhất; gửi lại `vjol_read30.txt`):
+
+```bash
+uv run --no-sync python - <<'PYEOF' > vjol_read30.txt
+import glob, json, os, random
+fs = sorted(glob.glob("data/interim/vjol_text/*.json"), key=os.path.getmtime)[-3000:]
+random.seed(0)
+for f in random.sample(fs, min(30, len(fs))):
+    d = json.load(open(f, encoding="utf-8"))
+    pages = [p for p in d["pages"] if p["text"].strip()]
+    if not pages:
+        print(os.path.basename(f)[:12], "KHÔNG CÓ CHỮ", d.get("error"), d.get("skipped"), "\n"); continue
+    p = random.choice(pages)
+    print(d.get("article_id"), p["method"], p.get("reason", ""), "|", p["text"][:300].replace("\n", " "), "\n")
+PYEOF
+```
+
+**Dừng và báo ngay nếu** (ngưỡng gợi ý do Claude chọn, chủ dự án đổi được):
+- đĩa trống còn dưới 10%, hoặc `du` của `interim/vjol_text` nhân ra cả kho vượt đĩa trống;
+- dòng `=== gpuN LỖI` trong log, hoặc `ServerDown` / `EngineUnavailable`;
+- `errors` trong `--status` vượt 1% số checkpoint, hoặc có trang `needs_ocr` (OCR không chạy);
+- trang `ocr_vlm` bị `flagged` vượt 3% (bench O-22 đo 0,6%);
+- bài/giờ thấp tới mức cả kho quá ~7 ngày (chủ dự án quyết có chạy tiếp không);
+- đọc 30 bài thấy từ khoảng 5 bài trở lên là chữ hỏng (dính từ, lệch dấu, ký tự lạ, "-" thay "ư").
+
+Để chạy tiếp: không cần làm gì, `run_extract_vlm.sh` tự dừng khi xong và in thống kê. Nếu dừng giữa chừng thì chạy lại đúng lệnh cũ (chỉ làm PDF còn thiếu).
+
+**Báo lại cho Claude**: các dòng `checkpoint=` đầu và sau 1–2 giờ (từ `vjol_full_watch.log`), đầu ra `--status`, `vjol_read30.txt`, `df -h` / `du -sh` lúc bắt đầu và lúc đang chạy, giờ bắt đầu / kết thúc nếu đã xong.
+
 ## Bảng ghi kết quả
 
 (Điền sau khi chạy. Ghi ngày, người chạy, lệnh đã chạy nếu khác hướng dẫn.)
@@ -774,3 +852,4 @@ Kỳ vọng: số đoạn bị loại bởi `lost_letters` giảm từ 220 xuố
 | S-12 | | PDF trích / lỗi / bỏ qua: ; trang theo method: ; ocr_vlm ok / blank / flagged: ; trang baseline: ; giờ trích text: ; đoạn mỗi bài: ; ngôn ngữ vi / en / khác: | |
 | S-11 | | số cặp A bắt: ; C bắt: ; chỉ C bắt: (cùng nguồn / khác nguồn); nhóm 2 (0,7–0,8): trung / cung-mau / khac = ; nhóm 1: ; nhóm 3: | |
 | S-22 | | độ chính xác theo margin (đúng / SAI / bỏ qua): ; lost_letters v9 -> v10: ; check-clean: ; 20 mẫu đọc tay: | |
+| S-23 | | bài/giờ (sau khi server dựng xong): ; checkpoint sau 1 giờ và 2 giờ: ; dung lượng interim/vjol_text lúc đó: GB; đĩa trống: GB; trang theo method: ; ocr flagged: %; errors: ; đọc tay 30 bài: / 30 hỏng; giờ cả kho: | |

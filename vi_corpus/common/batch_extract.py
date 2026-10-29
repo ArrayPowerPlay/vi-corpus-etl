@@ -20,6 +20,7 @@ import fcntl
 import hashlib
 import logging
 from collections.abc import Callable, Collection, Iterator
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -53,22 +54,50 @@ def list_files(root: Path) -> list[Path]:
     )
 
 
-def inventory(root: Path, limit_files: int | None = None, files: list[Path] | None = None) -> dict[str, list[Path]]:
+def inventory(root: Path, limit_files: int | None = None, files: list[Path] | None = None,
+              cache_path: Path | None = None, workers: int = 8) -> dict[str, list[Path]]:
     """
     Kiểm kê: gom file theo sha256 nội dung.
+
+    Băm song song (hashlib nhả GIL, việc chính là chờ đĩa mạng). Nếu có `cache_path`, sha256 của file được nhớ theo
+    (đường dẫn, size, mtime): lần chạy sau, hoặc tiến trình khác sau khi tiến trình đầu lưu, không băm lại file chưa đổi.
 
     Args:
         root:        Thư mục nguồn.
         limit_files: Chỉ tính N file đầu (chạy thử).
         files:       Danh sách file cụ thể (vd mẫu của VJOL); None thì liệt kê mọi file trong `root`.
+        cache_path:  File JSON cache {đường dẫn: [size, mtime_ns, sha256]}; None = không cache.
+        workers:     Số luồng băm.
 
     Returns:
         {sha256: [đường dẫn các file trùng nội dung, theo thứ tự đường dẫn]}, theo thứ tự xuất hiện đầu tiên.
     """
+    cache: dict[str, list] = (read_json(cache_path) or {}) if cache_path else {}
+    fresh: dict[str, list] = {}
+
+    def sha_of(path: Path) -> str:
+        """sha256 của một file: lấy từ cache nếu size và mtime không đổi, không thì băm."""
+        st = path.stat()
+        key = str(path)
+        hit = cache.get(key)
+        if hit and hit[0] == st.st_size and hit[1] == st.st_mtime_ns:
+            sha = hit[2]
+        else:
+            sha = file_sha256(path)
+        fresh[key] = [st.st_size, st.st_mtime_ns, sha]
+        return sha
+
     groups: dict[str, list[Path]] = {}
-    # ponytail: băm lại mọi file mỗi lần chạy; thêm cache theo (đường dẫn, size, mtime) nếu kho lớn hàng chục GB.
-    for path in tqdm((list_files(root) if files is None else files)[:limit_files], desc="Kiểm kê (sha256)", unit="file"):
-        groups.setdefault(file_sha256(path), []).append(path)
+    todo = (list_files(root) if files is None else files)[:limit_files]
+    with ThreadPoolExecutor(workers) as pool:
+        # map giữ thứ tự đầu vào nên thứ tự nhóm không đổi giữa các tiến trình
+        for i, (path, sha) in enumerate(zip(todo, tqdm(pool.map(sha_of, todo), total=len(todo),
+                                                       desc="Kiểm kê (sha256)", unit="file")), 1):
+            groups.setdefault(sha, []).append(path)
+            if cache_path and i % 20000 == 0:
+                write_json_atomic(cache_path, {**cache, **fresh})  # lưu dần để chết giữa chừng không mất hết
+    if cache_path:
+        write_json_atomic(cache_path, {**cache, **fresh})
     return groups
 
 
@@ -181,7 +210,8 @@ def run_batch(root: Path, data_root: Path, text_dir: str,
         file đã xong trước đó vẫn nằm trong checkpoint.
     """
     started = datetime.now(timezone.utc).isoformat()
-    groups = inventory(root, limit_files, files)
+    # cache sha256 dùng chung các tiến trình (ghi nguyên tử, tên tạm riêng) nên chạy lại không băm lại cả kho
+    groups = inventory(root, limit_files, files, cache_path=data_root / "state" / f"inventory_{Path(text_dir).name}.json")
     logger.info("Kiểm kê: %d file, %d nội dung duy nhất", sum(map(len, groups.values())), len(groups))
     failed = done_count = busy = 0
     for sha, paths in tqdm(groups.items(), desc=desc, unit="file"):
