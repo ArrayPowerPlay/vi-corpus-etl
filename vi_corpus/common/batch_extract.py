@@ -28,6 +28,7 @@ from pathlib import Path
 from tqdm import tqdm
 
 from vi_corpus.common.state import read_json, write_json_atomic
+from vi_corpus.common.unicode_clean import scrub_obj
 
 logger = logging.getLogger("vi_corpus")
 
@@ -171,6 +172,34 @@ def _needs_redo(done: dict | None, ocr_enabled: bool, retry_skipped: bool = Fals
     return ocr_enabled and any(p["method"] == "needs_ocr" for p in done["pages"])
 
 
+def _write_checkpoint(ckpt: Path, sha: str, paths: list[Path], rels: list[str], path_meta: Callable[[Path], dict], result: dict) -> dict:
+    """
+    Ghi checkpoint của một file; một file không ghi được không được làm dừng cả lượt (nhiều tiến trình GPU sẽ lần lượt nhận lại đúng file đó rồi chết theo).
+
+    Surrogate lẻ (U+D800–U+DFFF) trong bất kỳ chuỗi nào được thay bằng U+FFFD trước khi ghi (lớp cuối, sau khi extract_pdf và OCR đã làm sạch). Nếu vẫn
+    không ghi được vì lỗi dữ liệu (UnicodeEncodeError, TypeError, ValueError) thì ghi checkpoint lỗi gọn (không trang) để lần chạy sau thử lại và `--status`
+    đếm được. Lỗi hệ thống (đĩa đầy, hết quyền) vẫn ném ra.
+
+    Returns:
+        `result` như nhận vào, hoặc bản lỗi nếu phải ghi checkpoint lỗi (khoá "error" khác None).
+    """
+    payload = {"sha256": sha, "size": paths[0].stat().st_size, "paths": rels, **path_meta(paths[0]), **result,
+               "created_at": datetime.now(timezone.utc).isoformat()}
+    payload, replaced = scrub_obj(payload)
+    if replaced:
+        logger.warning("%s: thay %d ký tự surrogate lẻ bằng U+FFFD trước khi ghi checkpoint", rels[0], replaced)
+    try:
+        write_json_atomic(ckpt, payload)
+        return result
+    except (UnicodeEncodeError, TypeError, ValueError) as exc:
+        error = f"CheckpointWriteError: {type(exc).__name__}: {exc}"[:300]
+        logger.error("Không ghi được checkpoint của %s: %s", rels[0], error)
+        failed = {"sha256": sha, "size": payload["size"], "paths": rels, "format": result.get("format"), "pages": [], "error": error,
+                  "skipped": None, "created_at": datetime.now(timezone.utc).isoformat()}
+        write_json_atomic(ckpt, failed)
+        return {**result, "pages": [], "error": error}
+
+
 def run_batch(root: Path, data_root: Path, text_dir: str,
               extract_file: Callable[[Path, Callable[[], object | None]], dict],
               path_meta: Callable[[Path], dict],
@@ -232,10 +261,7 @@ def run_batch(root: Path, data_root: Path, text_dir: str,
                 done_count += 1  # tiến trình khác vừa làm xong (kể cả lỗi) trong lần chạy này, không làm lại
                 continue
             result = extract_file(paths[0], get_ocr)
-            write_json_atomic(ckpt, {
-                "sha256": sha, "size": paths[0].stat().st_size, "paths": rels,
-                **path_meta(paths[0]), **result, "created_at": datetime.now(timezone.utc).isoformat(),
-            })
+            result = _write_checkpoint(ckpt, sha, paths, rels, path_meta, result)
         if result["error"]:
             failed += 1
             logger.warning("Lỗi %s: %s", rels[0], result["error"])

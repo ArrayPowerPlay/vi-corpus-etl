@@ -30,6 +30,7 @@ Ngoài trích text, file này có clean_pages: làm sạch text theo trang (bỏ
 ghép dòng thành đoạn) để dùng khi ghép các trang thành một văn bản.
 """
 
+import logging
 import re
 from collections.abc import Callable, Sequence
 
@@ -38,6 +39,9 @@ import pymupdf
 from vi_corpus.common.garbled import (DEFAULT_THRESHOLDS, REASON_BLANK, REASON_FONT_GROUP, REASON_NO_TEXT, REASON_PRODUCER, Thresholds, page_signals,
                                       plan_garbled)
 from vi_corpus.common.ocr_noise import strip_vlm_noise
+from vi_corpus.common.unicode_clean import scrub_surrogates
+
+logger = logging.getLogger("vi_corpus")
 
 # Khoảng trống giữa 2 ký tự lớn hơn tỉ lệ này của cỡ chữ thì coi là có dấu cách.
 SPACE_GAP_RATIO = 0.15
@@ -207,6 +211,13 @@ def extract_pdf(path, get_ocr: Callable[[], object | None], detect_garbled: bool
         tcvn3 = is_tcvn3("".join(texts))
         if tcvn3:  # font TCVN3 không mang tên .Vn...: đổi mọi span (đọc lại, tránh đổi 2 lần)
             texts = [page_text(page, tcvn3_all=True) for page in doc]
+        # PDF có bảng ToUnicode hỏng cho ra surrogate lẻ (vd U+D835), không ghi được checkpoint UTF-8: thay bằng U+FFFD và ghi log đường dẫn để tìm file
+        scrubbed = [scrub_surrogates(t) for t in texts]
+        texts = [t for t, _ in scrubbed]
+        bad_pages = [i + 1 for i, (_, n) in enumerate(scrubbed) if n]
+        if bad_pages:
+            logger.warning("Ký tự surrogate lẻ (đã thay bằng U+FFFD) trong %s: %d ký tự ở trang %s", path, sum(n for _, n in scrubbed),
+                           ", ".join(map(str, bad_pages[:20])) + (" ..." if len(bad_pages) > 20 else ""))
         pages: list[dict | None] = []
         no_text: set[int] = set()  # trang không có lớp chữ nhưng vẽ ra có nội dung (rescue_empty)
         scan_idx: list[int] = []

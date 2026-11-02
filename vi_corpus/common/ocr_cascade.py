@@ -24,6 +24,7 @@ from pathlib import Path
 
 from vi_corpus.common.garbled import unknown_syllable_rate
 from vi_corpus.common.ocr_cache import ocr_signature
+from vi_corpus.common.unicode_clean import scrub_obj
 from vi_corpus.ocr_bakeoff.cascade import CascadeOcr, EngineUnavailable, Tier
 
 logger = logging.getLogger("vi_corpus")
@@ -176,6 +177,9 @@ class CascadePageOcr:
                 entry["rotation"] = r["rotation"]
             if "rejected_text" in r:
                 entry["rejected_text"] = r["rejected_text"]
+            entry, n = scrub_obj(entry)  # đầu ra VLM có thể chứa surrogate lẻ (JSON "\\ud835" lẻ), không ghi được UTF-8
+            if n:
+                logger.warning("Đầu ra OCR VLM có %d ký tự surrogate lẻ, đã thay bằng U+FFFD", n)
             out.append(entry)
         return out
 

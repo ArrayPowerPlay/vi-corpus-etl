@@ -788,6 +788,21 @@ nvidia-smi --query-gpu=index,utilization.gpu,memory.used --format=csv
 
 **Khởi động lại GPU 0-2 (J-61)**: lần chạy đầu (2026-10-28) chỉ còn GPU 3 vì ba tiến trình kia chết ở `FileNotFoundError` (lỗi đua ghi checkpoint, đã sửa). GPU 3 cứ để chạy (nó dùng code cũ trong bộ nhớ, không sao). Chạy thêm ba tiến trình còn lại trong tmux mới; lần đầu chúng băm lại cả kho (song song, nhanh hơn trước) rồi lưu cache `data/state/inventory_vjol_text.json`.
 
+**Khởi động lại sau J-62 (cả 4 GPU chết vì `UnicodeEncodeError: surrogates not allowed`)**: sửa nằm trong code mới, nên phải kéo code về rồi chạy lại ĐÚNG lệnh ở bước 1 (checkpoint đã có được bỏ qua, không làm lại; file gây lỗi giờ được trích bình thường).
+```bash
+cd /home/jovyan/dinh/vi-corpus-etl && git pull
+tmux new -s vjol_full2   # hoặc vào lại phiên cũ sau khi chắc chắn không còn tiến trình cũ: ps aux | grep -c "vjol/extract.py"
+date; DATA_ROOT=data VLLM_BIN=$(which vllm) ./scripts/vjol/run_extract_vlm.sh 2>&1 | tee -a data/logs/vjol_full.log; date
+# tìm PDF gây lỗi (để gửi Claude nếu cần): mỗi file có surrogate lẻ được ghi một dòng cảnh báo kèm đường dẫn
+grep -h "surrogate lẻ" data/logs/*.log | sort -u | head -50
+```
+**Tìm PDF gây lỗi NGAY, không cần chờ chạy lại (CPU, không đụng GPU, vài phút)**: quét lớp chữ của các PDF chưa có checkpoint theo đúng thứ tự trích, dừng khi đủ 4 file hỏng, chép file ra `data/processed/vjol_surrogate_pdfs/` kèm `report.json` (trang, mã điểm U+D835...). Gửi gói tar cho Claude.
+```bash
+cd /home/jovyan/dinh/vi-corpus-etl
+uv run --no-sync python scripts/vjol/find_surrogate_pdfs.py --data-root data      # thêm --workers 8 nếu CPU đang bận
+tar czf vjol_surrogate_pdfs.tar.gz -C data/processed vjol_surrogate_pdfs; ls -l vjol_surrogate_pdfs.tar.gz
+```
+
 ```bash
 cd /home/jovyan/dinh/vi-corpus-etl
 git pull
