@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1040 896" width="1040" height="896" font-family="DejaVu Sans, Arial, sans-serif">
+<title>Chuỗi đo và thí nghiệm để chốt pipeline (GPU-giờ ước tính, ±50%)</title>
+<defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#455566"/></marker></defs>
+<rect width="1040" height="896" fill="#ffffff"/>
+<text x="520.0" y="34.0" text-anchor="middle" font-size="19" font-weight="700" fill="#1b2733" xml:space="preserve">Chuỗi đo và thí nghiệm để chốt pipeline (GPU-giờ ước tính, ±50%)</text>
+<text x="520.0" y="58.0" text-anchor="middle" font-size="12" font-weight="400" fill="#52514e" xml:space="preserve">Rẻ trước đắt sau; mỗi bước kết thúc bằng một quyết định ghi vào DECISION_LOG</text>
+<rect x="40" y="80" width="16" height="16" rx="3" fill="#eef2f7" stroke="#7a8aa0" stroke-width="1.5"/>
+<text x="62.0" y="93.0" text-anchor="start" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">đã có, đã chạy</text>
+<rect x="188.8" y="80" width="16" height="16" rx="3" fill="#e9f5ee" stroke="#3f9b6b" stroke-width="1.5"/>
+<text x="210.8" y="93.0" text-anchor="start" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">đã code, chưa đo trên server</text>
+<rect x="438.4" y="80" width="16" height="16" rx="3" fill="#e3eefb" stroke="#2a78d6" stroke-width="1.5"/>
+<text x="460.4" y="93.0" text-anchor="start" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">đề xuất mới</text>
+<rect x="565.6" y="80" width="16" height="16" rx="3" fill="#fdf3dc" stroke="#c98a1a" stroke-width="1.5"/>
+<text x="587.6" y="93.0" text-anchor="start" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">tuỳ chọn</text>
+<rect x="671.2" y="80" width="16" height="16" rx="3" fill="#fbe9e7" stroke="#c4503f" stroke-width="1.5"/>
+<text x="693.2" y="93.0" text-anchor="start" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">cổng kiểm tra / đo</text>
+<rect x="848.8000000000001" y="80" width="16" height="16" rx="3" fill="#f1eafb" stroke="#7b4fc4" stroke-width="1.5"/>
+<text x="870.8" y="93.0" text-anchor="start" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">cần chốt</text>
+<rect x="40" y="120" width="960" height="54" rx="8" fill="#fbe9e7" stroke="#c4503f" stroke-width="1.5"/>
+<text x="520.0" y="142.0" text-anchor="middle" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">E-01…E-05 · Đo bằng CPU (0 GPU-giờ)</text>
+<text x="520.0" y="159.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">token sạch thật theo nguồn · đếm SEA-Instruct · fertility toàn văn · độ dài cpt_segments · khiếm khuyết VJOL (S-21/S-22)</text>
+<rect x="40" y="204" width="300" height="69" rx="8" fill="#fbe9e7" stroke="#c4503f" stroke-width="1.5"/>
+<text x="190.0" y="226.0" text-anchor="middle" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">E-06 · P0–P2 phần cứng + tốc độ</text>
+<text x="190.0" y="243.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">NVLink / PCIe, RAM; test adapter trên CPU;</text>
+<text x="190.0" y="258.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">50–100 bước mỗi cỡ ở 8K · ~4</text>
+<rect x="370" y="204" width="300" height="84" rx="8" fill="#fbe9e7" stroke="#c4503f" stroke-width="1.5"/>
+<text x="520.0" y="226.0" text-anchor="middle" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">E-07 · P3–P4 quét LR</text>
+<text x="520.0" y="243.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">0,6B: 3 LR × 200M token; 1,7B: LR tốt ±1</text>
+<text x="520.0" y="258.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">nấc</text>
+<text x="520.0" y="273.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">· ~40</text>
+<rect x="700" y="204" width="300" height="71" rx="8" fill="#f1eafb" stroke="#7b4fc4" stroke-width="1.5"/>
+<text x="850.0" y="226.0" text-anchor="middle" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">Chốt: cỡ model thí nghiệm, LR, 8-bit</text>
+<text x="850.0" y="243.0" text-anchor="middle" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">/ offload</text>
+<text x="850.0" y="260.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">K-15, K-21</text>
+<polyline points="520.0,174.0 520.0,189.0 190.0,189.0 190.0,204.0" fill="none" stroke="#455566" stroke-width="1.6" marker-end="url(#ah)"/>
+<line x1="340.0" y1="238.5" x2="370.0" y2="238.5" stroke="#455566" stroke-width="1.6" marker-end="url(#ah)"/>
+<line x1="670.0" y1="239.5" x2="700.0" y2="239.5" stroke="#455566" stroke-width="1.6" marker-end="url(#ah)"/>
+<rect x="40" y="328" width="300" height="84" rx="8" fill="#fbe9e7" stroke="#c4503f" stroke-width="1.5"/>
+<text x="190.0" y="350.0" text-anchor="middle" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">E-08 · Đóng gói</text>
+<text x="190.0" y="367.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">A nối-cắt 4K · B best-fit + mask 4K · C ở</text>
+<text x="190.0" y="382.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">8K</text>
+<text x="190.0" y="397.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">· D + tiền tố metadata · ~10–15</text>
+<rect x="370" y="328" width="300" height="69" rx="8" fill="#fbe9e7" stroke="#c4503f" stroke-width="1.5"/>
+<text x="520.0" y="350.0" text-anchor="middle" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">E-09 · Bộ lọc chất lượng</text>
+<text x="520.0" y="367.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">ngẫu nhiên / rule / top 30% / xếp tầng</text>
+<text x="520.0" y="382.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">× 2 seed · ~12–25</text>
+<rect x="700" y="328" width="300" height="69" rx="8" fill="#fbe9e7" stroke="#c4503f" stroke-width="1.5"/>
+<text x="850.0" y="350.0" text-anchor="middle" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">E-10 · Tỉ lệ trộn</text>
+<text x="850.0" y="367.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">replay {10, 30%} × lặp nguồn tốt {1, 2, 4}</text>
+<text x="850.0" y="382.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">+ trộn đều không chia pha · ~15–20</text>
+<polyline points="850.0,275.0 850.0,301.5 190.0,301.5 190.0,328.0" fill="none" stroke="#455566" stroke-width="1.6" marker-end="url(#ah)"/>
+<polyline points="850.0,275.0 850.0,301.5 520.0,301.5 520.0,328.0" fill="none" stroke="#455566" stroke-width="1.6" marker-end="url(#ah)"/>
+<polyline points="850.0,275.0 850.0,301.5 850.0,301.5 850.0,328.0" fill="none" stroke="#455566" stroke-width="1.6" marker-end="url(#ah)"/>
+<rect x="220" y="452" width="600" height="54" rx="8" fill="#f1eafb" stroke="#7b4fc4" stroke-width="1.5"/>
+<text x="520.0" y="474.0" text-anchor="middle" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">Chốt: định dạng, bộ lọc, tỉ lệ trộn</text>
+<text x="520.0" y="491.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">K-22, K-24, K-26, K-05 (bằng số của dự án)</text>
+<polyline points="190.0,412.0 190.0,432.0 520.0,432.0 520.0,452.0" fill="none" stroke="#455566" stroke-width="1.6" marker-end="url(#ah)"/>
+<polyline points="520.0,397.0 520.0,424.5 520.0,424.5 520.0,452.0" fill="none" stroke="#455566" stroke-width="1.6" marker-end="url(#ah)"/>
+<polyline points="850.0,397.0 850.0,424.5 520.0,424.5 520.0,452.0" fill="none" stroke="#455566" stroke-width="1.6" marker-end="url(#ah)"/>
+<rect x="220" y="536" width="600" height="84" rx="8" fill="#fbe9e7" stroke="#c4503f" stroke-width="1.5"/>
+<text x="520.0" y="558.0" text-anchor="middle" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">E-11 · So sánh công bằng 5 nhánh (T-03), cùng GPU-giờ kể cả giờ sinh</text>
+<text x="520.0" y="575.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">N1 CPT thô + replay → chat vector → SFT · N2 + chỉ thị trong decay · N3 + hỏi–đáp ngắn</text>
+<text x="520.0" y="590.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">do model nhỏ sinh</text>
+<text x="520.0" y="605.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">N4 kiểu SFT tổng hợp · N5 bắt đầu từ instruct · ~25–40 mỗi nhánh, tổng ~150</text>
+<line x1="520.0" y1="506.0" x2="520.0" y2="536.0" stroke="#455566" stroke-width="1.6" marker-end="url(#ah)"/>
+<rect x="220" y="650" width="600" height="54" rx="8" fill="#f1eafb" stroke="#7b4fc4" stroke-width="1.5"/>
+<text x="520.0" y="672.0" text-anchor="middle" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">Chốt hướng CPT / SFT / Hybrid và có sinh dữ liệu không</text>
+<text x="520.0" y="689.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">K-18, K-20</text>
+<line x1="520.0" y1="620.0" x2="520.0" y2="650.0" stroke="#455566" stroke-width="1.6" marker-end="url(#ah)"/>
+<rect x="220" y="734" width="600" height="54" rx="8" fill="#fbe9e7" stroke="#c4503f" stroke-width="1.5"/>
+<text x="520.0" y="756.0" text-anchor="middle" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">P5 · chạy 1B token trên cỡ đã chọn, eval mỗi ~200M token</text>
+<text x="520.0" y="773.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">~40–170 · quyết lên 5B / 10B</text>
+<line x1="520.0" y1="704.0" x2="520.0" y2="734.0" stroke="#455566" stroke-width="1.6" marker-end="url(#ah)"/>
+<rect x="220" y="818" width="600" height="54" rx="8" fill="#e3eefb" stroke="#2a78d6" stroke-width="1.5"/>
+<text x="520.0" y="840.0" text-anchor="middle" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">Chạy chính: gói S / M / L (mục 13)</text>
+<text x="520.0" y="857.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">W7 ablation quy mô, W8 go/no-go</text>
+<line x1="520.0" y1="788.0" x2="520.0" y2="818.0" stroke="#455566" stroke-width="1.6" marker-end="url(#ah)"/>
+</svg>

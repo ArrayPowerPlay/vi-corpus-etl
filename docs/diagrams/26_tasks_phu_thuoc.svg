@@ -1,0 +1,112 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 750" width="1100" height="750" font-family="DejaVu Sans, Arial, sans-serif">
+<title>Phụ thuộc giữa việc cần chốt (K), việc cần đo (E) và việc code (L)</title>
+<defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#455566"/></marker></defs>
+<rect width="1100" height="750" fill="#ffffff"/>
+<text x="550.0" y="34.0" text-anchor="middle" font-size="19" font-weight="700" fill="#1b2733" xml:space="preserve">Phụ thuộc giữa việc cần chốt (K), việc cần đo (E) và việc code (L)</text>
+<text x="550.0" y="58.0" text-anchor="middle" font-size="12" font-weight="400" fill="#52514e" xml:space="preserve">Đọc theo hàng: chốt các K bên trái và có số đo E thì mới code được L, rồi mới đóng được mốc tuần bên phải</text>
+<rect x="40" y="80" width="16" height="16" rx="3" fill="#f1eafb" stroke="#7b4fc4" stroke-width="1.5"/>
+<text x="62.0" y="93.0" text-anchor="start" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">cần chốt</text>
+<rect x="145.6" y="80" width="16" height="16" rx="3" fill="#fbe9e7" stroke="#c4503f" stroke-width="1.5"/>
+<text x="167.6" y="93.0" text-anchor="start" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">cổng kiểm tra / đo</text>
+<rect x="323.2" y="80" width="16" height="16" rx="3" fill="#e3eefb" stroke="#2a78d6" stroke-width="1.5"/>
+<text x="345.2" y="93.0" text-anchor="start" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">đề xuất mới</text>
+<rect x="450.4" y="80" width="16" height="16" rx="3" fill="#eef2f7" stroke="#7a8aa0" stroke-width="1.5"/>
+<text x="472.4" y="93.0" text-anchor="start" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">đã có, đã chạy</text>
+<text x="40.0" y="126.0" text-anchor="start" font-size="14" font-weight="700" fill="#1b2733" xml:space="preserve">Chống nhiễm + eval</text>
+<rect x="40" y="136" width="330" height="69" rx="8" fill="#f1eafb" stroke="#7b4fc4" stroke-width="1.5"/>
+<text x="205.0" y="158.0" text-anchor="middle" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">Cần chốt</text>
+<text x="205.0" y="175.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">K-01 benchmark + chính sách nhiễm · K-02 nhóm</text>
+<text x="205.0" y="190.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">giữ lại · K-16 ngưỡng cổng</text>
+<rect x="400" y="136" width="260" height="54" rx="8" fill="#fbe9e7" stroke="#c4503f" stroke-width="1.5"/>
+<text x="530.0" y="158.0" text-anchor="middle" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">Cần đo</text>
+<text x="530.0" y="175.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">E-13 kiểm judge / bộ kiểm căn cứ</text>
+<rect x="690" y="136" width="260" height="69" rx="8" fill="#e3eefb" stroke="#2a78d6" stroke-width="1.5"/>
+<text x="820.0" y="158.0" text-anchor="middle" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">Code / làm</text>
+<text x="820.0" y="175.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">L-01 quét theo câu · L-02</text>
+<text x="820.0" y="190.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">holdout_group · L-10 harness so cặp</text>
+<rect x="980" y="136" width="90" height="69" rx="8" fill="#eef2f7" stroke="#7a8aa0" stroke-width="1.5"/>
+<text x="1025.0" y="158.0" text-anchor="middle" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">Mốc</text>
+<text x="1025.0" y="175.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">W3 · W6</text>
+<line x1="370.0" y1="163.0" x2="400.0" y2="163.0" stroke="#455566" stroke-width="1.6" marker-end="url(#ah)"/>
+<line x1="660.0" y1="163.0" x2="690.0" y2="163.0" stroke="#455566" stroke-width="1.6" marker-end="url(#ah)"/>
+<line x1="950.0" y1="170.5" x2="980.0" y2="170.5" stroke="#455566" stroke-width="1.6" marker-end="url(#ah)"/>
+<text x="40.0" y="245.0" text-anchor="start" font-size="14" font-weight="700" fill="#1b2733" xml:space="preserve">Chất lượng</text>
+<rect x="40" y="255" width="330" height="69" rx="8" fill="#f1eafb" stroke="#7b4fc4" stroke-width="1.5"/>
+<text x="205.0" y="277.0" text-anchor="middle" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">Cần chốt</text>
+<text x="205.0" y="294.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">K-05 xếp tầng hay bỏ · K-06 rubric · K-07 bật</text>
+<text x="205.0" y="309.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">embedding · K-12 model judge</text>
+<rect x="400" y="255" width="260" height="69" rx="8" fill="#fbe9e7" stroke="#c4503f" stroke-width="1.5"/>
+<text x="530.0" y="277.0" text-anchor="middle" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">Cần đo</text>
+<text x="530.0" y="294.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">E-05 khiếm khuyết VJOL · E-09 proxy</text>
+<text x="530.0" y="309.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">bộ lọc</text>
+<rect x="690" y="255" width="260" height="54" rx="8" fill="#e3eefb" stroke="#2a78d6" stroke-width="1.5"/>
+<text x="820.0" y="277.0" text-anchor="middle" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">Code / làm</text>
+<text x="820.0" y="294.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">L-05 stage quality_model</text>
+<rect x="980" y="255" width="90" height="69" rx="8" fill="#eef2f7" stroke="#7a8aa0" stroke-width="1.5"/>
+<text x="1025.0" y="277.0" text-anchor="middle" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">Mốc</text>
+<text x="1025.0" y="294.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">W4</text>
+<line x1="370.0" y1="289.5" x2="400.0" y2="289.5" stroke="#455566" stroke-width="1.6" marker-end="url(#ah)"/>
+<line x1="660.0" y1="282.0" x2="690.0" y2="282.0" stroke="#455566" stroke-width="1.6" marker-end="url(#ah)"/>
+<line x1="950.0" y1="282.0" x2="980.0" y2="282.0" stroke="#455566" stroke-width="1.6" marker-end="url(#ah)"/>
+<text x="40.0" y="364.0" text-anchor="start" font-size="14" font-weight="700" fill="#1b2733" xml:space="preserve">CPT</text>
+<rect x="40" y="374" width="330" height="84" rx="8" fill="#f1eafb" stroke="#7b4fc4" stroke-width="1.5"/>
+<text x="205.0" y="396.0" text-anchor="middle" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">Cần chốt</text>
+<text x="205.0" y="413.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">K-11 replay + giấy phép · K-22 ngữ cảnh 32K ·</text>
+<text x="205.0" y="428.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">K-23 dùng text_md · K-24 định dạng chỉ thị ·</text>
+<text x="205.0" y="443.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">K-26 cách lặp</text>
+<rect x="400" y="374" width="260" height="84" rx="8" fill="#fbe9e7" stroke="#c4503f" stroke-width="1.5"/>
+<text x="530.0" y="396.0" text-anchor="middle" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">Cần đo</text>
+<text x="530.0" y="413.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">E-01 token theo nguồn · E-04 độ dài</text>
+<text x="530.0" y="428.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">segment · E-08 đóng gói · E-10 tỉ lệ</text>
+<text x="530.0" y="443.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">trộn</text>
+<rect x="690" y="374" width="260" height="69" rx="8" fill="#e3eefb" stroke="#2a78d6" stroke-width="1.5"/>
+<text x="820.0" y="396.0" text-anchor="middle" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">Code / làm</text>
+<text x="820.0" y="413.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">L-06 cpt_mix · L-07 adapter · L-13</text>
+<text x="820.0" y="428.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">text_md</text>
+<rect x="980" y="374" width="90" height="84" rx="8" fill="#eef2f7" stroke="#7a8aa0" stroke-width="1.5"/>
+<text x="1025.0" y="396.0" text-anchor="middle" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">Mốc</text>
+<text x="1025.0" y="413.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">W6 · W7</text>
+<line x1="370.0" y1="416.0" x2="400.0" y2="416.0" stroke="#455566" stroke-width="1.6" marker-end="url(#ah)"/>
+<line x1="660.0" y1="408.5" x2="690.0" y2="408.5" stroke="#455566" stroke-width="1.6" marker-end="url(#ah)"/>
+<line x1="950.0" y1="408.5" x2="980.0" y2="408.5" stroke="#455566" stroke-width="1.6" marker-end="url(#ah)"/>
+<text x="40.0" y="498.0" text-anchor="start" font-size="14" font-weight="700" fill="#1b2733" xml:space="preserve">SFT</text>
+<rect x="40" y="508" width="330" height="69" rx="8" fill="#f1eafb" stroke="#7b4fc4" stroke-width="1.5"/>
+<text x="205.0" y="530.0" text-anchor="middle" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">Cần chốt</text>
+<text x="205.0" y="547.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">K-03 quyền · K-04 KU hội thoại · K-17 think ·</text>
+<text x="205.0" y="562.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">K-18 SFT tổng hợp · K-13 đọc tay</text>
+<rect x="400" y="508" width="260" height="69" rx="8" fill="#fbe9e7" stroke="#c4503f" stroke-width="1.5"/>
+<text x="530.0" y="530.0" text-anchor="middle" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">Cần đo</text>
+<text x="530.0" y="547.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">E-02 đếm SEA-Instruct · E-12 tốc độ</text>
+<text x="530.0" y="562.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">+ 4-bit</text>
+<rect x="690" y="508" width="260" height="84" rx="8" fill="#e3eefb" stroke="#2a78d6" stroke-width="1.5"/>
+<text x="820.0" y="530.0" text-anchor="middle" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">Code / làm</text>
+<text x="820.0" y="547.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">L-03 nhãn SEA-Instruct · L-04 KU hội</text>
+<text x="820.0" y="562.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">thoại · L-08 sinh + lọc · L-09</text>
+<text x="820.0" y="577.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">render</text>
+<rect x="980" y="508" width="90" height="84" rx="8" fill="#eef2f7" stroke="#7a8aa0" stroke-width="1.5"/>
+<text x="1025.0" y="530.0" text-anchor="middle" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">Mốc</text>
+<text x="1025.0" y="547.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">W5</text>
+<line x1="370.0" y1="542.5" x2="400.0" y2="542.5" stroke="#455566" stroke-width="1.6" marker-end="url(#ah)"/>
+<line x1="660.0" y1="542.5" x2="690.0" y2="542.5" stroke="#455566" stroke-width="1.6" marker-end="url(#ah)"/>
+<line x1="950.0" y1="550.0" x2="980.0" y2="550.0" stroke="#455566" stroke-width="1.6" marker-end="url(#ah)"/>
+<text x="40.0" y="632.0" text-anchor="start" font-size="14" font-weight="700" fill="#1b2733" xml:space="preserve">Huấn luyện</text>
+<rect x="40" y="642" width="330" height="84" rx="8" fill="#f1eafb" stroke="#7b4fc4" stroke-width="1.5"/>
+<text x="205.0" y="664.0" text-anchor="middle" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">Cần chốt</text>
+<text x="205.0" y="681.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">K-14 ngân sách GPU · K-15 model · K-19 cho chạy</text>
+<text x="205.0" y="696.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">thí nghiệm · K-20 nhánh instruct · K-21 · K-25</text>
+<text x="205.0" y="711.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">framework</text>
+<rect x="400" y="642" width="260" height="69" rx="8" fill="#fbe9e7" stroke="#c4503f" stroke-width="1.5"/>
+<text x="530.0" y="664.0" text-anchor="middle" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">Cần đo</text>
+<text x="530.0" y="681.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">E-06 tốc độ · E-07 LR · E-11 so 5</text>
+<text x="530.0" y="696.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">nhánh</text>
+<rect x="690" y="642" width="260" height="54" rx="8" fill="#e3eefb" stroke="#2a78d6" stroke-width="1.5"/>
+<text x="820.0" y="664.0" text-anchor="middle" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">Code / làm</text>
+<text x="820.0" y="681.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">chạy chính gói S / M / L</text>
+<rect x="980" y="642" width="90" height="84" rx="8" fill="#eef2f7" stroke="#7a8aa0" stroke-width="1.5"/>
+<text x="1025.0" y="664.0" text-anchor="middle" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">Mốc</text>
+<text x="1025.0" y="681.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">W6 · W7 ·</text>
+<text x="1025.0" y="696.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">W8</text>
+<line x1="370.0" y1="676.5" x2="400.0" y2="676.5" stroke="#455566" stroke-width="1.6" marker-end="url(#ah)"/>
+<line x1="660.0" y1="669.0" x2="690.0" y2="669.0" stroke="#455566" stroke-width="1.6" marker-end="url(#ah)"/>
+<line x1="950.0" y1="669.0" x2="980.0" y2="669.0" stroke="#455566" stroke-width="1.6" marker-end="url(#ah)"/>
+</svg>

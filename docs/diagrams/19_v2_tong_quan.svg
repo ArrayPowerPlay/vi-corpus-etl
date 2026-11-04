@@ -1,0 +1,169 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1040 985" width="1040" height="985" font-family="DejaVu Sans, Arial, sans-serif">
+<title>Tổng quan pipeline v2: từ nguồn thô tới gói dữ liệu CPT / SFT và thí nghiệm</title>
+<defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#455566"/></marker></defs>
+<rect width="1040" height="985" fill="#ffffff"/>
+<rect x="36" y="737" width="968" height="132" rx="10" fill="#f6f7f9" stroke="#d5dbe3"/>
+<text x="48" y="757" font-size="13" font-weight="700" fill="#52514e" xml:space="preserve">Tầng 4 · Huấn luyện thử + đo (W6 mini model, W7 ablation, W8 go/no-go)</text>
+<rect x="36" y="568" width="968" height="147" rx="10" fill="#f6f7f9" stroke="#d5dbe3"/>
+<text x="48" y="588" font-size="13" font-weight="700" fill="#52514e" xml:space="preserve">Tầng 3 · Chuẩn bị theo model (dựng lại khi đổi model / độ dài ngữ cảnh)</text>
+<rect x="36" y="414" width="968" height="132" rx="10" fill="#f6f7f9" stroke="#d5dbe3"/>
+<text x="48" y="434" font-size="13" font-weight="700" fill="#52514e" xml:space="preserve">Tầng 2 · Chọn và dựng dữ liệu huấn luyện, độc lập model (W3–W5)</text>
+<rect x="36" y="260" width="968" height="132" rx="10" fill="#f6f7f9" stroke="#d5dbe3"/>
+<text x="48" y="280" font-size="13" font-weight="700" fill="#52514e" xml:space="preserve">Tầng 1 · Pipeline làm sạch dùng chung (vi_corpus/pipeline, có sẵn)</text>
+<rect x="36" y="106" width="968" height="132" rx="10" fill="#f6f7f9" stroke="#d5dbe3"/>
+<text x="48" y="126" font-size="13" font-weight="700" fill="#52514e" xml:space="preserve">Tầng 0 · Thu thập + trích chữ (mỗi nguồn một thư mục)</text>
+<text x="520.0" y="34.0" text-anchor="middle" font-size="19" font-weight="700" fill="#1b2733" xml:space="preserve">Tổng quan pipeline v2: từ nguồn thô tới gói dữ liệu CPT / SFT và thí nghiệm</text>
+<text x="520.0" y="58.0" text-anchor="middle" font-size="12" font-weight="400" fill="#52514e" xml:space="preserve">Tầng 0–2 độc lập với model (giữ lâu dài); Tầng 3 dựng lại khi đổi model; Tầng 4 là thí nghiệm W6–W8 để chứng minh dữ liệu có ích</text>
+<rect x="40" y="80" width="16" height="16" rx="3" fill="#eef2f7" stroke="#7a8aa0" stroke-width="1.5"/>
+<text x="62.0" y="93.0" text-anchor="start" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">đã có, đã chạy</text>
+<rect x="188.8" y="80" width="16" height="16" rx="3" fill="#e9f5ee" stroke="#3f9b6b" stroke-width="1.5"/>
+<text x="210.8" y="93.0" text-anchor="start" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">đã code, chưa đo trên server</text>
+<rect x="438.4" y="80" width="16" height="16" rx="3" fill="#e3eefb" stroke="#2a78d6" stroke-width="1.5"/>
+<text x="460.4" y="93.0" text-anchor="start" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">đề xuất mới</text>
+<rect x="565.6" y="80" width="16" height="16" rx="3" fill="#fdf3dc" stroke="#c98a1a" stroke-width="1.5"/>
+<text x="587.6" y="93.0" text-anchor="start" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">tuỳ chọn</text>
+<rect x="671.2" y="80" width="16" height="16" rx="3" fill="#fbe9e7" stroke="#c4503f" stroke-width="1.5"/>
+<text x="693.2" y="93.0" text-anchor="start" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">cổng kiểm tra / đo</text>
+<rect x="848.8000000000001" y="80" width="16" height="16" rx="3" fill="#f1eafb" stroke="#7b4fc4" stroke-width="1.5"/>
+<text x="870.8" y="93.0" text-anchor="start" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">cần chốt</text>
+<rect x="52" y="140" width="178" height="84" rx="8" fill="#eef2f7" stroke="#7a8aa0" stroke-width="1.5"/>
+<text x="141.0" y="162.0" text-anchor="middle" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">SEA (HF)</text>
+<text x="141.0" y="179.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">tải byte-for-byte</text>
+<text x="141.0" y="194.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">SEA-PILE v1/v2, SEA-</text>
+<text x="141.0" y="209.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">Instruct</text>
+<rect x="242" y="140" width="178" height="69" rx="8" fill="#e9f5ee" stroke="#3f9b6b" stroke-width="1.5"/>
+<text x="331.0" y="162.0" text-anchor="middle" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">stbook</text>
+<text x="331.0" y="179.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">OCR VLM cascade (O-20)</text>
+<text x="331.0" y="194.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">text + text_md (T-06)</text>
+<rect x="432" y="140" width="178" height="69" rx="8" fill="#eef2f7" stroke="#7a8aa0" stroke-width="1.5"/>
+<text x="521.0" y="162.0" text-anchor="middle" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">giáo trình</text>
+<text x="521.0" y="179.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">PDF/pptx → chữ</text>
+<text x="521.0" y="194.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">OCR chưa nối cascade</text>
+<rect x="622" y="140" width="178" height="69" rx="8" fill="#e9f5ee" stroke="#3f9b6b" stroke-width="1.5"/>
+<text x="711.0" y="162.0" text-anchor="middle" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">VJOL</text>
+<text x="711.0" y="179.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">PyMuPDF + OCR trang hỏng</text>
+<text x="711.0" y="194.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">đang chạy full (S-24)</text>
+<rect x="812" y="140" width="178" height="69" rx="8" fill="#e3eefb" stroke="#2a78d6" stroke-width="1.5"/>
+<text x="901.0" y="162.0" text-anchor="middle" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">Nguồn W3 mới</text>
+<text x="901.0" y="179.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">wiki_vi, phap_luat,</text>
+<text x="901.0" y="194.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">fineweb2_vi, VISTA</text>
+<rect x="52" y="294" width="108" height="53" rx="8" fill="#eef2f7" stroke="#7a8aa0" stroke-width="1.5"/>
+<text x="106.0" y="316.0" text-anchor="middle" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">ingest</text>
+<text x="106.0" y="333.0" text-anchor="middle" font-size="10" font-weight="400" fill="#1b2733" xml:space="preserve">schema chung</text>
+<rect x="170" y="294" width="108" height="67" rx="8" fill="#eef2f7" stroke="#7a8aa0" stroke-width="1.5"/>
+<text x="224.0" y="316.0" text-anchor="middle" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">prepare</text>
+<text x="224.0" y="333.0" text-anchor="middle" font-size="10" font-weight="400" fill="#1b2733" xml:space="preserve">NFC, dòng lặp,</text>
+<text x="224.0" y="347.0" text-anchor="middle" font-size="10" font-weight="400" fill="#1b2733" xml:space="preserve">cắt đoạn</text>
+<rect x="288" y="294" width="108" height="67" rx="8" fill="#eef2f7" stroke="#7a8aa0" stroke-width="1.5"/>
+<text x="342.0" y="316.0" text-anchor="middle" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">language</text>
+<text x="342.0" y="333.0" text-anchor="middle" font-size="10" font-weight="400" fill="#1b2733" xml:space="preserve">fastText theo</text>
+<text x="342.0" y="347.0" text-anchor="middle" font-size="10" font-weight="400" fill="#1b2733" xml:space="preserve">đoạn</text>
+<rect x="406" y="294" width="108" height="84" rx="8" fill="#eef2f7" stroke="#7a8aa0" stroke-width="1.5"/>
+<text x="460.0" y="316.0" text-anchor="middle" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">quality</text>
+<text x="460.0" y="333.0" text-anchor="middle" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">(rule)</text>
+<text x="460.0" y="350.0" text-anchor="middle" font-size="10" font-weight="400" fill="#1b2733" xml:space="preserve">reason code,</text>
+<text x="460.0" y="364.0" text-anchor="middle" font-size="10" font-weight="400" fill="#1b2733" xml:space="preserve">band</text>
+<rect x="524" y="294" width="108" height="70" rx="8" fill="#eef2f7" stroke="#7a8aa0" stroke-width="1.5"/>
+<text x="578.0" y="316.0" text-anchor="middle" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">dedup 2</text>
+<text x="578.0" y="333.0" text-anchor="middle" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">vòng</text>
+<text x="578.0" y="350.0" text-anchor="middle" font-size="10" font-weight="400" fill="#1b2733" xml:space="preserve">exact+fuzzy+L1</text>
+<rect x="642" y="294" width="108" height="53" rx="8" fill="#eef2f7" stroke="#7a8aa0" stroke-width="1.5"/>
+<text x="696.0" y="316.0" text-anchor="middle" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">embed</text>
+<text x="696.0" y="333.0" text-anchor="middle" font-size="10" font-weight="400" fill="#1b2733" xml:space="preserve">Qwen3-Emb</text>
+<rect x="760" y="294" width="108" height="53" rx="8" fill="#eef2f7" stroke="#7a8aa0" stroke-width="1.5"/>
+<text x="814.0" y="316.0" text-anchor="middle" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">reduce</text>
+<text x="814.0" y="333.0" text-anchor="middle" font-size="10" font-weight="400" fill="#1b2733" xml:space="preserve">gom cụm, bản đồ</text>
+<rect x="878" y="294" width="108" height="67" rx="8" fill="#eef2f7" stroke="#7a8aa0" stroke-width="1.5"/>
+<text x="932.0" y="316.0" text-anchor="middle" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">finalize</text>
+<text x="932.0" y="333.0" text-anchor="middle" font-size="10" font-weight="400" fill="#1b2733" xml:space="preserve">KU, segment,</text>
+<text x="932.0" y="347.0" text-anchor="middle" font-size="10" font-weight="400" fill="#1b2733" xml:space="preserve">audit</text>
+<line x1="160.0" y1="320.5" x2="170.0" y2="327.5" stroke="#455566" stroke-width="1.6" marker-end="url(#ah)"/>
+<line x1="278.0" y1="327.5" x2="288.0" y2="327.5" stroke="#455566" stroke-width="1.6" marker-end="url(#ah)"/>
+<line x1="396.0" y1="327.5" x2="406.0" y2="336.0" stroke="#455566" stroke-width="1.6" marker-end="url(#ah)"/>
+<line x1="514.0" y1="336.0" x2="524.0" y2="329.0" stroke="#455566" stroke-width="1.6" marker-end="url(#ah)"/>
+<line x1="632.0" y1="329.0" x2="642.0" y2="320.5" stroke="#455566" stroke-width="1.6" marker-end="url(#ah)"/>
+<line x1="750.0" y1="320.5" x2="760.0" y2="320.5" stroke="#455566" stroke-width="1.6" marker-end="url(#ah)"/>
+<line x1="868.0" y1="320.5" x2="878.0" y2="327.5" stroke="#455566" stroke-width="1.6" marker-end="url(#ah)"/>
+<line x1="520.0" y1="238.0" x2="520.0" y2="260.0" stroke="#455566" stroke-width="1.6" marker-end="url(#ah)"/>
+<rect x="52" y="448" width="178" height="84" rx="8" fill="#e3eefb" stroke="#2a78d6" stroke-width="1.5"/>
+<text x="141.0" y="470.0" text-anchor="middle" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">quality_model</text>
+<text x="141.0" y="487.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">judge 50k → đầu MLP</text>
+<text x="141.0" y="502.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">phân vị trong nguồn →</text>
+<text x="141.0" y="517.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">tầng</text>
+<rect x="242" y="448" width="178" height="69" rx="8" fill="#fbe9e7" stroke="#c4503f" stroke-width="1.5"/>
+<text x="331.0" y="470.0" text-anchor="middle" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">Giữ lại + quét nhiễm</text>
+<text x="331.0" y="487.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">H1/H2/H3, quét theo</text>
+<text x="331.0" y="502.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">từng câu benchmark</text>
+<rect x="432" y="448" width="178" height="84" rx="8" fill="#e9f5ee" stroke="#3f9b6b" stroke-width="1.5"/>
+<text x="521.0" y="470.0" text-anchor="middle" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">cpt_segments</text>
+<text x="521.0" y="487.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">đoạn liền mạch, lineage,</text>
+<text x="521.0" y="502.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">metadata riêng (T-07,</text>
+<text x="521.0" y="517.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">T-09)</text>
+<rect x="622" y="448" width="178" height="69" rx="8" fill="#e3eefb" stroke="#2a78d6" stroke-width="1.5"/>
+<text x="711.0" y="470.0" text-anchor="middle" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">KU SFT hội thoại</text>
+<text x="711.0" y="487.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">messages, nhãn tác vụ,</text>
+<text x="711.0" y="502.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">nguồn gốc, mức quyền</text>
+<rect x="812" y="448" width="178" height="69" rx="8" fill="#fdf3dc" stroke="#c98a1a" stroke-width="1.5"/>
+<text x="901.0" y="470.0" text-anchor="middle" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">SFT tổng hợp</text>
+<text x="901.0" y="487.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">mở sách trước, lọc 4</text>
+<text x="901.0" y="502.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">tầng, đọc tay ≥ 90%</text>
+<line x1="520.0" y1="392.0" x2="520.0" y2="414.0" stroke="#455566" stroke-width="1.6" marker-end="url(#ah)"/>
+<rect x="52" y="602" width="226" height="99" rx="8" fill="#e3eefb" stroke="#2a78d6" stroke-width="1.5"/>
+<text x="165.0" y="624.0" text-anchor="middle" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">cpt_mix</text>
+<text x="165.0" y="641.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">2 pha, số lần lặp theo nguồn ×</text>
+<text x="165.0" y="656.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">tầng,</text>
+<text x="165.0" y="671.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">replay + chỉ thị, tách</text>
+<text x="165.0" y="686.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">validation</text>
+<rect x="292" y="602" width="226" height="99" rx="8" fill="#e9f5ee" stroke="#3f9b6b" stroke-width="1.5"/>
+<text x="405.0" y="624.0" text-anchor="middle" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">cpt_pack</text>
+<text x="405.0" y="641.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">8.192 token, best-fit, EOS cuối</text>
+<text x="405.0" y="656.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">thật,</text>
+<text x="405.0" y="671.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">tiền tố metadata tắt</text>
+<text x="405.0" y="686.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">(T-07..T-09)</text>
+<rect x="532" y="602" width="226" height="84" rx="8" fill="#e3eefb" stroke="#2a78d6" stroke-width="1.5"/>
+<text x="645.0" y="624.0" text-anchor="middle" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">Adapter trainer</text>
+<text x="645.0" y="641.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">đọc cpt_pack: position_ids</text>
+<text x="645.0" y="656.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">reset,</text>
+<text x="645.0" y="671.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">không tính loss trên prefix</text>
+<rect x="772" y="602" width="226" height="69" rx="8" fill="#e3eefb" stroke="#2a78d6" stroke-width="1.5"/>
+<text x="885.0" y="624.0" text-anchor="middle" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">Render SFT</text>
+<text x="885.0" y="641.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">chat template của base,</text>
+<text x="885.0" y="656.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">chế độ think, loss lượt nào</text>
+<line x1="278.0" y1="651.5" x2="292.0" y2="651.5" stroke="#455566" stroke-width="1.6" marker-end="url(#ah)"/>
+<line x1="518.0" y1="651.5" x2="532.0" y2="644.0" stroke="#455566" stroke-width="1.6" marker-end="url(#ah)"/>
+<line x1="520.0" y1="546.0" x2="520.0" y2="568.0" stroke="#455566" stroke-width="1.6" marker-end="url(#ah)"/>
+<rect x="52" y="771" width="150" height="69" rx="8" fill="#fbe9e7" stroke="#c4503f" stroke-width="1.5"/>
+<text x="127.0" y="793.0" text-anchor="middle" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">Bước 0</text>
+<text x="127.0" y="810.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">đo base +</text>
+<text x="127.0" y="825.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">instruct gốc</text>
+<rect x="212" y="771" width="150" height="69" rx="8" fill="#fbe9e7" stroke="#c4503f" stroke-width="1.5"/>
+<text x="287.0" y="793.0" text-anchor="middle" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">Chạy thử</text>
+<text x="287.0" y="810.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">P0–P5 tốc độ,</text>
+<text x="287.0" y="825.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">bộ nhớ, LR</text>
+<rect x="372" y="771" width="150" height="69" rx="8" fill="#e3eefb" stroke="#2a78d6" stroke-width="1.5"/>
+<text x="447.0" y="793.0" text-anchor="middle" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">CPT WSD</text>
+<text x="447.0" y="810.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">pha ổn định →</text>
+<text x="447.0" y="825.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">pha decay</text>
+<rect x="532" y="771" width="150" height="69" rx="8" fill="#e3eefb" stroke="#2a78d6" stroke-width="1.5"/>
+<text x="607.0" y="793.0" text-anchor="middle" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">Chat vector</text>
+<text x="607.0" y="810.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">+ SFT ngắn</text>
+<text x="607.0" y="825.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">(chống quên)</text>
+<rect x="692" y="771" width="150" height="84" rx="8" fill="#e3eefb" stroke="#2a78d6" stroke-width="1.5"/>
+<text x="767.0" y="793.0" text-anchor="middle" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">RAG</text>
+<text x="767.0" y="810.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">kho chunk +</text>
+<text x="767.0" y="825.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">embedding</text>
+<text x="767.0" y="840.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">có sẵn</text>
+<rect x="852" y="771" width="150" height="69" rx="8" fill="#fbe9e7" stroke="#c4503f" stroke-width="1.5"/>
+<text x="927.0" y="793.0" text-anchor="middle" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">Cổng eval</text>
+<text x="927.0" y="810.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">mọi checkpoint,</text>
+<text x="927.0" y="825.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">so cặp + CI 95%</text>
+<line x1="202.0" y1="805.5" x2="212.0" y2="805.5" stroke="#455566" stroke-width="1.6" marker-end="url(#ah)"/>
+<line x1="362.0" y1="805.5" x2="372.0" y2="805.5" stroke="#455566" stroke-width="1.6" marker-end="url(#ah)"/>
+<line x1="522.0" y1="805.5" x2="532.0" y2="805.5" stroke="#455566" stroke-width="1.6" marker-end="url(#ah)"/>
+<line x1="682.0" y1="805.5" x2="692.0" y2="813.0" stroke="#455566" stroke-width="1.6" marker-end="url(#ah)"/>
+<line x1="520.0" y1="715.0" x2="520.0" y2="737.0" stroke="#455566" stroke-width="1.6" marker-end="url(#ah)"/>
+<rect x="220" y="907" width="600" height="54" rx="8" fill="#eef2f7" stroke="#7a8aa0" stroke-width="1.5"/>
+<text x="520.0" y="929.0" text-anchor="middle" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">Gói phát hành W8 (có phiên bản)</text>
+<text x="520.0" y="946.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">clean release + KU CPT / SFT + công thức trộn + báo cáo tăng kiến thức / mức quên</text>
+<line x1="520.0" y1="869.0" x2="520.0" y2="907.0" stroke="#455566" stroke-width="1.6" marker-end="url(#ah)"/>
+</svg>
