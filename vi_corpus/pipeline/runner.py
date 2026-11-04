@@ -9,7 +9,7 @@ Runner của pipeline: nối các stage, mỗi stage ghi Parquet riêng vào <ru
       05_dedup.parquet       + rights_gate, status, họ trùng (TẤT CẢ bản ghi, kể cả bị loại)
       06_embeddings.parquet  (doc_id, embedding) để vẽ bản đồ (mọi bản ghi, hoặc chỉ bản giữ lại nếu embed_scope=kept)
       07_reduced.parquet     (doc_id, pca, umap, cluster_id)
-      clean.parquet, knowledge_units.parquet, cpt_blocks.parquet, audit.json, manifest.json, report.html  (finalize)
+      clean.parquet, knowledge_units.parquet, cpt_segments.parquet, audit.json, manifest.json, report.html  (finalize)
     <data_root>/state/dedup_index/<nguồn>/<run>.parquet   kho dấu vân tay dedup vòng 1 (D-09), ghi ở stage dedup
 
 Vân tay stage (G-02): mỗi stage có vân tay = băm(tham số của stage + phiên bản code + vân tay stage trước; ingest thì
@@ -57,7 +57,8 @@ STAGES = ("ingest", "prepare", "language", "quality", "dedup", "embed", "reduce"
 _FILES = {"ingest": "01_ingest.parquet", "prepare": "02_prepare.parquet", "language": "03_language.parquet",
           "quality": "04_quality.parquet", "dedup": "05_dedup.parquet", "embed": "06_embeddings.parquet",
           "reduce": "07_reduced.parquet"}
-_FINAL_FILES = ("clean.parquet", "knowledge_units.parquet", "cpt_blocks.parquet", "audit.json", "report.html")
+_FINAL_FILES = ("clean.parquet", "knowledge_units.parquet", "cpt_segments.parquet", "audit.json", "report.html")
+_STALE_FINAL_FILES = ("cpt_blocks.parquet",)  # đầu ra của bản cũ (trước T-07), finalize xoá để không bị dùng nhầm
 
 
 def _files_of(stage: str) -> list[str]:
@@ -326,11 +327,13 @@ def run_pipeline(specs: dict[str, SourceSpec], data_root: Path, run_dir: Path, c
 
 def finalize(rows: list[dict], run_dir: Path, cfg: RunConfig, counter, with_report: bool, red_path: Path) -> dict:
     """
-    Stage finalize: (tuỳ chọn) áp verdict dedup vòng 2, ghi clean / knowledge unit / khối CPT, audit, report.
+    Stage finalize: (tuỳ chọn) áp verdict dedup vòng 2, ghi clean / knowledge unit / segment CPT, audit, report.
+
+    cpt_blocks.parquet của bản cũ (nếu còn) bị xoá để không bị dùng nhầm (T-07).
 
     Luôn chạy lại (rẻ), không có vân tay.
     """
-    for f in _FINAL_FILES:
+    for f in _FINAL_FILES + _STALE_FINAL_FILES:
         (run_dir / f).unlink(missing_ok=True)
     stats: dict = {}
     if cfg.global_verdict:
@@ -340,7 +343,7 @@ def finalize(rows: list[dict], run_dir: Path, cfg: RunConfig, counter, with_repo
     n_clean = io.write_rows(run_dir / "clean.parquet", kept)
     units = knowledge.build_units(rows, counter)
     n_units = knowledge.write_units(run_dir / "knowledge_units.parquet", units)
-    n_blocks = knowledge.write_blocks(run_dir / "cpt_blocks.parquet", knowledge.pack_cpt_blocks(rows, cfg.cpt_context_tokens))
+    n_segments = knowledge.write_segments(run_dir / "cpt_segments.parquet", knowledge.build_cpt_segments(rows))
     bench = contamination.load_benchmarks(Path(cfg.benchmarks_dir) if cfg.benchmarks_dir else None)
     compare = {}
     for spec in cfg.compare_tokenizers:
@@ -348,11 +351,11 @@ def finalize(rows: list[dict], run_dir: Path, cfg: RunConfig, counter, with_repo
     report = audit.audit_rows(rows, cfg.tokenizer, contamination.scan(rows, bench), compare)
     write_json_atomic(run_dir / "audit.json", report)
     io.update_manifest(run_dir, "finalize", {
-        "clean_rows": n_clean, "knowledge_units": n_units, "cpt_blocks": n_blocks,
+        "clean_rows": n_clean, "knowledge_units": n_units, "cpt_segments": n_segments,
         "candidates": sum(u["unit_type"] == "cpt" for u in units),
         "instructions": sum(u["unit_type"] == "sft" for u in units), **stats})
     io.update_manifest(run_dir, "config", cfg.to_dict())
-    logger.info("[finalize] clean=%d, knowledge units=%d, khối CPT=%d, lineage(kept)=%.1f%%", n_clean, n_units, n_blocks,
+    logger.info("[finalize] clean=%d, knowledge units=%d, segment CPT=%d, lineage(kept)=%.1f%%", n_clean, n_units, n_segments,
                 100 * report["lineage_rate_kept"])
     manifest = io.read_manifest(run_dir)
     if with_report:

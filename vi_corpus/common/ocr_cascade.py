@@ -157,7 +157,8 @@ class CascadePageOcr:
         `render`: cờ từng trang, True = vẽ lại cả trang thay vì lấy ảnh nhúng (trang lỗi font, J-10).
 
         Returns:
-            Danh sách {"text", "method": "ocr_vlm", "tier", "status"} (+ "rotation" nếu phải xoay mới đọc được, + "rejected_text" nếu trang bị loại), theo thứ tự trang.
+            Danh sách {"text", "method": "ocr_vlm", "tier", "status"} (+ "rotation" nếu phải xoay mới đọc được, + "rejected_text" nếu trang bị loại,
+            + "text_md" = markdown gốc của VLM khi khác "text", T-06), theo thứ tự trang.
             Trang flagged / blank có text rỗng.
         """
         pages = list(pages)
@@ -177,6 +178,8 @@ class CascadePageOcr:
                 entry["rotation"] = r["rotation"]
             if "rejected_text" in r:
                 entry["rejected_text"] = r["rejected_text"]
+            if r.get("text_md"):
+                entry["text_md"] = r["text_md"]
             entry, n = scrub_obj(entry)  # đầu ra VLM có thể chứa surrogate lẻ (JSON "\\ud835" lẻ), không ghi được UTF-8
             if n:
                 logger.warning("Đầu ra OCR VLM có %d ký tự surrogate lẻ, đã thay bằng U+FFFD", n)

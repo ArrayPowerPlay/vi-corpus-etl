@@ -16,7 +16,7 @@ gộp vào đoạn trước nếu tổng không vượt mức tối đa, nếu k
 Nguồn chunked (stbook, giao_trinh) luôn cắt và được lấy mẫu theo số đoạn. Nguồn khác (bài web) giữ nguyên, chỉ bài dài hơn
 chunk_max_tokens mới cắt theo cùng quy tắc (SourceProfile.split_long; hội thoại SEA-Instruct không cắt). Mỗi đoạn là một
 mẫu độc lập, giữ source_path / source_sha256 của văn bản gốc (truy vết), thêm parent_doc_id và chunk_index. Khi xuất CPT
-các đoạn liền nhau còn giữ được nối lại (vi_corpus.pipeline.knowledge.pack_cpt_blocks).
+các đoạn liền nhau còn giữ được nối lại (vi_corpus.pipeline.knowledge.build_cpt_segments, rồi cắt + ghép chuỗi ở vi_corpus.pipeline.cpt_pack).
 
 Trước khi cắt, mỗi văn bản gốc được gắn doc_sha256 và doc_minhash (chữ ký MinHash của CẢ văn bản): dedup gần trùng chạy
 theo văn bản, không theo đoạn (R-19). Stage này cũng đặt số đếm (char / word / token) cho mọi bản ghi.

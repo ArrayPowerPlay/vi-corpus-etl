@@ -845,6 +845,54 @@ PYEOF
 
 **Báo lại cho Claude**: các dòng `checkpoint=` đầu và sau 1–2 giờ (từ `vjol_full_watch.log`), đầu ra `--status`, `vjol_read30.txt`, `df -h` / `du -sh` lúc bắt đầu và lúc đang chạy, giờ bắt đầu / kết thúc nếu đã xong.
 
+## S-24. VJOL: khởi động lại lượt trích full để lưu markdown OCR (T-06)  [CHẠY NGAY, thay lượt S-23 đang chạy]
+
+**Mục đích**: T-06. Code mới lưu thêm bản markdown gốc của OCR VLM (`text_md`: tiêu đề, bảng, công thức) cho mỗi trang OCR. Tiến trình đang chạy dùng code cũ trong bộ nhớ nên phải dừng rồi chạy lại để phần còn lại của kho có `text_md`. Không tăng `EXTRACT_VERSION`: checkpoint đã xong được bỏ qua (không làm lại), trang đã có trong `data/interim/vjol_ocr_cache/` dùng lại kết quả cũ (không có `text_md`). Dừng giữa chừng an toàn: checkpoint ghi theo từng file, file đang làm dở sẽ được làm lại.
+
+```bash
+cd /home/jovyan/dinh/vi-corpus-etl
+source /home/jovyan/dinh/env.sh
+# 1) dừng lượt đang chạy: vào phiên tmux của nó (vjol_full2 hoặc vjol_full) và bấm Ctrl+C, chờ script thoát
+tmux ls
+tmux attach -t vjol_full2        # Ctrl+C, rồi Ctrl+B D để thoát tmux
+# 2) chắc chắn không còn tiến trình cũ và GPU đã trống (nếu còn thì kill)
+ps aux | grep -E "vjol/extract.py|vllm serve" | grep -v grep
+pkill -f "vjol/extract.py"; pkill -f "vllm serve"; sleep 20
+nvidia-smi --query-gpu=index,memory.used --format=csv
+# 3) ghi lại số checkpoint trước khi chạy lại, kéo code mới, kiểm tra nhanh
+ls data/interim/vjol_text | wc -l
+git fetch origin && git checkout worktree-vjol-pipeline && git pull
+uv run --no-sync python -c "import vi_corpus.pipeline.cpt_pack, vi_corpus.common.ocr_cascade; print(\"code mới OK\")"
+# 4) chạy lại ĐÚNG lệnh cũ (chỉ làm PDF còn thiếu)
+tmux new -s vjol_full3
+date; DATA_ROOT=data VLLM_BIN=$(which vllm) ./scripts/vjol/run_extract_vlm.sh 2>&1 | tee -a data/logs/vjol_full.log; date
+```
+
+**Kiểm tra sau khoảng 30 phút** (cửa sổ tmux khác): checkpoint mới có trang OCR mang `text_md`.
+```bash
+cd /home/jovyan/dinh/vi-corpus-etl
+uv run --no-sync python - <<'PY'
+import json, pathlib, time
+d = pathlib.Path("data/interim/vjol_text"); t0 = time.time() - 3600
+files = [f for f in d.glob("*.json") if f.stat().st_mtime > t0]
+ocr = md = 0
+for f in files:
+    for p in json.loads(f.read_text()).get("pages", []):
+        if p.get("method") == "ocr_vlm" and p.get("status") == "ok":
+            ocr += 1; md += bool(p.get("text_md"))
+print(f"checkpoint mới trong 1 giờ: {len(files)}; trang OCR ok: {ocr}; có text_md: {md}")
+PY
+```
+Kỳ vọng: số "có text_md" > 0 (trang lấy từ cache cũ thì không có, nên không cần bằng số trang OCR). Nếu bằng 0 sau nhiều checkpoint mới thì dừng và báo Claude.
+
+**Không cần làm gì thêm cho T-07 / T-08 / T-09** cho tới khi chạy `run_pipeline.py`: từ nay mỗi lần chạy pipeline ghi `cpt_segments.parquet` thay cho `cpt_blocks.parquet` (bỏ cờ `--cpt-context` nếu đang dùng), rồi đóng gói chuỗi 8.192 token khi cần dữ liệu huấn luyện:
+```bash
+uv run --no-sync python scripts/cpt_pack.py --segments data/processed/pipeline_runs/<run>/cpt_segments.parquet \
+    --out data/processed/cpt_packed/<run>_8k.parquet --buckets 0-89      # thêm --use-metadata-prefix nếu muốn bật tiền tố
+```
+
+**Báo lại cho Claude**: số checkpoint trước khi dừng, dòng kết quả của đoạn kiểm tra `text_md`, và lỗi nếu có.
+
 ## Bảng ghi kết quả
 
 (Điền sau khi chạy. Ghi ngày, người chạy, lệnh đã chạy nếu khác hướng dẫn.)

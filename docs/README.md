@@ -405,7 +405,7 @@ Mục đích: kiểm tra pipeline và chất lượng dữ liệu trước khi c
 | 5 | `dedup` | Trùng theo văn bản: chính xác + gần trùng (MinHash) + văn bản nằm trong văn bản lớn hơn, rồi trùng chính xác theo đoạn; cổng quyền chỉ gắn nhãn. Ghi kho dấu vân tay cho dedup vòng 2 | `05_dedup.parquet`, `<data-root>/state/dedup_index/<nguồn>/<run>.parquet` |
 | 6 | `embed` | Vector hóa văn bản — **song song nhiều GPU** | `06_embeddings.parquet` |
 | 7 | `reduce` | Gom cụm HDBSCAN trên embedding gốc; PCA + UMAP xuống 2D chỉ để vẽ (cuML nếu có, không thì scikit-learn/umap-learn) | `07_reduced.parquet` |
-| 8 | `finalize` | Bộ sạch, knowledge unit, khối CPT, quét nhiễm benchmark, audit, bản đồ plotly, báo cáo | `clean.parquet`, `knowledge_units.parquet`, `cpt_blocks.parquet`, `audit.json`, `report.html` (đã nhúng bản đồ) |
+| 8 | `finalize` | Bộ sạch, knowledge unit, segment CPT, quét nhiễm benchmark, audit, bản đồ plotly, báo cáo | `clean.parquet`, `knowledge_units.parquet`, `cpt_segments.parquet`, `audit.json`, `report.html` (đã nhúng bản đồ) |
 
 Mọi kết quả nằm ở `<data-root>/processed/pipeline_runs/<run-name>/` (mặc định `run_<total>_seed<seed>`). Mỗi stage có checkpoint kèm **vân tay** (tham số của stage + phiên bản code + dữ liệu đầu vào): chạy lại thì stage nào đã có file và vân tay khớp sẽ được bỏ qua; đổi tham số (tokenizer, ngưỡng, bộ nhúng...) hoặc dữ liệu `raw/` thì stage đó và các stage sau tự chạy lại (log ghi rõ). Muốn cố ý dùng lại kết quả cũ: thêm `--keep-stale`.
 
@@ -473,7 +473,6 @@ Các tham số mới (đợt code 2026-10-08, chi tiết `docs/PIPELINE.md` mụ
 | `--lang-model fasttext:lid.176\|heuristic` | Bộ nhận diện ngôn ngữ (mặc định fastText) |
 | `--embed-scope all\|kept` | Nhúng mọi bản ghi (để vẽ cả bản bị loại) hay chỉ bản giữ lại |
 | `--cluster-space raw\|pca50\|umap10`, `--min-cluster-size N`, `--min-samples N` | Không gian và tham số HDBSCAN (mặc định embedding gốc, `max(2, min(20, n/10))`) |
-| `--cpt-context N` | Độ dài tối đa (token) của khối CPT trong `cpt_blocks.parquet` (mặc định 4.096) |
 | `--no-dedup-index` | Không ghi kho dấu vân tay dedup vòng 1 |
 | `--global-verdict <verdict.parquet>` | Áp kết quả dedup vòng 2 trước khi dựng knowledge unit |
 | `--keep-stale` | Dùng lại kết quả cũ dù vân tay lệch |
@@ -521,6 +520,14 @@ Kiểm tra GPU đang chạy bằng `nvidia-smi` ở terminal khác. Kết quả 
 - `report.html`: số liệu từng stage, phân bố band/ngôn ngữ/điểm, lý do loại, mẫu văn bản, và mục **Bản đồ embedding** (chọn cách tô màu bằng các nút).
 - Bản đồ embedding nằm **ngay trong `report.html`** (plotly.js và dữ liệu nhúng sẵn, ~vài MB, không cần mạng, không iframe): chỉ cần tải mỗi file `report.html` về rồi mở bằng trình duyệt. Bấm nút `<umap|pca>-<nguồn|trạng thái|band|ngôn ngữ|cụm>` để đổi cách vẽ / tô màu; rê chuột vào điểm để đọc đoạn đầu văn bản và reason code. Cách đọc: tô theo **nguồn** để xem các nguồn tách nhau thế nào; tô theo **trạng thái** để xem mẫu bị loại (chất lượng / trùng / quyền) nằm ở vùng nào, mẫu rác thường dồn thành cụm riêng.
 - `audit.json`: tỉ lệ lineage, số trùng, số bị quarantine, tokenizer, token/từ, kết quả quét nhiễm benchmark (đặt file `*.txt` / `*.jsonl` vào `configs/benchmarks/`; hiện rỗng). `manifest.json`: cấu hình, vân tay, thời gian từng stage, tham số gom cụm, số candidate / instruction.
+- `cpt_segments.parquet` (T-07): mỗi dòng là một đoạn văn bản liền mạch (không giới hạn độ dài) để làm dữ liệu CPT, kèm nguồn gốc, quyền, họ trùng, metadata (cột `title`, `meta_json`). Muốn có chuỗi huấn luyện độ dài cố định thì chạy bước đóng gói (CPU, đọc từng phần nên chạy được với hàng tỷ token):
+
+  ```bash
+  uv run python scripts/cpt_pack.py --segments <run_dir>/cpt_segments.parquet [<run_dir2>/cpt_segments.parquet ...] \
+      --out <data-root>/processed/cpt_packed/train_8k.parquet --buckets 0-89      # 8.192 token mặc định (T-08)
+  # thêm --use-metadata-prefix để có tiền tố tiêu đề / tạp chí / năm... ở cột prefix (mặc định TẮT, T-09)
+  ```
+  Đầu ra: mỗi dòng một mảnh, các mảnh cùng `seq_id` ghép theo `seq_pos` thành một chuỗi; `eos` = True thì thêm EOS sau mảnh (chỉ ở cuối thật của văn bản). Khi train phải che attention giữa các mảnh trong cùng chuỗi (reset `position_ids` / `cu_seqlens` ở đầu mỗi mảnh) và không tính loss trên `prefix`. Thống kê (số chuỗi, tỉ lệ lấp, mảnh quá dài) ở `<out>.stats.json`.
 
 ## D7. Xử lý sự cố
 

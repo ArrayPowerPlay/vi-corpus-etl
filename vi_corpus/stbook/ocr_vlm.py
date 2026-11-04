@@ -121,7 +121,7 @@ def ocr_book_vlm(cascade: CascadeOcr, slug: str, book: dict, pdf: Path, data_roo
     info = []
     for r in results:
         item = {k: r[k] for k in ("status", "tier", "finish_reason", "reasons") if k in r}
-        item.update({k: r[k] for k in ("attempts", "rejected_text") if k in r})
+        item.update({k: r[k] for k in ("attempts", "rejected_text", "text_md") if k in r})  # text_md: markdown gốc (T-06)
         info.append(item)
     by_tier = Counter(r["tier"] for r in results if r["status"] == "ok")
     stats = {"pages": len(results), "ok_by_tier": dict(by_tier), "blank": sum(r["status"] == "blank" for r in results),

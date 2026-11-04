@@ -78,7 +78,6 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--no-dedup-index", action="store_true", help="Không ghi kho dấu vân tay dedup vòng 1 (state/dedup_index/).")
     p.add_argument("--global-verdict", type=Path, default=None,
                    help="verdict.parquet của dedup vòng 2 (scripts/dedup_global.py), áp vào trước khi sinh knowledge unit.")
-    p.add_argument("--cpt-context", type=int, default=4096, help="Độ dài tối đa (token) một khối CPT khi nối đoạn.")
     p.add_argument("--ocr-books", type=int, default=0, help="OCR trước N cuốn stbook chưa OCR (cần --group ocr và GPU).")
     p.add_argument("--device", default="cuda", choices=["cuda", "cpu"], help="Thiết bị OCR.")
     g = p.add_argument_group("embedding / bản đồ")
@@ -129,7 +128,6 @@ def main() -> int:
                     compare_tokenizers=tuple(t.strip() for t in args.compare_tokenizers.split(",") if t.strip()),
                     lang_model=args.lang_model, rights_gate=args.rights_gate, dedup_index=not args.no_dedup_index,
                     global_verdict=str(args.global_verdict) if args.global_verdict else None,
-                    cpt_context_tokens=args.cpt_context,
                     embed_spec=None if args.embedder == "none" else args.embedder, embed_prompt=args.embed_prompt,
                     embed_batch_size=args.embed_batch_size, embed_scope=args.embed_scope, embed_device=args.embed_device,
                     prefer_gpu=not args.no_gpu_reduce, cluster_space=args.cluster_space,

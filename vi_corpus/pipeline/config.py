@@ -144,7 +144,6 @@ class RunConfig:
                               trung gian khi raw quá chậm. Không bao giờ gom trên toạ độ 2D.
         hdbscan_min_cluster_size: None = mặc định ViLA max(2, min(20, n // 10)) (R-29).
         hdbscan_min_samples:  None = để HDBSCAN tự đặt; chỉ truyền khi đặt rõ (R-29).
-        cpt_context_tokens:   Độ dài tối đa một khối CPT khi nối các đoạn liền nhau còn giữ (D-10). Chưa chốt theo mô hình đích.
         benchmarks_dir:       Thư mục tập benchmark cho quét rò rỉ 13-gram; rỗng / không có = danh sách rỗng (R-16).
         syllables:            File tập âm tiết (processed/ocr_bakeoff/syllables.json) cho các chỉ số cần từ điển ở stage quality: chữ đảo
                               ngược (reversed_text) và từ lạ (odd_words). None = bỏ các chỉ số này.
@@ -190,7 +189,6 @@ class RunConfig:
     cluster_space: str = "raw"
     hdbscan_min_cluster_size: int | None = None
     hdbscan_min_samples: int | None = None
-    cpt_context_tokens: int = 4096
     benchmarks_dir: str | None = "configs/benchmarks"
     global_verdict: str | None = None
     syllables: str | None = None

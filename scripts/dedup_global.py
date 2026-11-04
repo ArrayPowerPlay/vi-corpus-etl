@@ -2,7 +2,7 @@
 Dedup vòng 2 (D-09): gộp kho dấu vân tay của mọi nguồn (<data-root>/state/dedup_index/<nguồn>/*.parquet, do stage dedup
 của scripts/run_pipeline.py ghi), tìm họ trùng toàn cục, ghi <data-root>/processed/dedup_global/verdict.parquet.
 
-Chỉ đánh dấu, không xoá dữ liệu (R-01). Sau đó áp verdict vào một lần chạy (sinh lại clean / knowledge unit / khối CPT
+Chỉ đánh dấu, không xoá dữ liệu (R-01). Sau đó áp verdict vào một lần chạy (sinh lại clean / knowledge unit / segment CPT
 theo họ trùng toàn cục, các stage trước không chạy lại):
     uv run python scripts/dedup_global.py --data-root /duong/dan/data
     uv run python scripts/run_pipeline.py --data-root /duong/dan/data --total 10000 --global-verdict \\

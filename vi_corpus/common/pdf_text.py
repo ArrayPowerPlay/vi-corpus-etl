@@ -138,7 +138,8 @@ def _group_matches(meta: dict | None, groups: Sequence[tuple[str, str]]) -> bool
 def _scrub_vlm(entry: dict) -> dict:
     """
     Lọc câu "nói về chính ảnh" của OCR VLM khỏi một kết quả OCR (vi_corpus.common.ocr_noise, J-33 C); không sửa `entry` (có thể là mục của bộ nhớ đệm).
-    Trang chỉ còn câu đó thì text rỗng và status "blank"; số câu đã bỏ ghi ở "vlm_noise_removed".
+    Trang chỉ còn câu đó thì text rỗng và status "blank"; số câu đã bỏ ghi ở "vlm_noise_removed". Bản markdown "text_md" (T-06)
+    được lọc cùng cách; trang thành "blank" thì bỏ luôn text_md.
     """
     if entry.get("method") != "ocr_vlm" or not entry.get("text"):
         return entry
@@ -146,8 +147,11 @@ def _scrub_vlm(entry: dict) -> dict:
     if not n:
         return entry
     out = {**entry, "text": text, "vlm_noise_removed": n}
+    if out.get("text_md"):
+        out["text_md"] = strip_vlm_noise(out["text_md"])[0]
     if not text.strip() and out.get("status") == "ok":
         out["status"] = "blank"
+        out.pop("text_md", None)
     return out
 
 

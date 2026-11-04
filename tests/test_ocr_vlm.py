@@ -444,3 +444,13 @@ def test_mau_trang_va_bang_tong_hop(tmp_path):
     assert s["best_level"] == "c32" and s["levels"]["c32"]["pages_per_s"] > s["levels"]["c16"]["pages_per_s"]
     text = vb.format_report(s)
     assert "c32" in text and "còn bị báo 1" in text and (out / "report/summary.json").exists()
+
+
+def test_cascade_giu_markdown_goc_o_text_md():
+    """T-06: engine xuất markdown thì "text" là chữ thuần (bỏ #), "text_md" giữ nguyên bản gốc; bản gốc trùng "text" thì không lưu."""
+    raw = "# Chương 1\n\n" + GOOD
+    eng = FakeEngine(lambda im: ok(raw))
+    tier = cas.Tier("t0", {"type": "openai", "output": "markdown", "max_tokens": 4096}, factory=lambda: eng)
+    r = cas.CascadeOcr([tier], backoff_s=0).page(b"x")
+    assert r["status"] == "ok" and not r["text"].startswith("#") and r["text_md"] == raw
+    assert "text_md" not in make_cascade(lambda im: ok()).page(b"x")

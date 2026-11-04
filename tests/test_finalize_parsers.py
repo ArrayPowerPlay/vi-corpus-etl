@@ -16,7 +16,7 @@ from tests.test_pipeline import SOURCES, make_cfg, vi_text
 from vi_corpus.common.parsers import detect_format, parse_file
 from vi_corpus.pipeline.contamination import load_benchmarks, scan
 from vi_corpus.pipeline.judge_sample import allocate, draw_sample, length_bucket
-from vi_corpus.pipeline.knowledge import pack_cpt_blocks
+from vi_corpus.pipeline.knowledge import build_cpt_segments
 from vi_corpus.pipeline.runner import fingerprints, run_pipeline
 
 PROSE_WORDS = ("người dân thành phố nông thôn kinh tế phát triển giáo dục học sinh trường lớp giáo viên chính sách nhà "
@@ -90,19 +90,28 @@ def test_gom_cum_tren_embedding_goc():
 
 
 def _kept(doc_id, parent, idx, tokens, status="kept", key="stbook"):
-    """Đoạn đã qua dedup cho pack_cpt_blocks."""
+    """Đoạn đã qua dedup cho build_cpt_segments."""
     return {"doc_id": doc_id, "parent_doc_id": parent, "chunk_index": idx, "source_key": key, "status": status,
             "text": doc_id, "token_count": tokens, "dedup_family_id": f"fam_{doc_id}"}
 
 
-def test_khoi_cpt_noi_doan_lien_nhau():
-    """R-09: nối đoạn liền nhau còn giữ tới max; đoạn bị loại cắt khối; hội thoại SFT không vào khối."""
-    rows = [_kept("A#0", "A", 0, 400), _kept("A#1", "A", 1, 400), _kept("A#2", "A", 2, 400),
-            _kept("A#3", "A", 3, 100, status="rejected:quality"), _kept("A#4", "A", 4, 100),
+def test_segment_cpt_noi_moi_doan_lien_nhau_khong_gioi_han():
+    """T-07: nối mọi đoạn liền nhau còn giữ (không cắt theo độ dài); đoạn bị loại / thiếu cắt segment; SFT không vào."""
+    rows = [_kept("A#0", "A", 0, 4000), _kept("A#1", "A", 1, 4000), _kept("A#2", "A", 2, 4000),
+            _kept("A#3", "A", 3, 100, status="rejected:quality"), _kept("A#4", "A", 4, 100), _kept("A#6", "A", 6, 100),
             _kept("web", None, None, 50, key="sea_pile_v2"), _kept("chat", None, None, 50, key="sea_instruct_2602")]
-    blocks = pack_cpt_blocks(rows, max_tokens=1000)
-    assert [b["doc_ids"] for b in blocks] == [["A#0", "A#1"], ["A#2"], ["A#4"], ["web"]]
-    assert blocks[0]["token_count"] == 800 and blocks[0]["dedup_family_id"] == "fam_A#0"
+    rows[0]["meta"] = '{"title": "Bài A", "journal_title": "Tạp chí X", "year": 2020, "pages": 9}'
+    segs = build_cpt_segments(rows)
+    assert [s["doc_ids"] for s in segs] == [["A#0", "A#1", "A#2"], ["A#4"], ["A#6"], ["web"]]
+    a = segs[0]
+    assert a["token_count"] == 12000 and a["dedup_family_id"] == "fam_A#0" and a["segment_id"] == "A:s0"
+    assert a["chunk_token_counts"] == [4000, 4000, 4000] and a["chunk_char_offsets"] == [0, 5, 10]
+    assert a["text"][a["chunk_char_offsets"][1]:].startswith("A#1")
+    assert a["doc_start"] and not a["doc_end"] and a["break_reason"] == "rejected"
+    assert a["title"] == "Bài A" and json.loads(a["meta_json"]) == {"title": "Bài A", "journal_title": "Tạp chí X",
+                                                                       "year": 2020, "source": "stbook"}
+    assert segs[1]["break_reason"] == "gap" and segs[2]["doc_end"] and segs[2]["break_reason"] == "doc_end"
+    assert segs[3]["doc_complete"] and segs[3]["segment_id"] == "web:s0"
 
 
 def test_quet_nhiem_benchmark_13gram(tmp_path):
