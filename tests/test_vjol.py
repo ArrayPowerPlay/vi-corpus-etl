@@ -494,7 +494,7 @@ def test_dang_ky_nguon_profile_va_dong_run_all():
     assert SOURCES["vjol"].path == "raw/vjol" and SOURCES["vjol"].rights_status == "unknown"
     prof = PROFILES["vjol"]
     assert prof.chunked and prof.min_words == 80 and prof.allowed_langs == ("vi", "en") and prof.min_lang_score == 0.5
-    assert list(PARTS)[-1] == "vjol" and PARTS["vjol"] == ("raw/vjol", "scripts/vjol/extract.py")
+    assert list(PARTS)[-2:] == ["vjol", "vista"] and PARTS["vjol"] == ("raw/vjol", "scripts/vjol/extract.py")  # VISTA chạy sau VJOL (VS-02)
 
 
 def test_ingest_nhanh_vjol_va_dau_vao_van_tay(tmp_path):

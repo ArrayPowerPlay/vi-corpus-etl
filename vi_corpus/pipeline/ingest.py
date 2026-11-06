@@ -118,6 +118,13 @@ def iter_book_source(spec: SourceSpec, data_root: Path, cfg: RunConfig | None = 
             from vi_corpus.vjol.hyphen_lm import LmChooser
             chooser = LmChooser(cfg.hyphen_lm_model, cfg.hyphen_lm_device)
         yield from iter_records(spec, data_root, with_meta=True, hyphen_chooser=chooser)
+    elif spec.key == "vista":
+        from vi_corpus.vista.records import iter_records
+        chooser = None
+        if cfg is not None and cfg.hyphen_lm_model:
+            from vi_corpus.vjol.hyphen_lm import LmChooser
+            chooser = LmChooser(cfg.hyphen_lm_model, cfg.hyphen_lm_device)
+        yield from iter_records(spec, data_root, with_meta=True, hyphen_chooser=chooser)
     else:
         raise ValueError(f"Chưa có adapter nguồn sách cho {spec.key}")
 
@@ -141,6 +148,12 @@ def input_files(spec: SourceSpec, data_root: Path, chunked: bool) -> list[Path]:
         from vi_corpus.vjol.records import METADATA_REL
         metadata = data_root / spec.path / METADATA_REL
         syllables = data_root / SYLLABLES_REL  # tập âm tiết quyết định chỗ nào khôi phục được "ư" (J-33 A)
+        return sorted((data_root / TEXT_DIR).glob("*.json")) + [p for p in (metadata, syllables) if p.is_file()]
+    if spec.key == "vista":
+        from vi_corpus.vista.layout import METADATA_REL, TEXT_DIR
+        from vi_corpus.vjol.extract import SYLLABLES_REL
+        metadata = data_root / spec.path / METADATA_REL
+        syllables = data_root / SYLLABLES_REL
         return sorted((data_root / TEXT_DIR).glob("*.json")) + [p for p in (metadata, syllables) if p.is_file()]
     return []
 

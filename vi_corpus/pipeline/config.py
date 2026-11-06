@@ -64,6 +64,8 @@ PROFILES: dict[str, SourceProfile] = {
     "vjol": SourceProfile(chunked=True, min_words=80, allowed_langs=("vi", "en"), min_lang_score=0.5, odd_words=True,
                            perplexity=True, keep_table_cells=True),
 }
+# VISTA là bài báo khoa học như VJOL (VS-02): cùng bộ xử lý, cùng hồ sơ ngưỡng (điểm khởi đầu, chưa kiểm trên bài VISTA thật, bước V3).
+PROFILES["vista"] = PROFILES["vjol"]
 
 # Cơ cấu mặc định khi không chỉ định --mix (tỷ lệ, sẽ được quy về --total).
 DEFAULT_MIX: dict[str, int] = {"sea_pile_v2": 30, "sea_lion_pile_v1": 30, "sea_instruct_2602": 15, "stbook": 25}

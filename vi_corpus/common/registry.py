@@ -1,9 +1,8 @@
 """
 Sổ đăng ký nguồn (source registry): owner, license, domain, định dạng, đường dẫn.
 
-Đáp ứng KPI W1 "mỗi nguồn có owner, provenance/license, domain". Đường dẫn của
-VISTA là tạm; ghi đè bằng file JSON cấu hình (configs/sources.json)
-thay vì sửa code khi có dữ liệu thật.
+Đáp ứng KPI W1 "mỗi nguồn có owner, provenance/license, domain". Đường dẫn có thể ghi đè
+bằng file JSON cấu hình (configs/sources.json) thay vì sửa code.
 """
 
 import json
@@ -19,7 +18,7 @@ class SourceSpec:
     Attributes:
         key:      Mã nguồn (vd "sea_pile_v2").
         fmt:      Định dạng file: "parquet", "jsonl.gz", "pdf", "stbook_pdf" (thư mục của stbook-crawler), "giao_trinh"
-                  hoặc "vjol" (PDF theo thư mục năm + metadata jsonl).
+                  "vjol" (PDF theo thư mục năm + metadata jsonl) hoặc "vista" (PDF theo thư mục năm đặt tên theo mã bài + metadata jsonl).
         path:     Thư mục chứa dữ liệu, tương đối so với data_root (hoặc tuyệt đối).
         owner:    Chủ sở hữu dữ liệu.
         license:  Giấy phép / điều khoản sử dụng.
@@ -52,8 +51,9 @@ SOURCES: dict[str, SourceSpec] = {
                    "sách chính trị - xã hội", text_col=""),
         SourceSpec("giao_trinh", "giao_trinh", "raw/giao_trinh", "nhiều tác giả / trường / NXB (tổng hợp từ Google Drive)",
                    "chưa rõ (có sách từ PDFDrive, z-lib)", "giáo trình đại học đa ngành", text_col=""),
-        # vista: đường dẫn tạm, cập nhật trong configs/sources.json khi có dữ liệu thật.
-        SourceSpec("vista", "pdf", "external/vista", "chưa rõ", "chưa rõ", "scientific"),
+        # vista: raw/vista/<năm>/<publication_id>.pdf + raw/vista/unknown/<sha256>.pdf + raw/vista/metadata/*.jsonl (VS-01, VS-02), chép từ MinIO datacrawl/sti.vista.gov.vn/
+        SourceSpec("vista", "vista", "raw/vista", "các tạp chí / tác giả (sti.vista.gov.vn)",
+                   "chưa rõ (bản quyền thuộc tạp chí / tác giả)", "bài báo khoa học", text_col=""),
         # vjol: raw/vjol/<năm>/<article_id>_<galley_id>.pdf + raw/vjol/metadata/*.jsonl (J-01, J-02)
         SourceSpec("vjol", "vjol", "raw/vjol", "các tạp chí / tác giả (vjol.info.vn)",
                    "chưa rõ (bản quyền thuộc tạp chí / tác giả)", "bài báo khoa học", text_col=""),

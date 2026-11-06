@@ -5,6 +5,9 @@ Mỗi bài (một sha256 PDF) một bản ghi. Text là các trang đã làm s�
 (vi_corpus.vjol.clean) rồi vi_corpus.common.pdf_text.clean_pages (tiêu đề chạy, số trang, ghép dòng), áp dụng lúc sinh bản ghi
 chứ không lưu vào interim. Quyền (rights_status) lấy mặc định của registry ("unknown"): chỉ gắn nhãn, không loại (R-01).
 
+Dùng chung cho VISTA (VS-02): vòng sinh bản ghi (iter_paper_records) nhận một RecordAdapter nói cách đọc metadata và dựng phần đầu của `meta` của từng nguồn;
+VJOL_ADAPTER ở cuối file giữ nguyên kết quả cũ, VISTA có adapter riêng ở vi_corpus.vista.records.
+
 J-42 (5): meta mang thêm `repairs` ({quy tắc: số chỗ} đã chạy trên bài, xem repairs_of).
 
 Metadata (J-03): raw/vjol/metadata/vjol_merged.jsonl (hàng trăm MB, mỗi dòng một bài) được đọc theo luồng MỘT lượt, chỉ giữ
@@ -14,7 +17,8 @@ metadata vẫn thành bản ghi, chỉ thiếu trường. Nhãn ngôn ngữ tron
 
 import json
 import logging
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
+from dataclasses import dataclass
 from pathlib import Path
 
 from vi_corpus.common.garbled import GARBLED_REASONS, REASON_NO_TEXT, load_vocab
@@ -23,12 +27,10 @@ from vi_corpus.common.registry import SourceSpec
 from vi_corpus.common.schema import make_doc_id, text_sha256
 from vi_corpus.common.state import read_json
 from vi_corpus.vjol.clean import clean_paper_pages
-from vi_corpus.vjol.extract import PDF_STEM, SYLLABLES_REL, TEXT_DIR
+from vi_corpus.vjol.extract import METADATA_REL, OUT_PATH, PDF_STEM, SYLLABLES_REL, TEXT_DIR  # noqa: F401 — OUT_PATH, METADATA_REL: giữ tên cũ cho nơi khác import
 
 logger = logging.getLogger("vi_corpus")
 
-OUT_PATH = "processed/vjol/vjol.parquet"
-METADATA_REL = "metadata/vjol_merged.jsonl"  # tương đối so với thư mục raw/vjol
 # Trường metadata giữ lại (bỏ abstract và các trường nặng khác để không phình RAM khi kho lớn).
 META_FIELDS = ("journal_slug", "journal_title", "year", "language", "doi", "title", "keywords")
 # Trường `language` của metadata là nhãn của tạp chí, gần như luôn "en" cho cả bài tiếng Việt (J-22), nên đổi tên khi ghi vào meta để không ai dùng nhầm.
@@ -101,21 +103,69 @@ def load_metadata(path: Path, stems: set[str]) -> dict[str, dict]:
     return out
 
 
+@dataclass(frozen=True)
+class RecordAdapter:
+    """
+    Phần của vòng sinh bản ghi khác nhau giữa các nguồn bài báo.
+
+    Attributes:
+        label:         Tên hiển thị trong log ("VJOL", "VISTA").
+        text_dir:      Thư mục checkpoint trích text, tương đối so với data_root.
+        metadata_rel:  File metadata mặc định, tương đối so với thư mục raw của nguồn.
+        load_metadata: Hàm (đường dẫn file metadata, danh sách checkpoint) -> {sha256: dòng metadata đã chuẩn hoá}; bài không có metadata thì vắng mặt.
+                       Dòng metadata phải có khoá "journal_title" (tên tạp chí, dùng cắt tiêu đề chạy) và "year".
+        meta_head:     Hàm (checkpoint, dòng metadata hoặc None, năm đã chuẩn hoá hoặc None) -> phần đầu của `meta` (mã bài, trường metadata, cờ có / không metadata);
+                       các số đo làm sạch (trang, dòng bị bỏ, repairs) do vòng chung thêm sau.
+    """
+
+    label: str
+    text_dir: str
+    metadata_rel: str
+    load_metadata: Callable[[Path, list[dict]], dict[str, dict]]
+    meta_head: Callable[[dict, dict | None, int | None], dict]
+
+
+def _vjol_load_metadata(path: Path, checkpoints: list[dict]) -> dict[str, dict]:
+    """Metadata VJOL theo sha256 của checkpoint: nối theo tên file PDF đầu tiên của checkpoint (load_metadata)."""
+    by_stem = load_metadata(path, {Path(d["paths"][0]).stem for d in checkpoints})
+    return {d["sha256"]: by_stem[Path(d["paths"][0]).stem] for d in checkpoints if Path(d["paths"][0]).stem in by_stem}
+
+
+def _vjol_meta_head(done: dict, md: dict | None, year: int | None) -> dict:
+    """Phần đầu `meta` của bài VJOL: article_id, galley_id, các trường metadata của tạp chí, năm, cờ metadata_found / galley_match."""
+    return {
+        "article_id": done.get("article_id"), "galley_id": done.get("galley_id"),
+        **({k: md[k] for k in META_OUT if k != "year"} if md else {k: None for k in META_OUT if k != "year"}),
+        "year": year, "year_dir": done.get("year_dir"), "metadata_found": md is not None,
+        "galley_match": bool(md and md["galley_match"]),
+    }
+
+
+VJOL_ADAPTER = RecordAdapter(label="VJOL", text_dir=TEXT_DIR, metadata_rel=METADATA_REL, load_metadata=_vjol_load_metadata, meta_head=_vjol_meta_head)
+
+
 def iter_records(spec: SourceSpec, data_root: Path, limit_files: int | None = None, with_meta: bool = False,
                  metadata_path: Path | None = None, hyphen_chooser=None) -> Iterator[dict]:
+    """Bản ghi VJOL: iter_paper_records với VJOL_ADAPTER (xem iter_paper_records về các tham số)."""
+    yield from iter_paper_records(spec, data_root, VJOL_ADAPTER, limit_files, with_meta, metadata_path, hyphen_chooser)
+
+
+def iter_paper_records(spec: SourceSpec, data_root: Path, adapter: RecordAdapter, limit_files: int | None = None, with_meta: bool = False,
+                       metadata_path: Path | None = None, hyphen_chooser=None) -> Iterator[dict]:
     """
-    Sinh bản ghi CORPUS_SCHEMA từ interim/vjol_text/, mỗi bài một bản ghi.
+    Sinh bản ghi CORPUS_SCHEMA từ checkpoint trích text của một nguồn bài báo (adapter.text_dir), mỗi checkpoint (mỗi PDF duy nhất) một bản ghi.
 
     Bỏ qua checkpoint lỗi / bị skip / không có chữ. Trang needs_ocr (chưa OCR) thành trang rỗng vì text của chúng là rác; trang OCR bị loại
     (flagged) có text rỗng nên không vào kho. source_path là đường dẫn PDF (nằm trong checkpoint).
 
     Args:
-        spec:          Nguồn vjol trong registry.
+        spec:          Nguồn trong registry (vjol, vista).
         data_root:     Thư mục gốc dữ liệu.
+        adapter:       Cách đọc metadata và dựng phần đầu của `meta` của nguồn.
         limit_files:   Chỉ đọc N checkpoint đầu (chạy thử).
-        with_meta:     Thêm khoá "meta" (JSON): article_id, galley_id, journal_slug, journal_title, year, journal_language_raw, doi, title, keywords,
-                       có/không metadata, số trang lỗi font phải OCR lại (J-10), số trang / dòng bị bỏ (bìa, mục lục, tài liệu tham khảo, tiêu đề chạy).
-        metadata_path: File metadata (mặc định <data-root>/<spec.path>/metadata/vjol_merged.jsonl); chỉ đọc khi with_meta.
+        with_meta:     Thêm khoá "meta" (JSON): phần đầu do adapter.meta_head dựng (mã bài, tạp chí, năm, tiêu đề ...), có/không metadata, số trang lỗi font phải OCR lại (J-10),
+                       số trang / dòng bị bỏ (bìa, mục lục, tài liệu tham khảo, tiêu đề chạy).
+        metadata_path: File metadata (mặc định <data-root>/<spec.path>/<adapter.metadata_rel>); chỉ đọc khi with_meta.
         hyphen_chooser: Bộ chọn cách đọc cho chỗ "ph-ơng" mơ hồ (vi_corpus.vjol.hyphen_lm.LmChooser, J-57); None thì chỉ dùng bằng chứng dấu thanh cả bài.
 
     Cuối lượt ghi log số bài bị bỏ theo lý do (lỗi / bỏ qua / không có chữ), để bài không mất im lặng trước ingest (J-33 B).
@@ -126,7 +176,7 @@ def iter_records(spec: SourceSpec, data_root: Path, limit_files: int | None = No
     vocab = load_vocab(data_root / SYLLABLES_REL)
     if vocab is None:
         logger.warning("Không thấy tập âm tiết %s: bỏ bước khôi phục \"ư\" cho trang font gạch nối (J-33 A)", data_root / SYLLABLES_REL)
-    for path in sorted((data_root / TEXT_DIR).glob("*.json"))[:limit_files]:
+    for path in sorted((data_root / adapter.text_dir).glob("*.json"))[:limit_files]:
         done = read_json(path)
         if not done:
             continue
@@ -136,11 +186,10 @@ def iter_records(spec: SourceSpec, data_root: Path, limit_files: int | None = No
         checkpoints.append(done)
     meta_rows: dict[str, dict] = {}
     if with_meta:
-        stems = {Path(d["paths"][0]).stem for d in checkpoints}
-        meta_rows = load_metadata(metadata_path or data_root / spec.path / METADATA_REL, stems)
+        meta_rows = adapter.load_metadata(metadata_path or data_root / spec.path / adapter.metadata_rel, checkpoints)
     for done in checkpoints:
         pages = ["" if p["method"] == "needs_ocr" else p["text"] for p in done["pages"]]  # giữ chỉ số trang cho heuristic bìa
-        md = meta_rows.get(Path(done["paths"][0]).stem)
+        md = meta_rows.get(done["sha256"])
         pages, clean_stats = clean_paper_pages(pages, (md or {}).get("journal_title"), vocab, hyphen_chooser)
         page_stats: dict = {}
         text = clean_pages(pages, stats=page_stats)
@@ -166,10 +215,7 @@ def iter_records(spec: SourceSpec, data_root: Path, limit_files: int | None = No
         if with_meta:
             year = normalize_year((md or {}).get("year")) or normalize_year(done.get("year_dir"))  # J-33 D: 1970 (mặc định khi thiếu ngày) coi là thiếu
             rec["meta"] = json.dumps({
-                "article_id": done.get("article_id"), "galley_id": done.get("galley_id"),
-                **({k: md[k] for k in META_OUT if k != "year"} if md else {k: None for k in META_OUT if k != "year"}),
-                "year": year, "year_dir": done.get("year_dir"), "metadata_found": md is not None,
-                "galley_match": bool(md and md["galley_match"]), "pages": len(done["pages"]),
+                **adapter.meta_head(done, md, year), "pages": len(done["pages"]),
                 "garbled_pages": sum(p.get("reason") in GARBLED_REASONS for p in done["pages"]),
                 "no_text_layer_pages": sum(p.get("reason") == REASON_NO_TEXT for p in done["pages"]),
                 "page_lines_removed": page_stats.get("lines_removed", 0), **clean_stats,
@@ -177,4 +223,5 @@ def iter_records(spec: SourceSpec, data_root: Path, limit_files: int | None = No
             }, ensure_ascii=False)
         yield rec
     if any(dropped.values()):
-        logger.info("VJOL: %d checkpoint không thành bản ghi (lỗi trích %d, bỏ qua %d, không có chữ sau khi làm sạch %d)", sum(dropped.values()), dropped["error"], dropped["skipped"], dropped["no_text"])
+        logger.info("%s: %d checkpoint không thành bản ghi (lỗi trích %d, bỏ qua %d, không có chữ sau khi làm sạch %d)", adapter.label,
+                    sum(dropped.values()), dropped["error"], dropped["skipped"], dropped["no_text"])

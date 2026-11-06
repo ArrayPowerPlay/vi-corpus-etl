@@ -47,6 +47,6 @@ def test_load_sources_ghi_de_va_them_nguon(tmp_path):
         "drive_books": {"fmt": "parquet", "path": "/d", "owner": "o", "license": "l", "domain": "sách"},
     }), encoding="utf-8")
     sources = load_sources(cfg)
-    assert sources["vista"].path == "/mnt/vista" and sources["vista"].fmt == "pdf"
+    assert sources["vista"].path == "/mnt/vista" and sources["vista"].fmt == "vista"
     assert sources["drive_books"].domain == "sách"
     assert "drive_books" not in SOURCES

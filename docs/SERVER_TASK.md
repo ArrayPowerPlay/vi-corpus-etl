@@ -37,6 +37,8 @@
 | S-21 | VJOL: đo CPU kế hoạch OCR lại cả bài, so ghép đôi v7 / v8, học bảng lệch dấu, phép thử nhóm font (GPU); SAU KHI chốt ngưỡng: trích lại, pipeline `vjol_10k_v9`, đo bằng nhãn chuẩn, sinh mẫu thi cuối | J-43 (code J-40 / J-42) | CHẠY SAU S-20 | Phần A: CPU vài chục phút + canary ~30-60 phút GPU; Phần B: trích lại + pipeline vài chục phút | 4 |
 | S-22 | VJOL: đo độ chính xác bộ chọn "ph-ơng / l-ơng" (J-57), chạy `vjol_10k_v10` và so với `v9` | J-57 | CHẠY SAU S-21 | đo vài phút GPU + pipeline ~15 phút | 1 |
 | S-23 | VJOL: trích text CẢ KHO (177.031 PDF) và theo dõi 1–2 giờ đầu | J-60 | CHẠY SAU S-22 | chưa ước được (đo trong chính lần chạy này) | 4 |
+| S-25 | VISTA: chép `sti.vista.gov.vn/` về `raw/vista`, kiểm bản chép so với nhật ký tải, thử trích 20 bài không OCR (V0 + kiểm V1) | VS-02, VS-03 | A: CHẠY NGAY (không cần code mới); B, C: SAU KHI lượt full VJOL (S-23/S-24) xong | A vài giờ (234 GB); B vài phút CPU; C vài phút | không |
+| S-26 | VJOL + VISTA: đếm số file và số trang cần OCR bằng `scripts/count_ocr_pages.py` (nhanh hơn `--status`, có bộ nhớ đệm) | yêu cầu 2026-11-06 | CHẠY NGAY (VJOL); VISTA sau khi lượt full VJOL xong | VJOL vài phút; VISTA quét CPU vài giờ | không |
 
 Thứ tự khuyến nghị: S-10 (VJOL ưu tiên cao nhất, R-15) → S-0 → S-1 → S-2 → S-3 (có đủ số để tính giờ OCR) → S-4 → S-5. S-6 đến S-9 và S-11 làm sau phiên code (S-11 cần script `scripts/dedup_pairs_sample.py`, viết ở gói G-05 bước 2).
 
@@ -893,6 +895,63 @@ uv run --no-sync python scripts/cpt_pack.py --segments data/processed/pipeline_r
 
 **Báo lại cho Claude**: số checkpoint trước khi dừng, dòng kết quả của đoạn kiểm tra `text_md`, và lỗi nếu có.
 
+## S-25. VISTA: chép dữ liệu, kiểm bản chép, thử trích  [A CHẠY NGAY; B, C SAU KHI lượt full VJOL xong]
+
+**Mục đích**: bước V0 của `docs/VISTA.md` (VS-02: tải xong, chờ lượt full VJOL mới chạy GPU) và kiểm tra code V1 (VS-04). Chưa chạy GPU, chưa OCR.
+
+Dữ liệu ở MinIO `datacrawl/sti.vista.gov.vn/`: thư mục năm `1998/ … 2026/` chứa `<publication_id>.pdf`, `unknown/` (19 file tên băm), `metadata/` (`vista_detail.jsonl` 643 MB, `vista_listing.jsonl` 406 MB, `pdf_download_log.jsonl` 53 MB, `vista_partitions.json`). Ước ~234 GB.
+
+**A. Chép về `raw/vista` (làm ngay, không cần `git pull`; không đụng lượt full VJOL đang chạy)** — kiểm đĩa trống trước, chép trong `tmux`:
+
+```bash
+df -h $SEA_DATA_ROOT | tail -1                       # cần > 260 GB trống
+tmux new -s vista_copy
+mc alias set ailab https://storage-ailab.icenter.ai <ACCESS_KEY> <SECRET_KEY>     # đã có từ S-10 thì bỏ dòng này
+mc du --depth 2 ailab/datacrawl/sti.vista.gov.vn/ | tee $SEA_DATA_ROOT/logs/vista_du.txt     # ghi lại dung lượng theo năm
+date; mc mirror ailab/datacrawl/sti.vista.gov.vn/ $SEA_DATA_ROOT/raw/vista/ 2>&1 | tee $SEA_DATA_ROOT/logs/vista_copy.log; date
+```
+Chạy lại `mc mirror` là tiếp tục (bỏ qua file đã có). Khi chép nhớ để CPU nhàn rỗi cho lượt VJOL (không tăng số luồng lên quá mặc định).
+
+**B. Kiểm bản chép (CPU, sau khi lượt full VJOL xong và đã `git pull`)**:
+
+```bash
+cd /home/jovyan/dinh/vi-corpus-etl && git pull && source /home/jovyan/dinh/env.sh
+uv run --no-sync python scripts/vista/check_raw.py --data-root $SEA_DATA_ROOT | tee $SEA_DATA_ROOT/logs/vista_check_raw.json     # nhanh: đếm file + số byte
+```
+Đọc: `missing` và `size_mismatch` phải bằng 0 (khác 0 thì chạy lại `mc mirror`, vài lần cũng không hết thì ghi mã bài ví dụ). `extra` = file có mà nhật ký không ghi tải xong (xem 10 ví dụ). `unknown_dir` phải là 19. Băm lại cả kho là tuỳ chọn (`--sha256`, đọc ~234 GB): bước kiểm kê của lần trích text sẽ băm cả kho một lần, đối chiếu sha256 với nhật ký sau.
+
+**C. Thử trích 20 bài, không OCR, không GPU**:
+
+```bash
+uv run --no-sync python scripts/vista/extract.py --data-root $SEA_DATA_ROOT --sample-docs 20 --no-ocr
+uv run --no-sync python scripts/vista/extract.py --data-root $SEA_DATA_ROOT --status
+```
+Đọc: dòng `[vista] N PDF trong raw; 20 đã trích text`, trang theo method (`text` / `needs_ocr`), `without_vocab` bằng 0 nếu đã có `processed/ocr_bakeoff/syllables.json`. Kết quả vào `interim/vista_text/` và `processed/vista/vista.parquet`, KHÔNG đụng `interim/vjol_text/`.
+
+**D. Khảo sát producer (CPU, VS-05; làm trước khi trích text cả kho)**: luật OCR cả bài đã bật cho `OCR Manager`, `ORPALIS`, `GdPicture`; bước này tìm producer khác cũng có lớp chữ mất dấu mà chưa nằm trong danh sách.
+
+```bash
+uv run --no-sync python scripts/vista/producer_survey.py --data-root $SEA_DATA_ROOT --sample 20000 --workers 16
+```
+Đọc: bảng in 15 producer đầu, xếp theo `uncovered_suspect` (số PDF bị bộ dò nghi mà luật chưa phủ). Producer có `covered=False` và `uncovered_suspect` lớn (vài chục trở lên) và `suspect_share` cao thì đáng thêm vào `OLD_OCR_PRODUCERS` (gửi Claude tên producer, không sửa tay trên server). Dòng `covered=True` có `suspect_share` thấp nghĩa là luật OCR lại cả những bài có lớp chữ tốt (tốn GPU, chấp nhận được). Đủ bảng ở `processed/vista_producer_survey/producers.csv`.
+
+Nếu C đã chạy trước khi có luật producer: checkpoint thử tự bị làm lại ở lần trích sau (extract_version khác), không cần xoá tay.
+
+**Báo lại cho Claude**: dung lượng và thời gian chép, kết quả `check_raw.py` (dán JSON), 5 dòng đầu của `--status`, bảng của D.
+
+## S-26. Đếm số file và số trang cần OCR của VJOL và VISTA  [VJOL CHẠY NGAY; --scan-missing CỦA VISTA SAU KHI LƯỢT FULL VJOL XONG]
+
+**Mục đích**: có số chính xác để tính giờ GPU. `extract.py --status` đọc tuần tự toàn bộ nội dung mọi checkpoint nên rất chậm; `scripts/count_ocr_pages.py` chỉ `stat` checkpoint, đọc song song phần mới/đổi, nhớ kết quả ở `state/ocr_count/` (chạy lại nhanh), và đối chiếu PDF trong raw với `paths` của checkpoint để biết còn bao nhiêu PDF chưa quét. Chỉ CPU. "Trang cần OCR" = `ocr_vlm` (đã OCR) + `needs_ocr` (còn chờ); chưa tính ~0,6% trang đọc lại sau guard.
+
+```bash
+cd /home/jovyan/dinh/vi-corpus-etl && git pull && source /home/jovyan/dinh/env.sh
+# Chỉ đọc, an toàn khi lượt VJOL đang chạy (không ghi checkpoint):
+uv run --no-sync python scripts/count_ocr_pages.py --data-root $SEA_DATA_ROOT --sources vjol
+# VISTA chưa trích: lệnh trên cho biết "CHƯA quét" và số ước theo năm. Số thật = quét nốt bằng extract.py --no-ocr (CPU), SAU KHI lượt full VJOL xong:
+uv run --no-sync python scripts/count_ocr_pages.py --data-root $SEA_DATA_ROOT --sources vista --scan-missing 8
+```
+Kết quả: bảng in ra màn hình, `processed/ocr_count/<nguồn>.json`, `<nguồn>_by_year.csv`. Chạy lại cùng lệnh là tiếp tục; `--no-cache` đọc lại mọi checkpoint. Checkpoint do `--scan-missing` ghi (trang `needs_ocr`) được lượt OCR thật tự làm lại; trang có lớp chữ tốt không bị OCR.
+
 ## Bảng ghi kết quả
 
 (Điền sau khi chạy. Ghi ngày, người chạy, lệnh đã chạy nếu khác hướng dẫn.)
@@ -916,3 +975,5 @@ uv run --no-sync python scripts/cpt_pack.py --segments data/processed/pipeline_r
 | S-11 | | số cặp A bắt: ; C bắt: ; chỉ C bắt: (cùng nguồn / khác nguồn); nhóm 2 (0,7–0,8): trung / cung-mau / khac = ; nhóm 1: ; nhóm 3: | |
 | S-22 | | độ chính xác theo margin (đúng / SAI / bỏ qua): ; lost_letters v9 -> v10: ; check-clean: ; 20 mẫu đọc tay: | |
 | S-23 | | bài/giờ (sau khi server dựng xong): ; checkpoint sau 1 giờ và 2 giờ: ; dung lượng interim/vjol_text lúc đó: GB; đĩa trống: GB; trang theo method: ; ocr flagged: %; errors: ; đọc tay 30 bài: / 30 hỏng; giờ cả kho: | |
+| S-25 | | chép: GB, giờ; check_raw: missing / size_mismatch / extra / unknown_dir: ; thử 20 bài: ; producer_survey: producer chưa phủ top 5: | |
+| S-26 | | VJOL / VISTA: file; đã quét / chưa quét; tổng trang; trang cần OCR (đã OCR + còn chờ); ước giờ GPU: | |
