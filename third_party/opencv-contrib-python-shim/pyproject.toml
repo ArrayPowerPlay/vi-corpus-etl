@@ -1,0 +1,17 @@
+# Gói giả tên `opencv-contrib-python`, không có mã, chỉ kéo bản headless (J-31).
+# paddlex kiểm thư viện bằng TÊN GÓI (importlib.metadata) nên đòi `opencv-contrib-python`; bản thật cần libGL.so.1 của hệ điều hành
+# (J-20). Cả hai gói cùng cung cấp module `cv2`, nên gói giả này làm paddlex thấy đủ gói mà không phải cài libGL.
+# Được dùng qua [tool.uv.sources] + override-dependencies ở pyproject.toml gốc. Số phiên bản khớp ràng buộc ==4.10.0.84 của paddlex.
+[project]
+name = "opencv-contrib-python"
+version = "4.10.0.84"
+description = "Shim: opencv-contrib-python-headless dưới tên opencv-contrib-python (không cần libGL)"
+requires-python = ">=3.9"
+dependencies = ["opencv-contrib-python-headless>=4.10,<5"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+bypass-selection = true

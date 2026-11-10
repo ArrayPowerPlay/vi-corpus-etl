@@ -4,7 +4,7 @@ Stage ingest: lấy mẫu từ data/raw và đưa về schema chung, không sử
 - Nguồn text (SEA, parquet / jsonl.gz): chọn ngẫu nhiên (theo seed) một số file, mỗi file lấy `rows_per_file` dòng
   ngẫu nhiên, cho đến khi đủ số mẫu. Parquet chỉ đọc cột text và chỉ chuyển thành dict các dòng được chọn; jsonl.gz
   dùng reservoir sampling một lượt (gzip không truy cập ngẫu nhiên được). Bộ nhớ không phụ thuộc cỡ file.
-- Nguồn sách (stbook, giao_trinh): đọc cả sách (đã OCR / trích text ở interim/); số mẫu được cắt xuống ở stage chunk,
+- Nguồn sách (stbook, giao_trinh, vjol): đọc cả sách (đã OCR / trích text ở interim/); số mẫu được cắt xuống ở stage chunk,
   vì "mẫu" của nguồn này là một đoạn chứ không phải cả cuốn.
 """
 
@@ -26,7 +26,12 @@ logger = logging.getLogger("vi_corpus")
 
 # Phiên bản code của stage ingest, nằm trong vân tay stage (F-04): nâng khi đổi iter_records / row_to_record / cột meta
 # để 01_ingest.parquet cũ tự chạy lại. 2 = lần đầu đưa vào vân tay (meta stbook có page_lines_removed, commit 24bc92a).
-INGEST_VERSION = "2"
+INGEST_VERSION = "8"  # VS-06: cfg.shard chỉ vào vân tay khi được đặt nên không đổi số này  # 3 = J-28: VJOL che số điện thoại chỉ khi đúng dạng số điện thoại (không che số liệu bảng)
+# 4 = J-33: VJOL khôi phục "ư" (font gạch nối), lọc câu rác VLM, bỏ trang ban biên tập, cắt tiêu đề tạp chí ở mọi vị trí, năm 1970 coi là thiếu
+# 5 = J-35: khôi phục "ư" thêm dạng liền chữ không cần ngưỡng cả bài, dạng bỏ "-" thừa ("t-ướng"), dạng "đ- ược"; cắt tiêu đề "Tạp chí X số N - năm" ở mọi vị trí
+# 6 = J-37: khôi phục "ư" thêm "V- ơng" viết hoa, " - ơng" / " - ớc", "- u", "nh- “", "xư a" / "nư óc" / "hư ớng" (ư tách rời); cắt tiêu đề tạp chí ở đầu bài (strip_front_headers)
+# 8 = J-57: khôi phục "ư" gỡ chỗ "ph-ơng" mơ hồ bằng bằng chứng dấu thanh cả bài và bộ chọn LM (cfg.hyphen_lm_model)
+# 7 = J-42: khôi phục "ư" bỏ chỗ mơ hồ ("M- ơng": Mương / Mường), cắt tiêu đề tạp chí ở mọi vị trí trong dòng (strip_mid_headers), bỏ dòng rác (strip_junk_lines), meta.repairs
 
 
 def _sample_parquet(path: Path, col: str, k: int, rng: random.Random) -> list[tuple[int, dict]]:
@@ -98,14 +103,31 @@ def sample_text_source(spec: SourceSpec, data_root: Path, n: int, cfg: RunConfig
     return records
 
 
-def iter_book_source(spec: SourceSpec, data_root: Path) -> Iterator[dict]:
-    """Sinh bản ghi từng cuốn sách / tài liệu của nguồn dài (stbook đã làm sạch theo trang; giao_trinh đã làm sạch sẵn)."""
+def iter_book_source(spec: SourceSpec, data_root: Path, cfg: RunConfig | None = None) -> Iterator[dict]:
+    """Sinh bản ghi từng cuốn sách / tài liệu của nguồn dài (stbook đã làm sạch theo trang; giao_trinh, vjol đã làm sạch sẵn)."""
+    shard = cfg.shard if cfg is not None else None
+    if shard and spec.key not in ("vjol", "vista"):
+        raise ValueError(f"--shard chỉ hỗ trợ nguồn vjol và vista, không hỗ trợ {spec.key}")
     if spec.key == "stbook":
         from vi_corpus.stbook.ocr_books import iter_records
         yield from iter_records(spec, data_root, clean=True, with_meta=True)
     elif spec.key == "giao_trinh":
         from vi_corpus.giao_trinh.records import iter_records
         yield from iter_records(spec, data_root, with_meta=True)
+    elif spec.key == "vjol":
+        from vi_corpus.vjol.records import iter_records
+        chooser = None
+        if cfg is not None and cfg.hyphen_lm_model:
+            from vi_corpus.vjol.hyphen_lm import LmChooser
+            chooser = LmChooser(cfg.hyphen_lm_model, cfg.hyphen_lm_device)
+        yield from iter_records(spec, data_root, with_meta=True, hyphen_chooser=chooser, shard=shard)
+    elif spec.key == "vista":
+        from vi_corpus.vista.records import iter_records
+        chooser = None
+        if cfg is not None and cfg.hyphen_lm_model:
+            from vi_corpus.vjol.hyphen_lm import LmChooser
+            chooser = LmChooser(cfg.hyphen_lm_model, cfg.hyphen_lm_device)
+        yield from iter_records(spec, data_root, with_meta=True, hyphen_chooser=chooser, shard=shard)
     else:
         raise ValueError(f"Chưa có adapter nguồn sách cho {spec.key}")
 
@@ -113,7 +135,8 @@ def iter_book_source(spec: SourceSpec, data_root: Path) -> Iterator[dict]:
 def input_files(spec: SourceSpec, data_root: Path, chunked: bool) -> list[Path]:
     """
     Các file đầu vào stage ingest đọc cho một nguồn (dùng tính vân tay đầu vào, G-02): file parquet / jsonl.gz của nguồn
-    text; file kết quả OCR (stbook) hoặc checkpoint trích text (giao_trinh) của nguồn sách.
+    text; file kết quả OCR (stbook) hoặc checkpoint trích text (giao_trinh, vjol; vjol thêm file metadata nối vào bản ghi)
+    của nguồn sách.
     """
     if not chunked:
         return source_files(spec, data_root)
@@ -123,6 +146,18 @@ def input_files(spec: SourceSpec, data_root: Path, chunked: bool) -> list[Path]:
     if spec.key == "giao_trinh":
         from vi_corpus.giao_trinh.extract import TEXT_DIR
         return sorted((data_root / TEXT_DIR).glob("*.json"))
+    if spec.key == "vjol":
+        from vi_corpus.vjol.extract import SYLLABLES_REL, TEXT_DIR
+        from vi_corpus.vjol.records import METADATA_REL
+        metadata = data_root / spec.path / METADATA_REL
+        syllables = data_root / SYLLABLES_REL  # tập âm tiết quyết định chỗ nào khôi phục được "ư" (J-33 A)
+        return sorted((data_root / TEXT_DIR).glob("*.json")) + [p for p in (metadata, syllables) if p.is_file()]
+    if spec.key == "vista":
+        from vi_corpus.vista.layout import METADATA_REL, TEXT_DIR
+        from vi_corpus.vjol.extract import SYLLABLES_REL
+        metadata = data_root / spec.path / METADATA_REL
+        syllables = data_root / SYLLABLES_REL
+        return sorted((data_root / TEXT_DIR).glob("*.json")) + [p for p in (metadata, syllables) if p.is_file()]
     return []
 
 
@@ -139,7 +174,7 @@ def ingest(specs: dict[str, SourceSpec], data_root: Path, cfg: RunConfig) -> lis
     for key, n in cfg.mix.items():
         spec = specs[key]
         if cfg.profile(key).chunked:
-            rows = list(iter_book_source(spec, data_root))
+            rows = list(iter_book_source(spec, data_root, cfg))
             if not rows:
                 logger.warning("Nguồn %s: chưa có sách nào (đã OCR / trích text chưa?)", key)
         else:

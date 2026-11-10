@@ -1,0 +1,859 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Quy trình xử lý dữ liệu VJOL</title>
+<!-- Tài liệu mô tả quy trình xử lý VJOL (trích text PDF, làm sạch bài báo, pipeline chung). Viết từ code và docs/DECISION_LOG.md ngày 2026-11-05; các hình SVG vẽ bằng toạ độ, sửa hình thì sửa trực tiếp thẻ svg. -->
+<style>
+:root{color-scheme:light;--bg:#fcfcfb;--panel:#fff;--ink:#0b0b0b;--ink2:#52514e;--grid:#e6e5e1;
+--blue:#2a78d6;--orange:#eb6834;--green:#1baf7a;--amber:#d99200;--red:#d03b3b;--grey:#8a8982;
+--sblue:#2a78d61a;--sorange:#eb68341f;--sgreen:#1baf7a1f;--samber:#eda10026;--sred:#d03b3b1f;--sgrey:#8a89821f}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){color-scheme:dark;--bg:#1a1a19;--panel:#222221;--ink:#f4f3ee;--ink2:#c3c2b7;--grid:#383835;
+--blue:#5a9bef;--orange:#f08a5b;--green:#2fc590;--amber:#e3a928;--red:#e86a6a;--grey:#a3a299;
+--sblue:#5a9bef26;--sorange:#f08a5b26;--sgreen:#2fc59026;--samber:#e3a92830;--sred:#e86a6a26;--sgrey:#a3a29926}}
+*,*::before,*::after{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.6 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:1120px;margin:0 auto;padding:28px 16px 100px}
+h1{font-size:28px;margin:0 0 6px;line-height:1.25}
+h2{font-size:21px;margin:52px 0 8px;padding-top:14px;border-top:1px solid var(--grid)}
+h3{font-size:16.5px;margin:28px 0 6px}
+p{margin:8px 0}
+.sub{color:var(--ink2);font-size:14px;margin:0 0 14px}
+code,.m{font:12.5px ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--sblue);padding:1px 5px;border-radius:4px;overflow-wrap:anywhere}
+pre{font:12.5px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--panel);border:1px solid var(--grid);border-radius:8px;padding:12px 14px;overflow-x:auto;margin:10px 0}
+pre code{background:none;padding:0}
+a{color:var(--blue)}
+nav.toc{background:var(--panel);border:1px solid var(--grid);border-radius:10px;padding:12px 16px;margin:16px 0 8px;columns:2;column-gap:28px;font-size:14px}
+nav.toc a{display:block;text-decoration:none;padding:2px 0;break-inside:avoid}
+nav.toc a:hover{text-decoration:underline}
+@media (max-width:700px){nav.toc{columns:1}}
+.box{border-left:4px solid var(--blue);background:var(--sblue);padding:10px 14px;border-radius:0 8px 8px 0;margin:14px 0}
+.box.why{border-color:var(--green);background:var(--sgreen)}
+.box.warn{border-color:var(--amber);background:var(--samber)}
+.box.bad{border-color:var(--red);background:var(--sred)}
+.box b.t{display:block;margin-bottom:2px}
+.box p:first-child{margin-top:0}.box p:last-child{margin-bottom:0}
+.tw{overflow-x:auto;margin:12px 0;border:1px solid var(--grid);border-radius:8px;background:var(--panel)}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th,td{padding:8px 11px;text-align:left;vertical-align:top;border-bottom:1px solid var(--grid)}
+tr:last-child td{border-bottom:0}
+th{background:var(--sgrey);font-weight:600;white-space:nowrap}
+td ul,td ol{margin:0;padding-left:18px}
+.pill{display:inline-block;padding:0 7px;border-radius:99px;font-size:12px;font-weight:600;white-space:nowrap}
+.p-ok{background:var(--sgreen);color:var(--green)}.p-todo{background:var(--samber);color:var(--amber)}.p-off{background:var(--sgrey);color:var(--grey)}
+figure{margin:20px 0;background:var(--panel);border:1px solid var(--grid);border-radius:10px;padding:12px 10px 8px}
+figure{overflow-x:auto}figure svg{display:block;width:100%;min-width:680px;height:auto;color:var(--ink);font:12.5px system-ui,-apple-system,"Segoe UI",sans-serif}
+figcaption{font-size:13.5px;color:var(--ink2);padding:8px 8px 4px}
+svg text{fill:currentColor}
+svg .tb{font-weight:700;font-size:13px}
+svg .tm{font:11.5px ui-monospace,SFMono-Regular,Menlo,monospace}
+svg .cap{font-size:12.5px;fill:var(--ink2)}
+svg .capm{font:11px ui-monospace,SFMono-Regular,Menlo,monospace;fill:var(--ink2)}
+svg .lbl{font-size:11.5px;fill:var(--ink2)}svg .lbl.halo{fill:var(--panel);stroke:var(--panel);stroke-width:4px;stroke-linejoin:round}
+svg .n{stroke-width:1.4}
+svg .n-proc{fill:var(--sblue);stroke:var(--blue)}svg .n-gpu{fill:var(--sorange);stroke:var(--orange)}
+svg .n-disk{fill:var(--sgreen);stroke:var(--green)}svg .n-dec{fill:var(--samber);stroke:var(--amber)}
+svg .n-raw{fill:var(--sgrey);stroke:var(--grey)}svg .n-warn{fill:var(--sred);stroke:var(--red)}
+svg .ar{fill:none;stroke:currentColor;stroke-width:1.5}svg .ar.dash{stroke-dasharray:5 4}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:13px;color:var(--ink2);margin:6px 0 0}
+.legend i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:6px;vertical-align:-1px;border:1.4px solid}
+.lg-proc{background:var(--sblue);border-color:var(--blue)}.lg-gpu{background:var(--sorange);border-color:var(--orange)}.lg-disk{background:var(--sgreen);border-color:var(--green)}
+.lg-dec{background:var(--samber);border-color:var(--amber)}.lg-raw{background:var(--sgrey);border-color:var(--grey)}.lg-warn{background:var(--sred);border-color:var(--red)}
+dl.g{display:grid;grid-template-columns:max-content 1fr;gap:6px 16px;font-size:14px}
+dl.g dt{font-weight:600}dl.g dd{margin:0}
+@media (max-width:700px){dl.g{grid-template-columns:1fr}}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media (max-width:800px){.cols{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<main>
+
+<h1>Quy trình xử lý dữ liệu VJOL</h1>
+<p class="sub">Tài liệu kỹ thuật mô tả cách dự án <code>vi-corpus-etl</code> biến khoảng 177 nghìn file PDF bài báo khoa học của vjol.info.vn thành dữ liệu văn bản sạch để huấn luyện mô hình ngôn ngữ tiếng Việt. Viết từ mã nguồn và nhật ký quyết định của dự án, ngày 2026-11-05.</p>
+<div class="box"><b class="t">Bối cảnh</b><p><code>vi-corpus-etl</code> dựng kho dữ liệu tiếng Việt từ nhiều nguồn (web, sách OCR, giáo trình, bài báo khoa học). VJOL là nguồn bài báo khoa học; nó <b>chỉ có PDF</b>, không có bản text, nên phần khó nhất là lấy được chữ đúng ra khỏi PDF. Các bước sau đó (cắt đoạn, nhận ngôn ngữ, chấm chất lượng, loại trùng) dùng chung với các nguồn khác. Tài liệu này mô tả riêng đường đi của VJOL.</p></div>
+
+<nav class="toc" aria-label="Mục lục">
+<a href="#tom-tat">1. Tóm tắt trong một phút</a>
+<a href="#dac-diem">2. VJOL có gì đặc biệt, nên ta làm gì</a>
+<a href="#thuat-ngu">3. Từ khó, giải thích nhanh</a>
+<a href="#gd-a">4. Giai đoạn A: trích text từ PDF (GPU)</a>
+<a href="#gd-b">5. Giai đoạn B: tạo bản ghi và làm sạch bài báo (CPU)</a>
+<a href="#gd-c">6. Giai đoạn C: pipeline chung</a>
+<a href="#luu-dia">7. Mọi thứ nằm ở đâu trên đĩa</a>
+<a href="#cong-cu">8. Công cụ đo và kiểm</a>
+<a href="#so-do">9. Tiến độ và số đo thực tế</a>
+<a href="#vi-sao">10. Mỗi cơ chế sinh ra từ lỗi nào</a>
+<a href="#con-do">11. Hạn chế đã biết</a>
+<a href="#lenh">12. Lệnh chạy</a>
+</nav>
+
+<div class="legend" aria-label="Chú giải màu trong hình">
+<span><i class="lg-raw"></i>dữ liệu gốc / nhánh phụ</span><span><i class="lg-proc"></i>bước chạy trên CPU</span><span><i class="lg-gpu"></i>bước dùng GPU / OCR</span>
+<span><i class="lg-disk"></i>lưu xuống đĩa</span><span><i class="lg-dec"></i>kiểm tra / quyết định</span><span><i class="lg-warn"></i>lỗi / bị loại</span>
+</div>
+
+<h2 id="tom-tat">1. Tóm tắt trong một phút</h2>
+<ul>
+<li><b>Đầu vào:</b> khoảng 177.031 file PDF bài báo khoa học của vjol.info.vn (chủ yếu tiếng Việt, có tiếng Anh), đã chép sẵn vào <code>raw/vjol/</code>. Ta không crawl, chỉ xử lý.</li>
+<li><b>Khó nhất:</b> không có bản text. Mỗi PDF có thể là chữ thật, ảnh quét, hoặc chữ "trông như tiếng Việt nhưng sai" do font cũ. Nên <b>mỗi trang</b> được xếp loại riêng và đi theo đường rẻ nhất vẫn cho chữ đúng: đọc thẳng lớp chữ, hoặc OCR bằng mô hình thị giác Qwen3-VL-8B khi cần.</li>
+<li><b>Lưu thế nào:</b> kết quả trích text lưu thành một file JSON cho mỗi PDF (checkpoint). Ngắt giữa chừng thì chạy lại đúng lệnh cũ, chỉ làm file còn thiếu. 4 GPU chia việc bằng khoá file.</li>
+<li><b>Làm sạch bài báo</b> (bỏ bìa, mục lục, tài liệu tham khảo, tiêu đề tạp chí lặp, che email) làm <b>lúc tạo bản ghi</b>, không lưu xuống đĩa. Nhờ vậy sửa luật làm sạch không tốn giờ GPU.</li>
+<li><b>Sau đó</b> bản ghi đi vào pipeline chung (cắt đoạn ~1.024 token, nhận ngôn ngữ, chấm chất lượng, loại trùng) ra <code>clean.parquet</code> và <code>cpt_segments.parquet</code>; <code>cpt_pack</code> ghép thành chuỗi 8.192 token để huấn luyện.</li>
+<li><b>Trạng thái (2026-11-05):</b> mẫu 3.000 bài đã chạy trọn vẹn nhiều vòng và được chỉnh dần. Lượt trích text <b>cả kho đang chạy</b>: lúc 08:25 đã có 69.807 checkpoint, thanh tiến độ ở mức 41%; số liệu chi tiết ở mục 9.</li>
+</ul>
+<figure id="hinh1"><svg viewBox="0 0 1220 470" role="img" aria-label="Dữ liệu VJOL đi từ PDF thô qua trích text bằng GPU, bản ghi đã làm sạch, rồi pipeline chung"><defs><marker id="ah-hinh1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker></defs>
+<text class="cap" x="10" y="34" text-anchor="start">Mọi bước đều có checkpoint: bị ngắt thì chạy lại đúng lệnh cũ, đổi tham số thì chỉ làm lại phần bị ảnh hưởng.</text>
+<rect class="n n-raw" x="10" y="110" width="190" height="190" rx="7"/>
+<text x="105.0" y="153.0" text-anchor="middle" class="tb">raw/vjol (nguyên bản)</text>
+<text x="105.0" y="169.0" text-anchor="middle" class="tm">&lt;năm&gt;/&lt;article_id&gt;_</text>
+<text x="105.0" y="185.0" text-anchor="middle" class="tm">&lt;galley_id&gt;.pdf</text>
+<text x="105.0" y="201.0" text-anchor="middle">≈ 177.031 PDF (~7 trang)</text>
+<text x="105.0" y="217.0" text-anchor="middle" class="tm">metadata/</text>
+<text x="105.0" y="233.0" text-anchor="middle" class="tm">vjol_merged.jsonl</text>
+<text x="105.0" y="249.0" text-anchor="middle">(469 MB, 1 dòng / bài)</text>
+<text x="105.0" y="265.0" text-anchor="middle">chép từ MinIO, không crawl</text>
+<rect class="n n-gpu" x="262" y="110" width="190" height="190" rx="7"/>
+<text x="357.0" y="161.0" text-anchor="middle" class="tb">A. TRÍCH TEXT (GPU)</text>
+<text x="357.0" y="177.0" text-anchor="middle" class="tm">scripts/vjol/extract.py</text>
+<text x="357.0" y="193.0" text-anchor="middle">4 GPU, 1 tiến trình / GPU</text>
+<text x="357.0" y="209.0" text-anchor="middle">+ 1 server vLLM</text>
+<text x="357.0" y="225.0" text-anchor="middle">lần 1: PyMuPDF mọi trang</text>
+<text x="357.0" y="241.0" text-anchor="middle">lần 2: OCR chỉ trang cần</text>
+<text x="357.0" y="257.0" text-anchor="middle">ghi checkpoint từng PDF</text>
+<rect class="n n-disk" x="514" y="110" width="190" height="190" rx="7"/>
+<text x="609.0" y="169.0" text-anchor="middle" class="tb">interim/ (đĩa)</text>
+<text x="609.0" y="185.0" text-anchor="middle" class="tm">vjol_text/&lt;sha256&gt;.json</text>
+<text x="609.0" y="201.0" text-anchor="middle">text từng trang + cách đọc</text>
+<text x="609.0" y="217.0" text-anchor="middle" class="tm">vjol_ocr_cache/</text>
+<text x="609.0" y="233.0" text-anchor="middle">kết quả OCR theo trang</text>
+<text x="609.0" y="249.0" text-anchor="middle" class="tm">state/ (khoá, kiểm kê)</text>
+<rect class="n n-proc" x="766" y="110" width="190" height="190" rx="7"/>
+<text x="861.0" y="153.0" text-anchor="middle" class="tb">B. BẢN GHI (CPU)</text>
+<text x="861.0" y="169.0" text-anchor="middle" class="tm">records.py + clean.py</text>
+<text x="861.0" y="185.0" text-anchor="middle">nối metadata theo bài</text>
+<text x="861.0" y="201.0" text-anchor="middle">bỏ bìa, mục lục, tham khảo</text>
+<text x="861.0" y="217.0" text-anchor="middle">cắt tiêu đề tạp chí lặp</text>
+<text x="861.0" y="233.0" text-anchor="middle">sửa 'ư' bị thay bằng '-'</text>
+<text x="861.0" y="249.0" text-anchor="middle">che email, điện thoại</text>
+<text x="861.0" y="265.0" text-anchor="middle">không lưu xuống đĩa</text>
+<rect class="n n-proc" x="1018" y="110" width="190" height="190" rx="7"/>
+<text x="1113.0" y="161.0" text-anchor="middle" class="tb">C. PIPELINE CHUNG</text>
+<text x="1113.0" y="177.0" text-anchor="middle" class="tm">scripts/run_pipeline.py</text>
+<text x="1113.0" y="193.0" text-anchor="middle">ingest → prepare</text>
+<text x="1113.0" y="209.0" text-anchor="middle">→ language → quality</text>
+<text x="1113.0" y="225.0" text-anchor="middle">→ dedup → finalize</text>
+<text x="1113.0" y="241.0" text-anchor="middle">cắt đoạn ~1.024 token</text>
+<text x="1113.0" y="257.0" text-anchor="middle">loại trùng, chấm điểm</text>
+<polyline class="ar" points="200,205 262,205" marker-end="url(#ah-hinh1)"/>
+<text class="lbl halo" x="231.0" y="197" text-anchor="middle">PDF</text>
+<text class="lbl" x="231.0" y="197" text-anchor="middle">PDF</text>
+<polyline class="ar" points="452,205 514,205" marker-end="url(#ah-hinh1)"/>
+<text class="lbl halo" x="483.0" y="197" text-anchor="middle">ghi</text>
+<text class="lbl" x="483.0" y="197" text-anchor="middle">ghi</text>
+<polyline class="ar" points="704,205 766,205" marker-end="url(#ah-hinh1)"/>
+<text class="lbl halo" x="735.0" y="197" text-anchor="middle">đọc</text>
+<text class="lbl" x="735.0" y="197" text-anchor="middle">đọc</text>
+<polyline class="ar" points="956,205 1018,205" marker-end="url(#ah-hinh1)"/>
+<text class="lbl halo" x="987.0" y="197" text-anchor="middle">bản ghi</text>
+<text class="lbl" x="987.0" y="197" text-anchor="middle">bản ghi</text>
+<polyline class="ar dash" points="105.0,300 105.0,385 861.0,385 861.0,300" marker-end="url(#ah-hinh1)"/>
+<text class="lbl halo" x="480" y="377" text-anchor="middle">metadata: đọc 1 lượt theo luồng, chỉ giữ dòng của bài có trong checkpoint</text>
+<text class="lbl" x="480" y="377" text-anchor="middle">metadata: đọc 1 lượt theo luồng, chỉ giữ dòng của bài có trong checkpoint</text>
+<rect class="n n-disk" x="1018" y="345" width="190" height="100" rx="7"/>
+<text x="1113.0" y="375.0" text-anchor="middle" class="tb">processed/pipeline_runs/</text>
+<text x="1113.0" y="391.0" text-anchor="middle" class="tm">&lt;run&gt;/clean.parquet</text>
+<text x="1113.0" y="407.0" text-anchor="middle" class="tm">cpt_segments.parquet</text>
+<text x="1113.0" y="423.0" text-anchor="middle">→ cpt_pack (8.192 token)</text>
+<polyline class="ar" points="1113.0,300 1113.0,345" marker-end="url(#ah-hinh1)"/>
+<text class="lbl halo" x="1119.0" y="328" text-anchor="start">ghi</text>
+<text class="lbl" x="1119.0" y="328" text-anchor="start">ghi</text></svg><figcaption><b>Hình 1.</b> Ba giai đoạn. Chỉ giai đoạn A dùng GPU nhiều và tốn giờ (OCR); nó ghi kết quả vào <code>interim/</code>. Giai đoạn B đọc lại checkpoint mỗi lần chạy pipeline và làm sạch trong bộ nhớ, nên sửa luật làm sạch không phải OCR lại.</figcaption></figure>
+
+<h2 id="dac-diem">2. VJOL có gì đặc biệt, nên ta làm gì</h2>
+<p>Bảng này là phần trả lời "tại sao lại dùng cách đấy". Mỗi dòng là một đặc điểm của dữ liệu, bằng chứng đã đo, và cơ chế sinh ra từ nó. Số đo lấy từ mẫu 3.000 PDF (2.937 nội dung duy nhất) trừ khi ghi khác.</p>
+<div class="tw"><table>
+<tr><th>Đặc điểm của VJOL</th><th>Bằng chứng</th><th>Vì thế ta làm</th></tr>
+<tr><td><b>Chỉ có PDF</b>, không có bản text. Khoảng 177 nghìn file, trung bình ~7,3 trang / bài.</td><td>Cấu trúc xem được qua MinIO; dữ liệu đã chép lên server.</td><td>Phải tự đọc PDF. OCR mọi trang của 177 nghìn bài quá tốn, nên quy tắc là <b>mỗi trang đọc tối đa 2 lần</b>: lần 1 rẻ cho mọi trang, lần 2 (OCR) chỉ cho trang cần.</td></tr>
+<tr><td><b>Ba loại trang trộn lẫn</b> trong cùng kho: chữ thật, ảnh quét, trang trắng.</td><td>Lần chạy đầu: 16.381 trang <code>text</code>, 1.870 <code>tcvn3</code>, 2.911 scan, 302 trắng (khoảng 76% / 9% / 14% / 1,4%).</td><td>Xếp loại <b>từng trang</b>, không đoán theo cả file. Bài chỉ có vài trang scan thì chỉ OCR vài trang đó.</td></tr>
+<tr><td><b>Font cũ TCVN3</b> (.VnTime, VnArial…): lớp chữ ra "§iÖn tö" thay vì "Điện tử".</td><td>~9% số trang. Đổi mã được vì bảng TCVN3 cố định.</td><td>Đổi mã sang Unicode ở lần đọc 1, nhận theo tên font và theo tỷ lệ ký tự đặc trưng (≥ 5%). Không cần OCR.</td></tr>
+<tr><td><b>Lớp chữ hỏng nhưng trông như tiếng Việt</b>: "Baỷng, hieọu, ngửụứi".</td><td>Lần chạy đầu khoảng 12% đoạn thuộc loại này; fastText vẫn nhận là tiếng Việt, điểm 100, band A.</td><td>Bộ dò 7 tín hiệu chạy trên từng trang, <b>không dựa vào nhận diện ngôn ngữ</b>; trang nghi thì vẽ lại cả trang và OCR (mục 4.3).</td></tr>
+<tr><td><b>Font làm mất "ư" / "ơ"</b> và thay bằng dấu gạch nối: "tr-ờng", "đ-ợc", "ph-ơng".</td><td>Ảnh trang cũng in dấu "-" thật, nên OCR cũng đọc ra "-". OCR không cứu được.</td><td>Sửa bằng <b>luật có kiểm</b> khi tạo bản ghi (<code>hyphen_fix</code>, mục 5.2); chỗ không chắc thì để nguyên và để bước chất lượng loại đoạn.</td></tr>
+<tr><td><b>Rất nhiều công cụ tạo PDF</b>: 263 cặp producer / creator.</td><td>iLovePDF: 54% trang nghi. InDesign đời cũ: 84–100%. Phần mềm OCR đời cũ: 56%. Word / Distiller: 3–4%.</td><td>Tín hiệu theo trang là chính. Thêm một luật cả bài cho producer OCR đời cũ (<code>ABBYY FineReader 11</code> + <code>ScanGate</code>, perplexity 161 so với 24–42 ở nhóm khác).</td></tr>
+<tr><td><b>Trang scan bị xoay</b> 180° / 90° / 270°.</td><td>Engine dự phòng đọc ra chữ ngược mà bộ kiểm trang không thấy, status vẫn "ok".</td><td>Trang kết thúc ở engine dự phòng hoặc bị loại sẽ được xoay thử, giữ bản xoay nếu đọc ra âm tiết hợp lệ rõ rệt hơn.</td></tr>
+<tr><td><b>Cấu trúc bài báo khoa học</b>: bìa, mục lục, ban biên tập, tiêu đề tạp chí lặp mỗi trang, khối tác giả, email, danh mục tham khảo.</td><td>Hàng trăm đoạn mang tiêu đề "Tạp chí…" / ISSN; 6,1% đoạn có email.</td><td>Làm sạch riêng cho bài báo (<code>vjol/clean.py</code>, mục 5.1). Tham khảo bị bỏ vì là danh sách tên, không phải văn xuôi.</td></tr>
+<tr><td><b>Song ngữ Việt / Anh</b>. Nhãn <code>language</code> trong metadata gần như luôn là "en", kể cả bài tiếng Việt.</td><td>Nhãn do tạp chí tự điền, không phản ánh ngôn ngữ thật của bài.</td><td>Giữ cả <code>vi</code> và <code>en</code>. Nhãn của tạp chí chỉ nằm ở <code>meta.journal_language_raw</code>, không thay kết quả nhận diện ngôn ngữ của pipeline.</td></tr>
+<tr><td><b>Metadata lớn và không đầy đủ</b>: 469 MB, khoảng 1/3 bài có thể không có PDF; thư mục <code>1970/</code> thực ra là "thiếu ngày" (mốc 0 của Unix).</td><td>Quan sát trực tiếp: thư mục <code>1970/</code> chứa bài có nội dung năm 2022–2024.</td><td>Đọc metadata <b>theo luồng một lượt</b>, chỉ giữ dòng của bài có trong checkpoint. Bài thiếu metadata vẫn thành bản ghi. Năm 1970 coi là thiếu.</td></tr>
+<tr><td><b>Vài tạp chí rất lớn</b>: một tạp chí chiếm 26,6% mẫu.</td><td>Đo trên mẫu 3.000 bài; kiểm theo tạp chí còn thấy vài tạp chí bị loại bất thường (26%, 48%) ở các lần chạy đầu.</td><td>Số đo "từ lạ" đếm theo <b>tạp chí</b> chứ không theo bài (lỗi font lặp cả tạp chí không bị coi là từ thật); audit báo tỷ lệ bị loại theo từng tạp chí.</td></tr>
+<tr><td><b>Quyền sử dụng chưa rõ.</b></td><td>Chưa có xác nhận về giấy phép của từng bài / tạp chí.</td><td><code>rights_status = "unknown"</code>: chỉ gắn nhãn quarantine, không loại.</td></tr>
+<tr><td><b>Quy mô lớn, GPU thuê</b> (Run:ai, có thể bị dừng).</td><td>Cả kho ~177 nghìn PDF. Ví dụ cỡ việc: OCR thử 2 trang / bài cho mọi bài (~354 nghìn trang) ước ~16 giờ trên 4 GPU.</td><td>Checkpoint theo PDF ghi nguyên tử, khoá chia việc giữa 4 GPU, mọi thứ chạy lại được bằng đúng lệnh cũ.</td></tr>
+</table></div>
+
+<h2 id="thuat-ngu">3. Từ khó, giải thích nhanh</h2>
+<dl class="g">
+<dt>Lớp chữ</dt><dd>Phần chữ mà PDF lưu sẵn bên dưới hình trang. Chương trình đọc được ngay, không cần nhìn ảnh. Nếu font hỏng thì lớp chữ sai dù mắt người thấy đúng.</dd>
+<dt>Trang scan</dt><dd>Trang chỉ có một tấm ảnh, không có lớp chữ. Muốn có chữ phải OCR.</dd>
+<dt>OCR / VLM</dt><dd>OCR là đọc chữ từ ảnh. Ở đây dùng VLM (mô hình nhìn ảnh rồi viết ra chữ) <code>Qwen3-VL-8B</code>, chạy bằng máy chủ <b>vLLM</b> trên GPU.</dd>
+<dt>PyMuPDF</dt><dd>Thư viện Python mở PDF, lấy lớp chữ, vẽ trang thành ảnh. Mọi trang đi qua nó trước.</dd>
+<dt>Checkpoint</dt><dd>File kết quả của <b>một PDF</b>. Có file rồi thì lần sau không làm lại.</dd>
+<dt>sha256</dt><dd>"Dấu vân tay" của nội dung file. Hai file khác tên mà cùng nội dung có cùng sha256, nên chỉ xử lý một lần.</dd>
+<dt>flock</dt><dd>Khoá file của hệ điều hành. Tiến trình nào giữ khoá của PDF nào thì làm PDF đó; tiến trình chết thì khoá tự nhả.</dd>
+<dt>Âm tiết, <code>syllables.json</code></dt><dd>Tiếng Việt viết mỗi âm tiết thành một "từ" (như "trường"). File này là tập mọi âm tiết có thật, lập từ kho chữ sạch SEA-PILE v2. Dùng để biết một chữ có phải tiếng Việt hợp lệ không.</dd>
+<dt>Dấu thanh</dt><dd>Huyền, sắc, ngã, hỏi, nặng. Một âm tiết đúng chỉ có tối đa <b>một</b> dấu thanh; chữ hỏng hay có từ hai dấu trở lên. Đây là tín hiệu rẻ và không phụ thuộc ngôn ngữ nhất.</dd>
+<dt>Producer / creator</dt><dd>Hai trường trong thông tin PDF cho biết phần mềm nào tạo ra file (Word, Ghostscript, iLovePDF…).</dd>
+<dt>Token</dt><dd>Đơn vị chữ của mô hình. Ta đếm bằng tokenizer của Qwen3; một từ tiếng Việt khoảng 1,4–1,6 token.</dd>
+<dt>Parquet</dt><dd>Định dạng bảng nén theo cột, mỗi stage của pipeline ghi một file.</dd>
+<dt>MinHash</dt><dd>Chữ ký ngắn của một văn bản, hai văn bản giống nhau thì chữ ký giống nhau. Dùng để tìm bản "gần trùng" mà không so từng chữ.</dd>
+<dt>Perplexity</dt><dd>Mô hình ngôn ngữ nhỏ thấy đoạn văn "lạ" đến mức nào. Chữ hỏng làm số này tăng vọt; bảng số, công thức, tên riêng cũng làm tăng, nên chỉ dùng kèm tín hiệu khác.</dd>
+</dl>
+
+<h2 id="gd-a">4. Giai đoạn A: trích text từ PDF (GPU)</h2>
+<p>Code: <code>scripts/vjol/extract.py</code> gọi <code>vi_corpus/vjol/extract.py</code>, khung chạy theo lô nằm ở <code>vi_corpus/common/batch_extract.py</code>, đọc từng PDF ở <code>vi_corpus/common/pdf_text.py</code>. Kết quả: <code>interim/vjol_text/&lt;sha256&gt;.json</code>.</p>
+
+<h3>4.1 Chọn file và kiểm kê</h3>
+<ol>
+<li><b>Liệt kê PDF theo thư mục năm</b> (<code>list_pdfs_by_year</code>), bỏ thư mục ẩn và <code>metadata/</code>.</li>
+<li><b>Chọn mẫu hoặc lấy hết.</b> Chạy mẫu: <code>--sample-docs N --seed S</code>. Cách chọn: chia đều theo năm, mỗi vòng lấy một bài của mỗi năm còn bài (thứ tự năm trong vòng xáo theo seed); trong mỗi năm bài xếp theo băm của (seed, tên file) nên không phụ thuộc thứ tự liệt kê của hệ điều hành. <b>Mẫu N nhỏ luôn nằm trong mẫu N lớn</b>, nên tăng N rồi chạy lại chỉ làm phần mới. Chạy cả kho: bỏ <code>--sample-docs</code>.</li>
+<li><b>Kiểm kê sha256</b> (<code>inventory</code>): băm song song 8 luồng, gom file cùng nội dung vào một nhóm (giữ đủ các đường dẫn). Kết quả nhớ trong <code>state/inventory_vjol_text.json</code> theo (đường dẫn, size, mtime), lưu dần mỗi 20.000 file, nên khởi động lại không phải băm cả kho (lần đầu ~2 giờ).</li>
+</ol>
+<div class="box why"><b class="t">Tại sao chia đều theo năm?</b>
+<p>Chất lượng PDF khác nhau theo thời kỳ (thư mục <code>1970/</code> toàn bài thiếu ngày, các năm gần dùng công cụ khác năm cũ). Chọn ngẫu nhiên thuần thì năm nhiều bài lấn át. Còn tính "tiền tố" để tăng dần mẫu mà không bỏ phí kết quả đã trích.</p></div>
+
+<h3>4.2 Lần đọc 1: PyMuPDF cho mọi trang</h3>
+<figure id="hinh2"><svg viewBox="0 0 1040 790" role="img" aria-label="Một PDF được đọc lần 1 bằng PyMuPDF, mỗi trang được xếp vào một trong bốn loại, trang nghi hỏng hoặc là ảnh đi OCR, kết quả ghi vào một checkpoint"><defs><marker id="ah-hinh2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker></defs>
+<rect class="n n-raw" x="300" y="8" width="440" height="40" rx="7"/>
+<text x="520.0" y="32.0" text-anchor="middle" class="tb">Một PDF (nhận bằng khoá flock theo sha256)</text>
+<polyline class="ar" points="520,48 520,76" marker-end="url(#ah-hinh2)"/>
+<rect class="n n-dec" x="300" y="76" width="440" height="48" rx="7"/>
+<text x="520.0" y="96.0" text-anchor="middle">PDF bị cắt cụt / hỏng (is_repaired)</text>
+<text x="520.0" y="112.0" text-anchor="middle">hoặc có mật khẩu?</text>
+<rect class="n n-warn" x="800" y="76" width="225" height="48" rx="7"/>
+<text x="912.5" y="96.0" text-anchor="middle">ghi checkpoint error,</text>
+<text x="912.5" y="112.0" text-anchor="middle">lần sau thử lại</text>
+<polyline class="ar" points="740,100 800,100" marker-end="url(#ah-hinh2)"/>
+<text class="lbl halo" x="770" y="93" text-anchor="middle">có</text>
+<text class="lbl" x="770" y="93" text-anchor="middle">có</text>
+<polyline class="ar" points="520,124 520,150" marker-end="url(#ah-hinh2)"/>
+<text class="lbl halo" x="530" y="143" text-anchor="start">không</text>
+<text class="lbl" x="530" y="143" text-anchor="start">không</text>
+<rect class="n n-proc" x="270" y="150" width="500" height="100" rx="7"/>
+<text x="520.0" y="180.0" text-anchor="middle" class="tb">LẦN ĐỌC 1 (CPU): page_text() cho MỌI trang</text>
+<text x="520.0" y="196.0" text-anchor="middle">chèn lại dấu cách khi hở &gt; 0,15 × cỡ chữ (slide PowerPoint hay mất)</text>
+<text x="520.0" y="212.0" text-anchor="middle">font TCVN3 (.VnTime…) đổi sang Unicode; cả bài nếu ≥ 5% ký tự TCVN3</text>
+<text x="520.0" y="228.0" text-anchor="middle">ký tự surrogate lẻ → U+FFFD (để nguyên thì ghi JSON sẽ lỗi)</text>
+<polyline class="ar" points="520,250 520,278" marker-end="url(#ah-hinh2)"/>
+<polyline class="ar" points="140,278 915,278" fill="none"/>
+<text class="cap" x="530" y="270" text-anchor="start">mỗi trang được xếp vào 1 trong 4 loại</text>
+<rect class="n n-proc" x="15" y="300" width="250" height="76" rx="7"/>
+<text x="140.0" y="326.0" text-anchor="middle" class="tb">A. Trang chữ</text>
+<text x="140.0" y="342.0" text-anchor="middle">có lớp chữ (≥ 30 ký tự</text>
+<text x="140.0" y="358.0" text-anchor="middle">hoặc không có ảnh nhúng)</text>
+<polyline class="ar" points="140.0,278 140.0,300" marker-end="url(#ah-hinh2)"/>
+<rect class="n n-gpu" x="285" y="300" width="235" height="76" rx="7"/>
+<text x="402.5" y="326.0" text-anchor="middle" class="tb">B. Trang scan</text>
+<text x="402.5" y="342.0" text-anchor="middle">ít chữ (&lt; 30 ký tự) mà</text>
+<text x="402.5" y="358.0" text-anchor="middle">có ảnh nhúng</text>
+<polyline class="ar" points="402.5,278 402.5,300" marker-end="url(#ah-hinh2)"/>
+<rect class="n n-gpu" x="540" y="300" width="245" height="76" rx="7"/>
+<text x="662.5" y="326.0" text-anchor="middle" class="tb">C. Không lớp chữ, có hình</text>
+<text x="662.5" y="342.0" text-anchor="middle">vẽ thử 0,5×: có ảnh / nét →</text>
+<text x="662.5" y="358.0" text-anchor="middle">reason no_text_layer</text>
+<polyline class="ar" points="662.5,278 662.5,300" marker-end="url(#ah-hinh2)"/>
+<rect class="n n-raw" x="805" y="300" width="220" height="76" rx="7"/>
+<text x="915.0" y="326.0" text-anchor="middle" class="tb">D. Không lớp chữ, trắng</text>
+<text x="915.0" y="342.0" text-anchor="middle">vẽ thử không có nội dung →</text>
+<text x="915.0" y="358.0" text-anchor="middle">method empty, blank_page</text>
+<polyline class="ar" points="915.0,278 915.0,300" marker-end="url(#ah-hinh2)"/>
+<rect class="n n-dec" x="15" y="410" width="400" height="128" rx="7"/>
+<text x="215.0" y="438.0" text-anchor="middle" class="tb">BỘ DÒ CHỮ HỎNG (chỉ bật cho VJOL)</text>
+<text x="215.0" y="454.0" text-anchor="middle">trang bị nghi nếu ≥ 1 trong 7 tín hiệu vượt ngưỡng:</text>
+<text x="215.0" y="470.0" text-anchor="middle">tone, case, foreign, unknown, nodiac, hyphen, control</text>
+<text x="215.0" y="486.0" text-anchor="middle">cả bài bị kéo đi OCR nếu ≥ 30% trang chữ nghi, hoặc</text>
+<text x="215.0" y="502.0" text-anchor="middle">producer OCR đời cũ, hoặc tone_shift / dropped_letters</text>
+<text x="215.0" y="518.0" text-anchor="middle">ở ≥ max(2; 15%) trang chữ</text>
+<polyline class="ar" points="140,376 140,410" marker-end="url(#ah-hinh2)"/>
+<rect class="n n-disk" x="15" y="580" width="250" height="56" rx="7"/>
+<text x="140.0" y="604.0" text-anchor="middle" class="tb">Giữ lượt đọc 1</text>
+<text x="140.0" y="620.0" text-anchor="middle">method = text | tcvn3</text>
+<polyline class="ar" points="140,538 140,580" marker-end="url(#ah-hinh2)"/>
+<text class="lbl halo" x="150" y="563" text-anchor="start">không nghi</text>
+<text class="lbl" x="150" y="563" text-anchor="start">không nghi</text>
+<rect class="n n-gpu" x="450" y="410" width="575" height="128" rx="7"/>
+<text x="737.5" y="446.0" text-anchor="middle" class="tb">HÀNG ĐỢI OCR (lượt đọc 2): gom cả lô trang của PDF</text>
+<text x="737.5" y="462.0" text-anchor="middle">1. tra bộ nhớ đệm interim/vjol_ocr_cache (khoá '&lt;số trang&gt;:e|r')</text>
+<text x="737.5" y="478.0" text-anchor="middle">2. trang chưa có → gửi vLLM, tối đa 32 trang song song (Hình 3)</text>
+<text x="737.5" y="494.0" text-anchor="middle">3. ảnh gửi đi: e = ảnh nhúng (trang scan) · r = vẽ lại cả trang 200 dpi</text>
+<text x="737.5" y="510.0" text-anchor="middle">    (trang nghi chữ hỏng và trang không lớp chữ luôn dùng r)</text>
+<polyline class="ar" points="402,376 402,392 480,392 480,410" marker-end="url(#ah-hinh2)"/>
+<polyline class="ar" points="662,376 662,410" marker-end="url(#ah-hinh2)"/>
+<polyline class="ar" points="415,474 450,474" marker-end="url(#ah-hinh2)"/>
+<text class="lbl halo" x="432" y="466" text-anchor="middle">nghi</text>
+<text class="lbl" x="432" y="466" text-anchor="middle">nghi</text>
+<rect class="n n-proc" x="450" y="580" width="575" height="76" rx="7"/>
+<text x="737.5" y="606.0" text-anchor="middle" class="tb">Mục trang sau OCR</text>
+<text x="737.5" y="622.0" text-anchor="middle">ocr_vlm: tier, status (ok|blank|flagged), rotation, rejected_text, text_md</text>
+<text x="737.5" y="638.0" text-anchor="middle">trang nghi chữ hỏng thêm reason, signals, garbled_text (chỉ để kiểm tra)</text>
+<polyline class="ar" points="737,538 737,580" marker-end="url(#ah-hinh2)"/>
+<rect class="n n-disk" x="250" y="700" width="540" height="64" rx="7"/>
+<text x="520.0" y="728.0" text-anchor="middle" class="tb">interim/vjol_text/&lt;sha256&gt;.json (1 file / PDF)</text>
+<text x="520.0" y="744.0" text-anchor="middle">ghi nguyên tử: file tạm → fsync → os.replace</text>
+<polyline class="ar" points="140,636 140,732 250,732" marker-end="url(#ah-hinh2)"/>
+<polyline class="ar" points="640,656 640,700" marker-end="url(#ah-hinh2)"/></svg><figcaption><b>Hình 2.</b> Đường đi của một trang. Mỗi trang đọc tối đa hai lần: lần 1 (PyMuPDF) cho mọi trang, lần 2 (OCR) chỉ cho trang là ảnh hoặc trang có lớp chữ không đáng tin. Trang trắng (D) đi thẳng vào checkpoint không qua OCR.</figcaption></figure>
+<p>Hàm <code>extract_pdf</code> làm tuần tự các việc sau:</p>
+<ol>
+<li><b>Mở PDF.</b> PDF bị cắt cụt (PyMuPDF phải tự sửa khi mở, <code>is_repaired</code>) hoặc có mật khẩu thì ném <code>ValueError</code>; file đó ghi checkpoint lỗi và lần chạy sau thử lại. Lý do loại PDF "tự sửa": một PDF bị crawler dừng giữa chừng vẫn mở được nhưng thiếu trang.</li>
+<li><b>Lấy lớp chữ từng trang</b> (<code>page_text</code>): đọc bản "rawdict" (từng ký tự có toạ độ). <b>Chèn lại dấu cách</b> khi khoảng hở giữa hai ký tự lớn hơn 0,15 × cỡ chữ, đo dọc theo hướng dòng (slide xoay dọc thì đo theo trục y). Lý do: PDF xuất từ PowerPoint hay mất dấu cách sau chữ có dấu ("cụthểmà").</li>
+<li><b>TCVN3.</b> Span nào có tên font dạng <code>.VnTime</code> / <code>VnArial</code>… (kể cả hậu tố <code>H</code> = chữ hoa) được đổi sang Unicode ngay. Nếu cả bài có ≥ 5% ký tự đặc trưng của TCVN3 (font không mang tên <code>.Vn…</code>) thì đọc lại cả bài và đổi mọi span. Đo được: bài TCVN3 khoảng 12%, bài Unicode ≤ 1,3%.</li>
+<li><b>Làm sạch ký tự không ghi được.</b> Bảng ToUnicode hỏng của một số PDF cho ra "nửa" cặp surrogate (<code>\ud835</code>). Nếu để nguyên, ghi JSON UTF-8 ném <code>UnicodeEncodeError</code> và cả 4 tiến trình chết (đã xảy ra khi chạy cả kho). Nay thay bằng U+FFFD và ghi log kèm đường dẫn file.</li>
+<li><b>Xếp loại từng trang</b> (4 hộp A–D ở Hình 2). Trang có ≥ 30 ký tự chữ (không tính khoảng trắng) <i>hoặc</i> không có ảnh nhúng là "trang chữ"; ít chữ mà có ảnh là "trang scan". Trang không có chữ nào chưa chắc là trắng (ảnh có thể nằm trong form XObject, hoặc trang vẽ bằng nét), nên được <b>vẽ thử ở 0,5×</b>: có ảnh vẽ thật hoặc ≥ 0,1% pixel tối thì coi là có nội dung và đưa đi OCR (<code>reason = no_text_layer</code>), không thì ghi <code>empty</code> kèm <code>reason = blank_page</code> để bài rỗng không mất âm thầm.</li>
+</ol>
+
+<h3>4.3 Bộ dò chữ hỏng: trang nào không được tin lớp chữ</h3>
+<p>Chạy trên lớp chữ của từng trang chữ (code: <code>vi_corpus/common/garbled.py</code>). Chỉ VJOL bật (<code>detect_garbled=True</code>), giáo trình chạy như cũ. Trang bị nghi nếu <b>ít nhất một</b> trong 7 tín hiệu vượt ngưỡng. OCR thừa một trang sạch gần như vô hại, bỏ sót một trang hỏng thì chữ rác vào kho, nên ngưỡng đặt hơi nhạy.</p>
+<div class="tw"><table>
+<tr><th>Tín hiệu</th><th>Ngưỡng (trên một trang)</th><th>Bắt kiểu hỏng nào</th><th>Vì sao đo được như vậy</th></tr>
+<tr><td><code>tone</code></td><td>≥ 5% số từ (trang ≥ 10 từ) có ≥ 2 dấu thanh</td><td>"Baỷng, hieọu, ủoọ, ngửụứi"</td><td>Âm tiết đúng chỉ có ≤ 1 dấu thanh. Đo trên 2.937 bài: hạ ngưỡng từ 8% xuống 5% bắt thêm 39 trang (13 bài) sát ngưỡng, cái giá chỉ là 39 trang OCR thêm.</td></tr>
+<tr><td><code>case</code></td><td>≥ 5% từ ≥ 4 chữ cái có chữ hoa đứng sau chữ thường</td><td>"xuAáT", "TRoNg", chữ lệch mã ASCII</td><td>Độ chính xác chỉ ~55% (tiêu đề tiếng Anh small-caps, viết tắt y khoa bị bắt nhầm) nhưng OCR lại trang sạch rẻ nên chấp nhận.</td></tr>
+<tr><td><code>foreign</code></td><td>≥ 0,3% chữ cái là ñ ö ï ø å, và có ≥ 5 chữ như vậy, trang ≥ 100 chữ cái</td><td>Font VNI: "Thöïc TRAïNg"</td><td>Điều kiện "≥ 5 chữ" để tên riêng có 1–2 chữ ñ / ö không kích hoạt.</td></tr>
+<tr><td><code>unknown</code></td><td>≥ 30% từ Latinh (trang ≥ 30 từ) không có trong <code>syllables.json</code></td><td>Sai dấu kiểu Windows-1258: "Phỏt triển trờn"</td><td>Trang tiếng Anh thường 20–27%, trang hỏng đo được ≥ 30%. Chữ Hán, Kirin không tính. Thiếu <code>syllables.json</code> thì bỏ tín hiệu này (và checkpoint không có hậu tố <code>+vocab</code>).</td></tr>
+<tr><td><code>nodiac</code></td><td>≥ 2% từ Latinh (trang ≥ 50 từ) thuộc danh sách từ viết không dấu ("cua", "nhung", "duoc")</td><td>Mất dấu tiếng Việt từng phần</td><td>Danh sách <b>sinh từ kho chữ sạch</b> (<code>scripts/build_unaccented.py</code> → <code>unaccented.json</code>), không viết tay, vì danh sách tay có "doanh", "cung" là từ đúng không dấu nên loại oan 102 đoạn kinh tế. Văn bản tiếng Anh (≥ 4% từ chức năng tiếng Anh) được miễn; URL, email, DOI bị bỏ trước khi đếm; mỗi từ chỉ tính tối đa 3 lần.</td></tr>
+<tr><td><code>hyphen</code></td><td>≥ 4 chỗ và ≥ 0,4% từ có dạng "đ-ợc", "th- viện" (trang ≥ 50 từ)</td><td>Font mất ư / ơ thành dấu "-"</td><td>Chỉ nhận phụ âm đầu thật của tiếng Việt đứng trước "-", nên "x-ray", "e-mail", "N-acetyl" không khớp.</td></tr>
+<tr><td><code>control</code></td><td>≥ 10% ký tự khác khoảng trắng là ký tự điều khiển C0 (và ≥ 5 ký tự)</td><td>Font ghi mã glyph / dấu cách thành ký tự điều khiển</td><td>Ký tự điều khiển cắt vụn mọi từ nên các tín hiệu đếm từ không đủ mẫu. Phân bố: 13.724 / 14.015 trang đúng 0; vùng 0,3–0,5 trống; ngưỡng 0,1 do nhóm dự án chốt.</td></tr>
+</table></div>
+<p>Từ trang lên cả bài, có <b>ba cách kéo cả bài đi OCR</b>:</p>
+<div class="tw"><table>
+<tr><th>Cách</th><th>Điều kiện</th><th><code>reason</code> ghi trên trang</th><th>Vì sao</th></tr>
+<tr><td>Theo tỷ lệ trang nghi</td><td>≥ 30% số trang chữ của bài bị nghi</td><td><code>garbled_doc</code></td><td>Lỗi font thường theo cả bài; trang ngắn như chú thích hình dễ lọt.</td></tr>
+<tr><td>Theo phần mềm tạo PDF</td><td><code>producer</code> bắt đầu bằng "ABBYY FineReader 11" và <code>creator</code> chứa "ScanGate"</td><td><code>old_ocr_producer</code></td><td>Lớp chữ do OCR đời cũ tạo, không trúng tín hiệu nào mà vẫn kém (perplexity 161 so với 24–42, tỷ lệ từ lạ 0,052 so với 0,006). Không đưa "Kirtas" vào vì nhóm này đã trúng tín hiệu sẵn.</td></tr>
+<tr><td>Theo lỗi chữ không vá được</td><td><code>tone_shift</code> hoặc <code>dropped_letters</code> trúng ở ≥ max(2; 15%) số trang chữ</td><td><code>defect_doc</code></td><td>Chữ có dấu bị đổi thành chữ có dấu khác ("nghiờn"), hoặc rơi mất ("kh n th"): vá bằng luật có thể ra chữ sai nghĩa, nên OCR lại cả bài.</td></tr>
+</table></div>
+<div class="box warn"><b class="t">Cái gì cố ý KHÔNG dùng để quyết định</b>
+<p><code>joined_words</code> (từ dính liền): độ chính xác 0,077, hai phần ba lượt OCR lại là do tên riêng / phiên âm. <code>gibberish</code>: công thức dàn phẳng là nguồn báo nhầm chính. <code>hyphen</code> ở cấp bài: ảnh trang cũng in "-" nên OCR chỉ tốn GPU. Cả ba vẫn được <b>đo</b> (<code>plan_reocr.py</code>). Nhóm font xấu theo (producer, creator): từng có (<code>font_canary.py</code>), đã tắt vì chỉ dựa trên mẫu, file <code>font_groups_bad.json</code> phải ở trạng thái <code>.off</code>.</p></div>
+
+<h3>4.4 Lần đọc 2: OCR bằng chuỗi engine</h3>
+<figure id="hinh3"><svg viewBox="0 0 1100 560" role="img" aria-label="Chuỗi ba engine OCR: mỗi trang chạy engine đầu, bị bộ kiểm báo thì chạy engine kế; xoay thử nếu trang cuối vẫn hỏng"><defs><marker id="ah-hinh3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker></defs>
+<rect class="n n-raw" x="10" y="40" width="130" height="90" rx="7"/>
+<text x="75.0" y="73.0" text-anchor="middle" class="tb">Ảnh trang</text>
+<text x="75.0" y="89.0" text-anchor="middle">ảnh nhúng hoặc</text>
+<text x="75.0" y="105.0" text-anchor="middle">PNG 200 dpi</text>
+<polyline class="ar" points="140,85 170,85" marker-end="url(#ah-hinh3)"/>
+<rect class="n n-gpu" x="170" y="40" width="300" height="90" rx="7"/>
+<text x="320.0" y="57.0" text-anchor="middle" class="tb">1. qwen3vl_8b_mt4k</text>
+<text x="320.0" y="73.0" text-anchor="middle">Qwen3-VL-8B-Instruct (vLLM)</text>
+<text x="320.0" y="89.0" text-anchor="middle">temperature 0, max_tokens 4096</text>
+<text x="320.0" y="105.0" text-anchor="middle">prompt: chép nguyên văn, đọc</text>
+<text x="320.0" y="121.0" text-anchor="middle">từng cột từ trên xuống, bảng HTML</text>
+<rect class="n n-dec" x="520" y="40" width="150" height="90" rx="7"/>
+<text x="595.0" y="73.0" text-anchor="middle" class="tb">guard</text>
+<text x="595.0" y="89.0" text-anchor="middle">kiểm tra trang</text>
+<text x="595.0" y="105.0" text-anchor="middle">(bảng bên dưới)</text>
+<polyline class="ar" points="470,85 520,85" marker-end="url(#ah-hinh3)"/>
+<rect class="n n-gpu" x="170" y="180" width="300" height="90" rx="7"/>
+<text x="320.0" y="205.0" text-anchor="middle" class="tb">2. qwen3vl_8b_rp110</text>
+<text x="320.0" y="221.0" text-anchor="middle">CÙNG server, CÙNG mô hình</text>
+<text x="320.0" y="237.0" text-anchor="middle">thêm repetition_penalty 1,10</text>
+<text x="320.0" y="253.0" text-anchor="middle">(chặn vòng lặp vô tận)</text>
+<rect class="n n-dec" x="520" y="180" width="150" height="90" rx="7"/>
+<text x="595.0" y="213.0" text-anchor="middle" class="tb">guard</text>
+<text x="595.0" y="229.0" text-anchor="middle">kiểm tra trang</text>
+<text x="595.0" y="245.0" text-anchor="middle">(bảng bên dưới)</text>
+<polyline class="ar" points="470,225 520,225" marker-end="url(#ah-hinh3)"/>
+<rect class="n n-proc" x="170" y="320" width="300" height="90" rx="7"/>
+<text x="320.0" y="345.0" text-anchor="middle" class="tb">3. baseline</text>
+<text x="320.0" y="361.0" text-anchor="middle">PaddleOCR (tìm dòng chữ) +</text>
+<text x="320.0" y="377.0" text-anchor="middle">VietOCR (đọc từng dòng)</text>
+<text x="320.0" y="393.0" text-anchor="middle">chạy tuần tự, nạp lười</text>
+<rect class="n n-dec" x="520" y="320" width="150" height="90" rx="7"/>
+<text x="595.0" y="353.0" text-anchor="middle" class="tb">guard</text>
+<text x="595.0" y="369.0" text-anchor="middle">kiểm tra trang</text>
+<text x="595.0" y="385.0" text-anchor="middle">(bảng bên dưới)</text>
+<polyline class="ar" points="470,365 520,365" marker-end="url(#ah-hinh3)"/>
+<polyline class="ar" points="670,85 860,85" marker-end="url(#ah-hinh3)"/>
+<text class="lbl halo" x="765" y="78" text-anchor="middle">ổn</text>
+<text class="lbl" x="765" y="78" text-anchor="middle">ổn</text>
+<polyline class="ar" points="670,225 860,225" marker-end="url(#ah-hinh3)"/>
+<text class="lbl halo" x="765" y="218" text-anchor="middle">ổn</text>
+<text class="lbl" x="765" y="218" text-anchor="middle">ổn</text>
+<polyline class="ar" points="670,350 860,350" marker-end="url(#ah-hinh3)"/>
+<text class="lbl halo" x="765" y="343" text-anchor="middle">ổn</text>
+<text class="lbl" x="765" y="343" text-anchor="middle">ổn</text>
+<polyline class="ar" points="595,130 595,155 320,155 320,180" marker-end="url(#ah-hinh3)"/>
+<text class="lbl halo" x="460" y="149" text-anchor="middle">báo lỗi</text>
+<text class="lbl" x="460" y="149" text-anchor="middle">báo lỗi</text>
+<polyline class="ar" points="595,270 595,295 320,295 320,320" marker-end="url(#ah-hinh3)"/>
+<text class="lbl halo" x="460" y="289" text-anchor="middle">báo lỗi</text>
+<text class="lbl" x="460" y="289" text-anchor="middle">báo lỗi</text>
+<rect class="n n-disk" x="860" y="40" width="220" height="330" rx="7"/>
+<text x="970.0" y="137.0" text-anchor="middle" class="tb">status = ok (hoặc blank)</text>
+<text x="970.0" y="153.0" text-anchor="middle">text = chữ thuần của engine</text>
+<text x="970.0" y="169.0" text-anchor="middle">được chọn; tier ghi lại</text>
+<text x="970.0" y="185.0" text-anchor="middle"></text>
+<text x="970.0" y="201.0" text-anchor="middle">text_md = markdown gốc</text>
+<text x="970.0" y="217.0" text-anchor="middle">(tiêu đề, bảng, công thức)</text>
+<text x="970.0" y="233.0" text-anchor="middle">chỉ lưu khi khác text</text>
+<text x="970.0" y="249.0" text-anchor="middle"></text>
+<text x="970.0" y="265.0" text-anchor="middle">blank = mọi engine trả trang</text>
+<text x="970.0" y="281.0" text-anchor="middle">rỗng (trang trắng thật)</text>
+<rect class="n n-warn" x="860" y="395" width="220" height="70" rx="7"/>
+<text x="970.0" y="418.0" text-anchor="middle" class="tb">status = flagged</text>
+<text x="970.0" y="434.0" text-anchor="middle">text rỗng, giữ rejected_text</text>
+<text x="970.0" y="450.0" text-anchor="middle">(không vào kho)</text>
+<polyline class="ar" points="595,410 595,430 860,430" marker-end="url(#ah-hinh3)"/>
+<text class="lbl halo" x="730" y="423" text-anchor="middle">engine cuối vẫn báo</text>
+<text class="lbl" x="730" y="423" text-anchor="middle">engine cuối vẫn báo</text>
+<rect class="n n-dec" x="10" y="460" width="480" height="80" rx="7"/>
+<text x="250.0" y="480.0" text-anchor="middle" class="tb">Xoay thử, cần tập âm tiết</text>
+<text x="250.0" y="496.0" text-anchor="middle">trang kết thúc ở baseline hoặc flagged → xoay 180°, 90°, 270°,</text>
+<text x="250.0" y="512.0" text-anchor="middle">chạy lại cả chuỗi; giữ bản xoay nếu tỷ lệ âm tiết hợp lệ cao</text>
+<text x="250.0" y="528.0" text-anchor="middle">hơn ≥ 0,20 và đạt ≥ 0,50 (dừng sớm nếu ≥ 0,85)</text>
+<polyline class="ar dash" points="545,410 545,500 490,500" marker-end="url(#ah-hinh3)"/>
+<text class="lbl halo" x="538" y="440" text-anchor="end">baseline / flagged</text>
+<text class="lbl" x="538" y="440" text-anchor="end">baseline / flagged</text></svg><figcaption><b>Hình 3.</b> Chuỗi OCR đã chốt. Hai engine VLM chỉ khác tham số lấy mẫu nên dùng chung một server vLLM (một lần nạp mô hình); engine thứ ba là phương án dự phòng chạy khác hẳn. Engine cuối nhận trang bất kể kết quả; nếu vẫn bị báo thì trang bị loại.</figcaption></figure>
+<p>Code: <code>vi_corpus/ocr_bakeoff/cascade.py</code> (chuỗi và quy tắc chọn), <code>guard.py</code> (bộ kiểm trang), <code>vi_corpus/common/ocr_cascade.py</code> (gửi song song, xoay, nạp lười server).</p>
+<h4>Bộ kiểm trang (guard): nhận ra trang hỏng hẳn mà không cần đáp án</h4>
+<div class="tw"><table>
+<tr><th>Mã</th><th>Nghĩa</th></tr>
+<tr><td><code>length</code></td><td><code>finish_reason = length</code>, hoặc số token sinh ra ≥ 98% <code>max_tokens</code>: bị cắt cụt (lặp vô tận, base64).</td></tr>
+<tr><td><code>empty</code></td><td>Đầu ra rỗng sau khi làm sạch. Nếu <b>mọi</b> lần thử đều chỉ có <code>empty</code> thì trang là <code>blank</code> (trang trắng thật), không phải lỗi.</td></tr>
+<tr><td><code>embedded_image</code></td><td>Đầu ra có <code>data:image</code> / <code>base64,</code>: mô hình cố vẽ lại logo, hình.</td></tr>
+<tr><td><code>english_meta</code></td><td>Đầu ra mở đầu bằng lời suy nghĩ tiếng Anh ("The user wants me to transcribe…").</td></tr>
+<tr><td><code>loop</code></td><td>Một đoạn ≤ 8 ký tự lặp ≥ 25 lần liền, phủ ≥ 35% trang hoặc một dãy liền ≥ 300 ký tự.</td></tr>
+<tr><td><code>too_long</code></td><td>Hơn 12.000 ký tự cho một trang (trang dày đặc chỉ ~3.000–5.000).</td></tr>
+<tr><td><code>error</code></td><td>Lỗi gọi engine (sau khi đã thử lại).</td></tr>
+</table></div>
+<p>Chi phí báo nhầm thấp (trang bị báo chỉ phải chạy lại), chi phí bỏ sót cao, nên ngưỡng đặt hơi nhạy. Guard chỉ bắt lỗi hỏng hẳn nhìn là thấy, không bắt đọc sai lẻ tẻ.</p>
+<h4>Những quyết định kỹ thuật đáng biết</h4>
+<ul>
+<li><b>Vì sao hai engine VLM cùng một mô hình?</b> Chúng chỉ khác tham số lấy mẫu (<code>repetition_penalty</code>), nên dùng chung <b>một</b> server vLLM, một lần nạp mô hình. Engine <code>mt4k</code> không phạt lặp vì phạt lặp có thể làm sai chữ lặp hợp lệ (bảng số); chỉ trang bị báo mới chạy lại với phạt mạnh. Chuỗi này được chọn sau một đợt so sánh các engine OCR trên trang thật.</li>
+<li><b>Ảnh nào được gửi?</b> Trang scan: ảnh nhúng gốc nếu là jpg / png / webp / jp2 (vLLM chắc chắn đọc được), không thì vẽ lại 200 dpi PNG. Trang lỗi chữ hoặc không lớp chữ: <b>luôn vẽ lại cả trang</b>, vì trang chữ có hình minh hoạ sẽ bị lấy nhầm hình thay vì cả trang.</li>
+<li><b>Gửi song song.</b> Các trang cần OCR của một PDF được gom thành lô và gửi tối đa 32 trang cùng lúc (đo thử 1.000 trang thật: từ 32 trở lên tốc độ không tăng nữa, khoảng 1,55 trang / giây / GPU). Bộ nhớ chỉ giữ khoảng 2 × 32 ảnh, nên sách 900 trang không nạp hết một lúc.</li>
+<li><b>Nạp lười.</b> Server vLLM chỉ được dựng khi gặp <b>trang scan đầu tiên</b> (khởi động ~9 phút mỗi GPU); tài liệu toàn trang có chữ không tốn thời gian khởi động GPU. Engine dự phòng (Paddle + VietOCR) được dựng thử <b>trước</b> khi bật server, để lỗi môi trường lộ ra sau vài giây thay vì sau 9 phút chờ.</li>
+<li><b>Lọc câu rác của VLM.</b> Khi trang trắng, Qwen3-VL đôi khi trả "There is no text in the image." Guard chỉ bắt lời mở đầu kiểu "The user wants…", nên có bước riêng (<code>ocr_noise.py</code>) bỏ các câu này; trang chỉ còn câu đó thành <code>blank</code>.</li>
+<li><b>Xoay thử trang.</b> Cần tập âm tiết. Trang kết thúc ở baseline hoặc bị loại được xoay 180° → 90° → 270°; chọn bản xoay nếu tỷ lệ âm tiết hợp lệ cao hơn bản gốc ≥ 0,20 và tự nó ≥ 0,50; dừng sớm khi ≥ 0,85. Khi bật xoay, chữ ký bộ OCR trong bộ nhớ đệm thêm <code>:rot</code>.</li>
+<li><b>Lưu thêm bản markdown.</b> Prompt cho ra markdown (tiêu đề, bảng HTML, công thức). <code>text</code> là chữ thuần cho các bộ lọc; bản gốc nằm ở <code>text_md</code> khi khác <code>text</code>. Pipeline hiện chưa đọc <code>text_md</code>.</li>
+<li><b>Bộ nhớ đệm OCR</b> (<code>interim/vjol_ocr_cache/</code>): kết quả OCR từng trang, khoá <code>&lt;số trang&gt;:e</code> (ảnh nhúng) hoặc <code>:r</code> (vẽ lại), kèm <code>signature</code> = tên các engine + có xoay hay không. Khác chữ ký thì cache cũ bị bỏ qua. Nhờ đó đổi tín hiệu dò chữ hỏng (đổi <code>EXTRACT_VERSION</code>) chỉ phải OCR thêm các trang <b>mới</b> bị gắn cờ, không OCR lại cả PDF (trước đây tốn ~3 giờ đồng hồ / 4 GPU cho 3.000 bài).</li>
+</ul>
+<div class="box why"><b class="t">Tại sao không để engine cũ (Paddle + VietOCR) làm chính?</b>
+<p>Nhận dạng của Paddle làm rơi dấu tiếng Việt nên chỉ dùng phần tìm dòng chữ, còn đọc chữ là VietOCR. Trong đợt so sánh, Qwen3-VL-8B được chọn làm engine chính; baseline giữ làm chốt cuối. Trên mẫu 3.000 bài, trang rơi xuống baseline chỉ 2,6% và 0 trang bị loại.</p></div>
+
+<h3>4.5 Chạy trên 4 GPU và những thứ có thể hỏng</h3>
+<figure id="hinh4"><svg viewBox="0 0 1000 490" role="img" aria-label="Bốn tiến trình trích text chạy song song, mỗi tiến trình có server vLLM riêng trên một GPU, chia PDF cho nhau bằng khoá file trên đĩa dùng chung"><defs><marker id="ah-hinh4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker></defs>
+<rect class="n n-disk" x="20" y="20" width="960" height="70" rx="7"/>
+<text x="500.0" y="51.0" text-anchor="middle" class="tb">Đĩa dùng chung (cả 4 tiến trình cùng thấy)</text>
+<text x="500.0" y="67.0" text-anchor="middle" class="tm">raw/vjol · interim/vjol_text · interim/vjol_ocr_cache · state/vjol_extract/claims/&lt;sha&gt;.lock · state/inventory_vjol_text.json</text>
+<rect class="n n-proc" x="20" y="150" width="225" height="110" rx="7"/>
+<text x="132.5" y="185.0" text-anchor="middle" class="tb">extract.py --gpu 0</text>
+<text x="132.5" y="201.0" text-anchor="middle">xin khoá file (flock):</text>
+<text x="132.5" y="217.0" text-anchor="middle">được → trích PDF đó;</text>
+<text x="132.5" y="233.0" text-anchor="middle">không → bỏ qua, sang file kế</text>
+<rect class="n n-gpu" x="20" y="330" width="225" height="100" rx="7"/>
+<text x="132.5" y="352.0" text-anchor="middle" class="tb">vLLM :8100 (GPU 0)</text>
+<text x="132.5" y="368.0" text-anchor="middle">dựng lười ở trang scan đầu tiên</text>
+<text x="132.5" y="384.0" text-anchor="middle">(khởi động ~9 phút)</text>
+<text x="132.5" y="400.0" text-anchor="middle">gpu-mem 0,85: chừa chỗ cho</text>
+<text x="132.5" y="416.0" text-anchor="middle">baseline Paddle + VietOCR</text>
+<polyline class="ar" points="132,150 132,90" marker-end="url(#ah-hinh4)"/>
+<text class="lbl halo" x="140" y="125" text-anchor="start">claim · ghi</text>
+<text class="lbl" x="140" y="125" text-anchor="start">claim · ghi</text>
+<polyline class="ar" points="132,260 132,330" marker-end="url(#ah-hinh4)"/>
+<text class="lbl halo" x="140" y="300" text-anchor="start">32 trang song song</text>
+<text class="lbl" x="140" y="300" text-anchor="start">32 trang song song</text>
+<rect class="n n-proc" x="265" y="150" width="225" height="110" rx="7"/>
+<text x="377.5" y="185.0" text-anchor="middle" class="tb">extract.py --gpu 1</text>
+<text x="377.5" y="201.0" text-anchor="middle">xin khoá file (flock):</text>
+<text x="377.5" y="217.0" text-anchor="middle">được → trích PDF đó;</text>
+<text x="377.5" y="233.0" text-anchor="middle">không → bỏ qua, sang file kế</text>
+<rect class="n n-gpu" x="265" y="330" width="225" height="100" rx="7"/>
+<text x="377.5" y="352.0" text-anchor="middle" class="tb">vLLM :8101 (GPU 1)</text>
+<text x="377.5" y="368.0" text-anchor="middle">dựng lười ở trang scan đầu tiên</text>
+<text x="377.5" y="384.0" text-anchor="middle">(khởi động ~9 phút)</text>
+<text x="377.5" y="400.0" text-anchor="middle">gpu-mem 0,85: chừa chỗ cho</text>
+<text x="377.5" y="416.0" text-anchor="middle">baseline Paddle + VietOCR</text>
+<polyline class="ar" points="377,150 377,90" marker-end="url(#ah-hinh4)"/>
+<text class="lbl halo" x="385" y="125" text-anchor="start">claim · ghi</text>
+<text class="lbl" x="385" y="125" text-anchor="start">claim · ghi</text>
+<polyline class="ar" points="377,260 377,330" marker-end="url(#ah-hinh4)"/>
+<text class="lbl halo" x="385" y="300" text-anchor="start">32 trang song song</text>
+<text class="lbl" x="385" y="300" text-anchor="start">32 trang song song</text>
+<rect class="n n-proc" x="510" y="150" width="225" height="110" rx="7"/>
+<text x="622.5" y="185.0" text-anchor="middle" class="tb">extract.py --gpu 2</text>
+<text x="622.5" y="201.0" text-anchor="middle">xin khoá file (flock):</text>
+<text x="622.5" y="217.0" text-anchor="middle">được → trích PDF đó;</text>
+<text x="622.5" y="233.0" text-anchor="middle">không → bỏ qua, sang file kế</text>
+<rect class="n n-gpu" x="510" y="330" width="225" height="100" rx="7"/>
+<text x="622.5" y="352.0" text-anchor="middle" class="tb">vLLM :8102 (GPU 2)</text>
+<text x="622.5" y="368.0" text-anchor="middle">dựng lười ở trang scan đầu tiên</text>
+<text x="622.5" y="384.0" text-anchor="middle">(khởi động ~9 phút)</text>
+<text x="622.5" y="400.0" text-anchor="middle">gpu-mem 0,85: chừa chỗ cho</text>
+<text x="622.5" y="416.0" text-anchor="middle">baseline Paddle + VietOCR</text>
+<polyline class="ar" points="622,150 622,90" marker-end="url(#ah-hinh4)"/>
+<text class="lbl halo" x="630" y="125" text-anchor="start">claim · ghi</text>
+<text class="lbl" x="630" y="125" text-anchor="start">claim · ghi</text>
+<polyline class="ar" points="622,260 622,330" marker-end="url(#ah-hinh4)"/>
+<text class="lbl halo" x="630" y="300" text-anchor="start">32 trang song song</text>
+<text class="lbl" x="630" y="300" text-anchor="start">32 trang song song</text>
+<rect class="n n-proc" x="755" y="150" width="225" height="110" rx="7"/>
+<text x="867.5" y="185.0" text-anchor="middle" class="tb">extract.py --gpu 3</text>
+<text x="867.5" y="201.0" text-anchor="middle">xin khoá file (flock):</text>
+<text x="867.5" y="217.0" text-anchor="middle">được → trích PDF đó;</text>
+<text x="867.5" y="233.0" text-anchor="middle">không → bỏ qua, sang file kế</text>
+<rect class="n n-gpu" x="755" y="330" width="225" height="100" rx="7"/>
+<text x="867.5" y="352.0" text-anchor="middle" class="tb">vLLM :8103 (GPU 3)</text>
+<text x="867.5" y="368.0" text-anchor="middle">dựng lười ở trang scan đầu tiên</text>
+<text x="867.5" y="384.0" text-anchor="middle">(khởi động ~9 phút)</text>
+<text x="867.5" y="400.0" text-anchor="middle">gpu-mem 0,85: chừa chỗ cho</text>
+<text x="867.5" y="416.0" text-anchor="middle">baseline Paddle + VietOCR</text>
+<polyline class="ar" points="867,150 867,90" marker-end="url(#ah-hinh4)"/>
+<text class="lbl halo" x="875" y="125" text-anchor="start">claim · ghi</text>
+<text class="lbl" x="875" y="125" text-anchor="start">claim · ghi</text>
+<polyline class="ar" points="867,260 867,330" marker-end="url(#ah-hinh4)"/>
+<text class="lbl halo" x="875" y="300" text-anchor="start">32 trang song song</text>
+<text class="lbl" x="875" y="300" text-anchor="start">32 trang song song</text>
+<text class="cap" x="20" y="462" text-anchor="start">Sau khi cả 4 xong: extract.py --export-only (xuất vjol.parquet một lần) rồi --status. Việc không chia trước: tiến trình nhanh làm nhiều file hơn.</text></svg><figcaption><b>Hình 4.</b> Chạy bằng <code>scripts/vjol/run_extract_vlm.sh</code>. Khoá là một file rỗng <code>&lt;sha256&gt;.lock</code> giữ bằng <code>flock</code>; tiến trình chết (kể cả <code>kill -9</code>) thì hệ điều hành tự nhả khoá nên không bao giờ kẹt.</figcaption></figure>
+<p><code>scripts/vjol/run_extract_vlm.sh</code> mở 4 tiến trình, mỗi cái có <code>CUDA_VISIBLE_DEVICES</code>, cổng 8100 + số GPU và log riêng. Nó dùng <code>uv run --no-sync</code> để các tiến trình không gỡ thư viện của nhau (<code>uv run</code> thường sẽ gỡ nhóm <code>ocr</code> khi tiến trình khác đang dùng). Khi cả 4 xong, nó xuất Parquet một lần và in thống kê; nếu có tiến trình lỗi thì báo "đừng chạy pipeline lúc này, nó sẽ đọc bản trích cũ".</p>
+<p>Với mỗi nhóm sha256, vòng lặp <code>run_batch</code> làm: đọc checkpoint → nếu không cần làm lại thì bỏ qua → <code>flock</code> không chặn <code>claims/&lt;sha256&gt;.lock</code> → được thì đọc lại checkpoint (tiến trình khác có thể vừa xong) → trích → ghi checkpoint. Không được khoá thì sang file kế.</p>
+<div class="tw"><table>
+<tr><th>Chuyện có thể xảy ra</th><th>Hệ thống làm gì</th><th>Vì sao</th></tr>
+<tr><td>PDF hỏng / có mật khẩu</td><td>Ghi checkpoint <code>error</code>; các file khác chạy tiếp; lần sau thử lại.</td><td>Một file hỏng không được dừng cả lô.</td></tr>
+<tr><td>Server vLLM không kết nối được 20 lượt liên tiếp</td><td><code>ServerDown</code> → <b>dừng cả lượt</b>, thoát mã 1. File đã xong vẫn nằm trong checkpoint.</td><td>Nếu không, mọi trang âm thầm rơi xuống engine dự phòng và hỏng cả kho mà không ai biết.</td></tr>
+<tr><td>Engine không dựng được (thiếu thư viện, hỏng khi nạp)</td><td><code>EngineUnavailable</code> → dừng cả lượt.</td><td>Lỗi này không thuộc về trang nào nên không được tính là "trang bị loại".</td></tr>
+<tr><td>Lỗi tạm thời (hết giờ, 429, 5xx)</td><td>Thử lại 2 lần, chờ 3 giây rồi nhân đôi; vẫn lỗi thì coi như guard <code>error</code> và rơi xuống engine kế.</td><td>Server bận không phải trang hỏng.</td></tr>
+<tr><td><code>kill -9</code> giữa chừng</td><td>Khoá tự nhả; file đang làm dở được làm lại; không bao giờ có checkpoint viết nửa chừng.</td><td>Ghi bằng file tạm → <code>fsync</code> → <code>os.replace</code> (nguyên tử).</td></tr>
+<tr><td>Hai tiến trình ghi cùng file</td><td>Tên file tạm riêng mỗi tiến trình (<code>pid</code> + chuỗi ngẫu nhiên).</td><td>Tên tạm cố định từng làm 3 / 4 GPU chết cùng lúc, đã tái hiện bằng test.</td></tr>
+<tr><td>Surrogate lẻ ngoài lớp chữ (vd đầu ra VLM)</td><td>Thay bằng U+FFFD ở bước cuối trước khi ghi; nếu vẫn lỗi dữ liệu thì ghi checkpoint lỗi <code>CheckpointWriteError</code> và chạy tiếp.</td><td>Từng làm cả 4 GPU chết và <code>--status</code> vẫn báo "0 lỗi".</td></tr>
+</table></div>
+
+<h3>4.6 Định dạng checkpoint và khi nào làm lại</h3>
+<pre><code>// interim/vjol_text/&lt;sha256&gt;.json — ví dụ minh hoạ, không phải bài thật
+{
+  "sha256": "…", "size": 412331,
+  "paths": ["raw/vjol/2012/160981_83211.pdf"],          // mọi đường dẫn cùng nội dung
+  "year_dir": 2012, "article_id": "160981", "galley_id": "83211",
+  "format": "pdf",
+  "pages": [
+    {"text": "…", "method": "text"},
+    {"text": "…", "method": "ocr_vlm", "tier": "qwen3vl_8b_mt4k", "status": "ok", "text_md": "…"},
+    {"text": "…", "method": "ocr_vlm", "tier": "qwen3vl_8b_mt4k", "status": "ok",
+     "reason": "garbled_text_layer", "signals": ["tone", "unknown"], "garbled_text": "Baỷng …"},
+    {"text": "",  "method": "empty", "reason": "blank_page"}
+  ],
+  "error": null, "skipped": null, "parser_version": "…",
+  "extract_version": "8+unacc3f2a1b+vocab", "seconds": 14.2, "created_at": "…"
+}</code></pre>
+<div class="tw"><table>
+<tr><th><code>method</code></th><th>Nghĩa</th></tr>
+<tr><td><code>text</code></td><td>Lớp chữ Unicode lấy thẳng (lần đọc 1 là đủ).</td></tr>
+<tr><td><code>tcvn3</code></td><td>Lớp chữ font TCVN3 đã đổi sang Unicode.</td></tr>
+<tr><td><code>ocr_vlm</code></td><td>OCR bằng chuỗi engine. Kèm <code>tier</code> (engine được chọn) và <code>status</code> = <code>ok</code> | <code>blank</code> | <code>flagged</code>. <code>flagged</code> có <code>text</code> rỗng, chữ bị loại nằm ở <code>rejected_text</code>.</td></tr>
+<tr><td><code>empty</code></td><td>Trang trắng (kèm <code>reason = blank_page</code>).</td></tr>
+<tr><td><code>needs_ocr</code></td><td>Trang cần OCR mà lần chạy này tắt OCR (<code>--no-ocr</code>); text của nó là rác nên bị coi là trang rỗng ở bước tạo bản ghi, và lần chạy có OCR sẽ làm lại file.</td></tr>
+</table></div>
+<p><b>Khi nào checkpoint bị làm lại</b> (<code>_needs_redo</code>): chưa có; lần trước lỗi; bị bỏ qua mà bật <code>--retry-skipped</code>; <code>extract_version</code> không nằm trong danh sách chấp nhận; hoặc còn trang <code>needs_ocr</code> mà lần này có OCR. Phiên bản trích text là <code>EXTRACT_VERSION</code> (hiện <b>8</b>) cộng các hậu tố băm: <code>+unacc&lt;băm&gt;</code> (danh sách từ không dấu), <code>+fg&lt;băm&gt;</code> (danh sách nhóm font xấu), <code>+vocab</code> (có tập âm tiết). Đổi danh sách thì băm đổi và checkpoint tương ứng tự bị làm lại. Thiếu <code>syllables.json</code> thì checkpoint không có <code>+vocab</code>; khi file xuất hiện, lần chạy sau làm lại chúng.</p>
+<div class="tw"><table>
+<tr><th>Phiên bản</th><th>Đổi gì</th></tr>
+<tr><td>1 → 2</td><td>Trang lỗi font cũng đi OCR.</td></tr>
+<tr><td>3</td><td>Thêm tín hiệu <code>nodiac</code> và xoay thử trang scan.</td></tr>
+<tr><td>4</td><td>Tín hiệu <code>hyphen</code>, danh sách từ không dấu sinh từ dữ liệu, bộ nhớ đệm OCR.</td></tr>
+<tr><td>5</td><td>Trang không lớp chữ được vẽ thử; lọc câu rác của VLM.</td></tr>
+<tr><td>6 → 7</td><td>OCR lại cả bài khi <code>defect_doc</code> / <code>font_group_bad</code>; rồi bỏ <code>joined_words</code> khỏi tín hiệu quyết định.</td></tr>
+<tr><td>8</td><td>Tín hiệu <code>control</code>.</td></tr>
+</table></div>
+<p>Ba trường <code>text_md</code>, <code>rejected_text</code>, <code>garbled_text</code> chỉ để kiểm tra hoặc dùng về sau, <b>không</b> đi vào kho. Trang bị loại thì rỗng, không bao giờ quay lại dùng chữ hỏng.</p>
+
+<h2 id="gd-b">5. Giai đoạn B: tạo bản ghi và làm sạch bài báo (CPU)</h2>
+<p>Code: <code>vi_corpus/vjol/records.py</code> (<code>iter_records</code>) và <code>vi_corpus/vjol/clean.py</code>. Được stage <code>ingest</code> gọi mỗi lần chạy pipeline. <b>Không lưu xuống đĩa</b>: đọc checkpoint, làm sạch trong bộ nhớ, ra bản ghi.</p>
+<div class="box why"><b class="t">Tại sao làm sạch lúc tạo bản ghi, không lúc trích text?</b>
+<p>Trích text tốn giờ GPU, còn các luật làm sạch là heuristic hay phải chỉnh (ngưỡng bìa, tiêu đề tạp chí, tham khảo…). Đặt chúng ở bước CPU này thì đổi luật chỉ cần chạy lại pipeline, không trích lại PDF. Ghép với vân tay stage: <code>ingest</code> băm danh sách checkpoint, file metadata và <code>syllables.json</code>, nên đổi một trong số đó thì stage tự chạy lại.</p></div>
+
+<h3>5.1 Chuỗi làm sạch theo thứ tự (<code>clean_paper_pages</code>)</h3>
+<div class="tw"><table>
+<tr><th>#</th><th>Bước</th><th>Làm gì</th><th>Vì sao</th></tr>
+<tr><td>0</td><td>Chọn checkpoint</td><td>Bỏ checkpoint lỗi, bị bỏ qua; trang <code>needs_ocr</code> thành rỗng (giữ chỉ số trang); log số bài bị bỏ theo lý do.</td><td>Bài không được mất âm thầm trước ingest.</td></tr>
+<tr><td>1</td><td><code>restore_u_in_pages</code></td><td>Khôi phục "ư" bị thay bằng "-" (mục 5.2).</td><td>Đặt trước hết để các bước sau thấy chữ đúng.</td></tr>
+<tr><td>2</td><td><code>strip_vlm_noise</code></td><td>Bỏ câu "There is no text in the image" còn sót ở checkpoint cũ.</td><td>Checkpoint cũ chưa lọc.</td></tr>
+<tr><td>3</td><td><code>drop_front_matter</code></td><td>Bỏ trang bìa (trang đầu &lt; 40 từ khi bài ≥ 3 trang), trang mục lục (3 trang đầu: tiêu đề "Mục lục" hoặc ≥ 50% dòng kết thúc bằng dấu chấm dẫn + số trang), trang ban biên tập (≥ 3 loại chức danh khác nhau, ngắn ≤ 350 từ; 3 trang đầu và 1 trang cuối). Trang bị bỏ thành rỗng, giữ nguyên số trang.</td><td>Văn bản này lặp ở hàng trăm bài và không phải nội dung khoa học.</td></tr>
+<tr><td>4</td><td><code>strip_running_headers</code></td><td>Tìm tiền tố / hậu tố 3–14 từ (chữ số thay bằng <code>#</code>) lặp ở ≥ max(3; 30% số trang) trong 3 dòng đầu / cuối trang, rồi cắt khỏi mọi dòng mang nó, kể cả khi dính giữa dòng. Lặp tối đa 4 lượt.</td><td>Học từ chính bài, không phụ thuộc tên tạp chí trong metadata (tên metadata là tiếng Anh nên không khớp tiêu đề tiếng Việt in trên trang).</td></tr>
+<tr><td>5</td><td><code>strip_front_headers</code></td><td>Cắt tiêu đề tạp chí ở <b>đầu</b> dòng: "Tạp chí … Số N - năm", ISSN, "Vietnam J. Agri. Sci. 2016, Vol. 14, No. 6: 843-851"… (8 dòng đầu của trang đầu, 2 dòng đầu các trang sau).</td><td>Câu trích dẫn có dấu phẩy ngay trước "số" không bị cắt.</td></tr>
+<tr><td>6</td><td><code>strip_mid_headers</code></td><td>Cắt tiêu đề tạp chí ở <b>mọi vị trí</b> trong dòng; phần còn lại giữ nguyên.</td><td>Thứ tự khối chữ của PDF làm tiêu đề nằm giữa đoạn. Cắt mức dòng thay vì loại cả đoạn 1.000 token sạch.</td></tr>
+<tr><td>7</td><td><code>strip_junk_lines</code></td><td>Bỏ dòng rác: ≥ 8 từ, ≥ 85% là từ rác và không có từ Latinh ≥ 3 chữ cái.</td><td>Rủi ro đã biết: công thức dàn phẳng toàn ký hiệu đơn cũng thoả; số dòng bỏ ghi ở <code>meta.repairs</code> để đo.</td></tr>
+<tr><td>8</td><td><code>strip_references</code></td><td>Bỏ mọi khối bắt đầu ở tiêu đề "Tài liệu tham khảo / References / Bibliography…" (phải nằm sau 30% số dòng) đến tiêu đề kế tiếp như Abstract, Tóm tắt, Phụ lục, Lời cảm ơn hoặc hết bài.</td><td>Bài thường có hai danh sách (Việt, rồi Anh sau Abstract), nên xử lý hết chứ không chỉ cái cuối. Giữ tóm tắt tiếng Anh đứng sau.</td></tr>
+<tr><td>9</td><td><code>strip_trailing_references</code></td><td>Đi ngược từ cuối bài, cắt khối mục tham khảo <b>không có tiêu đề</b>: ≥ 6 mục, ≥ 60% dòng thuộc phần tham khảo, khối bắt đầu sau 50% bài. Mục nhận theo mẫu đầu dòng ("[12] …", "Nguyễn Văn A (2010) …") cộng năm xuất bản cộng từ khoá thư mục.</td><td>Tiêu đề có thể nằm trên trang bị bỏ hoặc đọc hỏng.</td></tr>
+<tr><td>10</td><td><code>strip_boilerplate</code></td><td>Bỏ dòng khuôn mẫu ngắn ("Ngày nhận bài", "Received", "Email:"…); bỏ khối tác giả (dòng ≤ 12 từ có email trong 40 dòng đầu); bỏ tiêu đề trang tạp chí theo tên tạp chí trong metadata; <b>che email bằng <code>&lt;EMAIL&gt;</code> và số điện thoại bằng <code>&lt;PHONE&gt;</code></b>.</td><td>Số điện thoại phải có định dạng thật (khối đầu là mã vùng, các khối sau ≥ 3 chữ số) để "0.15 0.23 0.42" của bảng số liệu không bị che nhầm.</td></tr>
+<tr><td>11</td><td><code>clean_pages</code> (dùng chung với giáo trình)</td><td>Bỏ tiêu đề / chân trang lặp ≥ 3 trang ở 2 dòng đầu / cuối, bỏ dòng chỉ có chữ số (số trang), <b>ghép dòng thành đoạn văn</b> xuyên ranh giới trang (chỉ xuống đoạn khi dòng trước kết thúc bằng <code>. : ? ! ;</code> và dòng sau bắt đầu bằng chữ hoa hoặc gạch đầu dòng; từ tiếng Anh gạch nối cuối dòng được nối liền).</td><td>Biến văn bản ngắt dòng theo khổ giấy thành văn xuôi liền mạch; các đoạn cách nhau bằng dòng trống.</td></tr>
+</table></div>
+
+<h3>5.2 Khôi phục "ư" bị thay bằng dấu gạch nối (<code>hyphen_fix</code>)</h3>
+<p>Một số font đời cũ vẽ "ư" thành "-" nên ảnh trang cũng in dấu "-" và OCR đọc ra "-" luôn. Quy tắc cố định theo dữ liệu: <b>"-" nằm trong chữ là "ư"</b>. Có ba lớp kiểm để không sửa nhầm:</p>
+<ol>
+<li>Chữ đứng trước "-" phải là <b>phụ âm đầu thật</b> của tiếng Việt (ngh, ng, nh, ch, kh, th, tr, gh, gi, ph, qu, hoặc một phụ âm đơn), nên "x-ray", "e-mail", "Nam-Á", "kinh tế-xã hội" không bao giờ bị xét.</li>
+<li>Kết quả phải là <b>âm tiết thật</b> trong <code>syllables.json</code>; không thì giữ nguyên ("t- Statistics", "n- butan").</li>
+<li>Dạng có khoảng trắng ("t- liệu", dễ trùng cách viết thật) chỉ sửa khi cả bài có ít nhất vài chỗ sửa được (font hỏng lặp hàng chục chỗ, gạch nối thật chỉ lẻ tẻ). Dạng liền chữ ("ng-ời") gần như không thể là gạch nối thật nên sửa luôn.</li>
+</ol>
+<p>Ví dụ: <code>tr-ờng → trường</code>, <code>Nh-ng → Nhưng</code>, <code>D-ỚI → DƯỚI</code>, <code>h- ớng → hướng</code> (bỏ khoảng trắng vì ư + ơ là một nguyên âm đôi), <code>t- liệu → tư liệu</code>, <code>trung - ơng → trung ương</code>, <code>xư a → xưa</code>.</p>
+<div class="box warn"><b class="t">Chỗ mơ hồ: "ph-ơng"</b>
+<p>Font mất cả "ư" lẫn dấu thanh của "ơ", nên "ph-ơng" có thể là phương / phường / phưởng / phượng. Sửa im lặng thành chữ sai nghĩa nguy hiểm hơn chữ hỏng còn thấy được. Cách gỡ, theo thứ tự:</p>
+<ol>
+<li><b>Bằng chứng cả bài:</b> nếu bài còn ≥ 3 chỗ có dấu thanh sau "-" ("tr-ờng", "đ-ợc") và không ít hơn nửa số chỗ "ơ" trần, thì font <i>không</i> làm mất dấu thanh, "ơ" trần đúng là thanh ngang → sửa luôn. Chỉ 11 / 94 bài đo được có bằng chứng này.</li>
+<li><b>Chọn bằng ngữ cảnh</b> (tuỳ chọn, <code>--hyphen-lm-model</code>, cần GPU): mô hình ngôn ngữ nhỏ (Qwen3-0.6B) chấm từng cách đọc trong câu thật, chỉ nhận cách tốt nhất khi hơn cách nhì ít nhất 4,0 nat (khoảng 55 lần). Đo trên 674 chỗ mơ hồ: 638 đúng, 3 sai, 33 bỏ qua.</li>
+<li>Không chắc thì <b>để nguyên chữ hỏng</b>; đoạn sẽ bị mã <code>lost_letters</code> loại ở bước chất lượng (trước khi có cách gỡ này: 220 đoạn / 79 bài trong một lần chạy mẫu).</li>
+</ol></div>
+
+<h3>5.3 Nối metadata và dựng bản ghi</h3>
+<ul>
+<li><b>Nối theo luồng một lượt</b> <code>metadata/vjol_merged.jsonl</code> (469 MB): chỉ giữ dòng của bài có checkpoint, nối qua <code>article_id</code>. Bỏ <code>abstract</code> và trường nặng để không phình RAM. Dòng JSON hỏng bị bỏ và đếm. Thiếu file thì cảnh báo, bản ghi thiếu tiêu đề / tạp chí / năm.</li>
+<li><b>Năm</b> = năm trong metadata, nếu không hợp lệ thì năm của thư mục. Hợp lệ là trong [1900; 2100] và khác 1970 (mốc Unix 0, giá trị mặc định khi thiếu ngày).</li>
+<li><b>Mỗi checkpoint một bản ghi</b>, theo <code>CORPUS_SCHEMA</code>: <code>doc_id</code> (băm ổn định từ sha256 PDF), <code>source_key = vjol</code>, <code>source_path</code> (đường dẫn PDF), <code>source_sha256</code> (băm văn bản), <code>text</code>, <code>license</code>, <code>owner</code>, <code>rights_status = unknown</code>, và các cột sẽ điền ở stage sau (<code>language</code>, <code>quality_band</code>, <code>reason_codes</code>, <code>token_count</code>, <code>dedup_family_id</code>).</li>
+<li><b><code>meta</code> (JSON):</b> <code>article_id</code>, <code>galley_id</code>, <code>journal_slug</code>, <code>journal_title</code>, <code>year</code>, <code>year_dir</code>, <code>journal_language_raw</code>, <code>doi</code>, <code>title</code>, <code>keywords</code>, <code>metadata_found</code>, <code>galley_match</code>, <code>pages</code>, <code>garbled_pages</code>, <code>no_text_layer_pages</code>, <code>page_lines_removed</code>, và các số đếm từng bước làm sạch cùng <code>repairs</code> (mỗi luật chạm vào bài bao nhiêu chỗ). Dùng để lọc bài theo mức bị sửa và truy ngược một lỗi về luật đã chạm vào nó.</li>
+<li>Bài rỗng sau làm sạch bị bỏ; số bị bỏ theo lý do (lỗi / bỏ qua / không có chữ) được ghi log.</li>
+</ul>
+
+<h2 id="gd-c">6. Giai đoạn C: pipeline chung</h2>
+<figure id="hinh5"><svg viewBox="0 0 1190 420" role="img" aria-label="Các stage của pipeline chung, mỗi stage ghi một file Parquet; finalize ghi clean corpus, đoạn liền mạch cho CPT; cpt_pack cắt và ghép chuỗi"><defs><marker id="ah-hinh5" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker></defs>
+<rect class="n n-proc" x="10" y="30" width="130" height="78" rx="7"/>
+<text x="75.0" y="57.0" text-anchor="middle" class="tb">ingest</text>
+<text x="75.0" y="73.0" text-anchor="middle">đọc bản ghi</text>
+<text x="75.0" y="89.0" text-anchor="middle">từ checkpoint</text>
+<text class="capm" x="75" y="128" text-anchor="middle">01_ingest.parquet</text>
+<rect class="n n-proc" x="182" y="30" width="130" height="78" rx="7"/>
+<text x="247.0" y="49.0" text-anchor="middle" class="tb">prepare</text>
+<text x="247.0" y="65.0" text-anchor="middle">chuẩn hoá,</text>
+<text x="247.0" y="81.0" text-anchor="middle">xoá dòng lặp,</text>
+<text x="247.0" y="97.0" text-anchor="middle">cắt đoạn</text>
+<polyline class="ar" points="140,69 182,69" marker-end="url(#ah-hinh5)"/>
+<text class="capm" x="247" y="128" text-anchor="middle">02_prepare.parquet</text>
+<rect class="n n-proc" x="354" y="30" width="130" height="78" rx="7"/>
+<text x="419.0" y="57.0" text-anchor="middle" class="tb">language</text>
+<text x="419.0" y="73.0" text-anchor="middle">fastText lid.176</text>
+<text x="419.0" y="89.0" text-anchor="middle">theo đoạn văn</text>
+<polyline class="ar" points="312,69 354,69" marker-end="url(#ah-hinh5)"/>
+<text class="capm" x="419" y="128" text-anchor="middle">03_language.parquet</text>
+<rect class="n n-proc" x="526" y="30" width="130" height="78" rx="7"/>
+<text x="591.0" y="49.0" text-anchor="middle" class="tb">quality</text>
+<text x="591.0" y="65.0" text-anchor="middle">điểm 0–100,</text>
+<text x="591.0" y="81.0" text-anchor="middle">band A/B/C/D,</text>
+<text x="591.0" y="97.0" text-anchor="middle">mã lỗi</text>
+<polyline class="ar" points="484,69 526,69" marker-end="url(#ah-hinh5)"/>
+<text class="capm" x="591" y="128" text-anchor="middle">04_quality.parquet</text>
+<rect class="n n-proc" x="698" y="30" width="130" height="78" rx="7"/>
+<text x="763.0" y="49.0" text-anchor="middle" class="tb">dedup</text>
+<text x="763.0" y="65.0" text-anchor="middle">trùng y hệt,</text>
+<text x="763.0" y="81.0" text-anchor="middle">gần trùng,</text>
+<text x="763.0" y="97.0" text-anchor="middle">bao hàm</text>
+<polyline class="ar" points="656,69 698,69" marker-end="url(#ah-hinh5)"/>
+<text class="capm" x="763" y="128" text-anchor="middle">05_dedup.parquet</text>
+<rect class="n n-raw" x="870" y="30" width="130" height="78" rx="7"/>
+<text x="935.0" y="49.0" text-anchor="middle" class="tb">embed + reduce</text>
+<text x="935.0" y="65.0" text-anchor="middle">tuỳ chọn:</text>
+<text x="935.0" y="81.0" text-anchor="middle">bản đồ embedding</text>
+<text x="935.0" y="97.0" text-anchor="middle">(bản full: tắt)</text>
+<polyline class="ar" points="828,69 870,69" marker-end="url(#ah-hinh5)"/>
+<text class="capm" x="935" y="128" text-anchor="middle">06_embeddings.parquet</text>
+<text class="capm" x="935" y="142" text-anchor="middle">07_reduced.parquet</text>
+<rect class="n n-proc" x="1042" y="30" width="130" height="78" rx="7"/>
+<text x="1107.0" y="49.0" text-anchor="middle" class="tb">finalize</text>
+<text x="1107.0" y="65.0" text-anchor="middle">đơn vị tri thức,</text>
+<text x="1107.0" y="81.0" text-anchor="middle">đoạn liền mạch,</text>
+<text x="1107.0" y="97.0" text-anchor="middle">audit, báo cáo</text>
+<polyline class="ar" points="1000,69 1042,69" marker-end="url(#ah-hinh5)"/>
+<rect class="n n-disk" x="618" y="170" width="290" height="96" rx="7"/>
+<text x="763.0" y="198.0" text-anchor="middle" class="tb">state/dedup_index/vjol/</text>
+<text x="763.0" y="214.0" text-anchor="middle" class="tm">&lt;run&gt;.parquet: dấu vân tay mọi</text>
+<text x="763.0" y="230.0" text-anchor="middle">văn bản (sha256, MinHash, điểm)</text>
+<text x="763.0" y="246.0" text-anchor="middle">vòng 2 gộp mọi nguồn (dedup_global)</text>
+<polyline class="ar" points="763,108 763,170" marker-end="url(#ah-hinh5)"/>
+<rect class="n n-disk" x="950" y="170" width="230" height="110" rx="7"/>
+<text x="1065.0" y="189.0" text-anchor="middle" class="tb">&lt;run&gt;/ (kết quả cuối)</text>
+<text x="1065.0" y="205.0" text-anchor="middle" class="tm">clean.parquet</text>
+<text x="1065.0" y="221.0" text-anchor="middle" class="tm">knowledge_units.parquet</text>
+<text x="1065.0" y="237.0" text-anchor="middle" class="tm">cpt_segments.parquet</text>
+<text x="1065.0" y="253.0" text-anchor="middle" class="tm">audit.json, manifest.json</text>
+<text x="1065.0" y="269.0" text-anchor="middle" class="tm">report.html</text>
+<polyline class="ar" points="1107,108 1107,170" marker-end="url(#ah-hinh5)"/>
+<rect class="n n-dec" x="10" y="170" width="580" height="96" rx="7"/>
+<text x="300.0" y="198.0" text-anchor="middle" class="tb">Vân tay stage (runner.py)</text>
+<text x="300.0" y="214.0" text-anchor="middle">vân tay = băm(tham số của stage + phiên bản code + vân tay stage trước)</text>
+<text x="300.0" y="230.0" text-anchor="middle">đổi tham số hoặc dữ liệu vào → stage đó và các stage sau tự chạy lại;</text>
+<text x="300.0" y="246.0" text-anchor="middle">vân tay khớp → bỏ qua, không tính lại</text>
+<rect class="n n-proc" x="900" y="320" width="280" height="80" rx="7"/>
+<text x="1040.0" y="340.0" text-anchor="middle" class="tb">scripts/cpt_pack.py (tách riêng)</text>
+<text x="1040.0" y="356.0" text-anchor="middle">cắt đúng ranh giới đoạn, ghép best-fit</text>
+<text x="1040.0" y="372.0" text-anchor="middle">thành chuỗi 8.192 token; EOS chỉ</text>
+<text x="1040.0" y="388.0" text-anchor="middle">ở cuối văn bản thật</text>
+<polyline class="ar" points="1065,280 1065,320" marker-end="url(#ah-hinh5)"/>
+<text class="lbl halo" x="1073" y="304" text-anchor="start">cpt_segments</text>
+<text class="lbl" x="1073" y="304" text-anchor="start">cpt_segments</text></svg><figcaption><b>Hình 5.</b> Pipeline chung. Chạy bằng <code>scripts/run_pipeline.py --mix vjol=… --total …</code>. Sau dedup vòng 1, dấu vân tay của mọi văn bản được ghi riêng để vòng 2 so VJOL với các nguồn khác; <code>cpt_pack</code> nằm ngoài pipeline để đổi cỡ model không phải chạy lại pipeline.</figcaption></figure>
+<p>Code: <code>vi_corpus/pipeline/</code>, chạy bằng <code>scripts/run_pipeline.py</code>. Nguồn <code>vjol</code> dùng hồ sơ riêng:</p>
+<pre><code>"vjol": SourceProfile(chunked=True, min_words=80, allowed_langs=("vi", "en"), min_lang_score=0.5,
+                      odd_words=True, perplexity=True, keep_table_cells=True)
+SOURCE_PRIORITY["vjol"] = 0     # khi trùng với nguồn khác, giữ bản VJOL</code></pre>
+<div class="tw"><table>
+<tr><th>Stage</th><th>Làm gì</th><th>Thông số / quyết định cho VJOL</th><th>Vì sao</th></tr>
+<tr><td><b>ingest</b></td><td>Gọi giai đoạn B, ra mỗi bài một bản ghi nguyên văn bản.</td><td><code>chunked=True</code>: đọc hết bài rồi mới lấy mẫu.</td><td>Với nguồn dài, "mẫu" là một đoạn chứ không phải cả bài (lần chạy mẫu "10.000 mẫu" nghĩa là 10.000 đoạn).</td></tr>
+<tr><td><b>prepare</b></td><td>(1) <code>normalize</code>: chuẩn hoá Unicode NFC, bỏ ký tự điều khiển và ký tự vô hình, gộp khoảng trắng; đổi ký tự vùng riêng của font Symbol (U+F020–F0FE) về Unicode (± α…); đổi chữ "ƣ" (U+01A3) về "ư". (2) <code>lines</code>: xoá dòng lặp; với VJOL <code>keep_table_cells</code> giữ ô bảng ngắn lặp cạnh nhau (là dữ liệu). (3) <code>chunk</code>: cắt đoạn theo token Qwen3.</td><td>Đoạn mục tiêu <b>1.024</b> token, tối đa <b>2.048</b>, đoạn cuối &lt; 256 thì gộp lại. Ưu tiên chỗ cắt: tiêu đề chương → dòng trống → hết câu → cắt cứng. Lấy mẫu đoạn theo <b>băm SHA-256</b> của (seed, nguồn, <code>parent_doc_id</code>, <code>chunk_index</code>) rồi lấy n đoạn nhỏ nhất. Gắn <code>doc_sha256</code> và <code>doc_minhash</code> của CẢ văn bản gốc.</td><td>Mẫu n nhỏ nằm trong mẫu n lớn; sửa chữ một bài không làm đổi đoạn được chọn của bài khác. Dedup chạy theo văn bản, không theo đoạn.</td></tr>
+<tr><td><b>language</b></td><td>fastText <code>lid.176</code> nhận diện THEO ĐOẠN VĂN (tối đa 50 đoạn rải đều mỗi văn bản). Công thức toán và khối code bị bỏ trước khi nhận diện.</td><td><code>language</code> = ngôn ngữ chiếm nhiều chữ cái nhất; <code>lang_score</code> = độ thuần × độ tin cậy; <code>lang_mix</code> = tỷ lệ chữ cái theo ngôn ngữ. VJOL cho phép <b>vi và en</b>; ngưỡng <code>min_lang_score</code> 0,5.</td><td>Bài báo trộn Việt - Anh (tóm tắt, thuật ngữ). Trọng số theo chữ cái chứ không theo ký tự: chữ số, ngoặc không có ngôn ngữ.</td></tr>
+<tr><td><b>quality</b></td><td>Đo chỉ số, chấm 0–100, xếp band A (≥ 85) / B (≥ 70) / C (≥ 55) / D, kèm <code>reason_codes</code>. Giữ A, B, C.</td><td>Bảng mã lỗi bên dưới. VJOL bật thêm <code>odd_words</code> (từ lạ) và <code>perplexity</code> (Qwen3-0.6B).</td><td>Chữ hỏng vẫn toàn chữ Latinh có dấu nên fastText không thấy; cần lưới an toàn thứ hai sau bộ dò ở giai đoạn A.</td></tr>
+<tr><td><b>dedup</b></td><td>Vòng 1 trong lần chạy: (a) y hệt theo sha256 văn bản; (b) gần trùng bằng MinHash; (c) "bao hàm" theo đoạn văn; (d) đoạn y hệt đoạn tốt hơn ở văn bản khác. Ghi kho dấu vân tay cho vòng 2.</td><td>MinHash cả văn bản: 128 hoán vị, shingle 5 từ, LSH 16 băng × 8 hàng, xác nhận Jaccard ≥ <b>0,8</b>. Bao hàm: văn bản có ≥ 3 đoạn văn dài (≥ 20 từ) mà ≥ 80% nằm trong MỘT văn bản lớn hơn thì bị loại. Bản giữ: nguồn ưu tiên cao hơn (VJOL = 0), rồi điểm chất lượng, rồi <code>doc_id</code>. Gắn <code>dedup_family_id</code>.</td><td>Chương chép vào sách khác, bài nằm trong tuyển tập không bị MinHash cả văn bản bắt. Họ trùng dùng để chia train / test sau này theo cùng một phía, nên không chia ở tầng corpus.</td></tr>
+<tr><td><b>embed + reduce</b></td><td>Vector hoá và gom cụm HDBSCAN trên vector gốc, PCA / UMAP 2D chỉ để vẽ.</td><td>Mẫu 10.000 đoạn có bật. <b>Dự kiến tắt khi chạy cả kho</b> (<code>--embedder none</code>).</td><td>Bản đồ chỉ để xem; vẽ ~900 nghìn điểm là ~415 MB HTML nên không mở được.</td></tr>
+<tr><td><b>finalize</b></td><td>Ghi <code>clean.parquet</code> (đoạn còn sống), <code>knowledge_units.parquet</code> (mỗi đoạn là một đơn vị CPT, có <code>split_bucket</code> băm từ họ trùng), <code>cpt_segments.parquet</code>, <code>audit.json</code>, <code>manifest.json</code>, <code>report.html</code>.</td><td><code>cpt_segments</code>: nối mọi đoạn LIỀN NHAU còn giữ của một bài thành một segment, không giới hạn độ dài; đoạn bị loại thì ngắt. Metadata (tiêu đề, tạp chí, năm, DOI) thu vào cột riêng.</td><td>Cỡ model và độ dài ngữ cảnh chưa chốt, nên pipeline không khoá vào một độ dài.</td></tr>
+<tr><td><b>cpt_pack</b><br>(ngoài pipeline)</td><td>Cắt segment đúng ranh giới đoạn, ghép best-fit decreasing thành chuỗi cố định.</td><td>Mặc định <b>8.192 token</b>; EOS chỉ ở cuối THẬT của văn bản; tiền tố metadata <b>tắt</b> (bật bằng <code>--use-metadata-prefix</code>, nằm ở cột riêng để trainer không tính loss).</td><td>Best-fit giảm cắt cụt; huấn luyện phải che attention giữa các mảnh cùng chuỗi. Đổi cỡ model chỉ chạy lại bước CPU rẻ này.</td></tr>
+</table></div>
+
+<h3>6.1 Mã lỗi chất lượng liên quan tới VJOL</h3>
+<div class="tw"><table>
+<tr><th>Loại</th><th>Mã</th><th>Ngưỡng</th><th>Bắt gì</th></tr>
+<tr><td rowspan="9"><b>Cứng</b> (band D, bất kể điểm)</td><td><code>too_short</code> / <code>lang_not_allowed</code> / <code>low_alpha</code></td><td>&lt; 80 từ / ngoài vi, en / chữ cái &lt; 55%</td><td>Đoạn quá ngắn, sai ngôn ngữ, toàn số.</td></tr>
+<tr><td><code>garbled_font</code></td><td>≥ 8% từ có ≥ 2 dấu thanh</td><td>Lưới an toàn của bộ dò. <b>Ngưỡng cứng 8% giữ cao hơn 5% ở giai đoạn A</b>: loại bỏ nặng tay hơn OCR lại một trang sạch.</td></tr>
+<tr><td><code>private_use_chars</code> / <code>math_font_junk</code></td><td>≥ 5 ký tự vùng riêng / ≥ 5 chữ Ấn Độ - Ả Rập - Thái</td><td>Ký hiệu Symbol sót, rác của font toán. Chữ Hán không tính.</td></tr>
+<tr><td><code>lost_diacritics</code></td><td>từ không dấu ≥ 2%</td><td>Tiếng Việt mất dấu. Miễn tiếng Anh.</td></tr>
+<tr><td><code>reversed_text</code></td><td>độ lợi ≥ 0,25 và bản ngược ≥ 0,5 hợp lệ</td><td>Chữ đảo ngược do trang xoay.</td></tr>
+<tr><td><code>lost_letters</code></td><td>≥ 3 chỗ "-" thay ư / ơ trong đoạn</td><td>Chỗ <code>hyphen_fix</code> không sửa được. Ngưỡng 3: 323 đoạn sạch của nhãn chuẩn cao nhất 2 chỗ, 0 cờ nhầm.</td></tr>
+<tr><td><code>odd_words</code></td><td>từ lạ ≥ 15%, hoặc ≥ 8% kèm perplexity ≥ 120</td><td>"Từ lạ" = từ Latinh không phải âm tiết hợp lệ và xuất hiện ở &lt; 3 tạp chí (mẫu &lt; 10 tạp chí thì đếm theo bài).</td></tr>
+<tr><td><code>repeated_ngrams</code> / <code>duplicate_lines</code> / <code>replacement_chars</code></td><td>nhiều ngưỡng</td><td>Vòng lặp, dòng lặp, ký tự thay thế.</td></tr>
+<tr><td>(miễn)</td><td>đoạn gần như toàn công thức / code</td><td>Được miễn các mã "hình dạng" (symbol_heavy, digit_heavy…); vòng lặp trong công thức vẫn bị bắt.</td></tr>
+<tr><td rowspan="3"><b>Mềm</b> (trừ điểm)</td><td><code>high_perplexity</code></td><td>perplexity ≥ 120: −10</td><td>Một mình chưa đủ loại vì bảng số, công thức, tên riêng cũng cao.</td></tr>
+<tr><td><code>low_lang_score</code> / <code>low_diacritic</code></td><td>−10 / −15</td><td>Ngôn ngữ không thuần; tiếng Việt gần như không dấu.</td></tr>
+<tr><td><code>reference_list</code> / <code>mixed_language</code></td><td>chỉ gắn nhãn, không trừ</td><td>Đoạn phần lớn là mục tham khảo còn sót; đoạn song ngữ (được giữ).</td></tr>
+<tr><td><b>Chỉ đo</b></td><td><code>gibberish</code>, <code>tone_shift</code>, <code>dropped_letters</code>, <code>joined_words</code></td><td><code>HARD_DETECTOR_THRESHOLDS = None</code></td><td>Chưa bộ nào qua cổng precision 0,9 trên 400 nhãn chuẩn, nên chỉ lưu số đo.</td></tr>
+</table></div>
+
+<h2 id="luu-dia">7. Mọi thứ nằm ở đâu trên đĩa</h2>
+<pre><code>data/
+├── raw/vjol/                                  # nguyên bản, không bao giờ sửa
+│   ├── &lt;năm&gt;/&lt;article_id&gt;_&lt;galley_id&gt;.pdf
+│   └── metadata/vjol_merged.jsonl             # chỉ file này được đọc
+├── interim/
+│   ├── vjol_text/&lt;sha256&gt;.json                # CHECKPOINT trích text: 1 file / nội dung PDF duy nhất
+│   └── vjol_ocr_cache/&lt;2 ký tự đầu&gt;/&lt;sha256&gt;.json   # kết quả OCR từng trang (khoá "&lt;trang&gt;:e|r" + chữ ký bộ OCR)
+├── state/
+│   ├── inventory_vjol_text.json               # cache sha256 theo (đường dẫn, size, mtime)
+│   ├── vjol_extract/
+│   │   ├── claims/&lt;sha256&gt;.lock               # khoá chia việc giữa 4 GPU
+│   │   └── gpu&lt;N&gt;/                             # khoá chống chạy trùng + server.log của vLLM
+│   └── dedup_index/vjol/&lt;run&gt;.parquet         # dấu vân tay dedup vòng 1 (cho vòng 2)
+├── logs/vjol_extract_gpu&lt;N&gt;.out, vjol_full.log
+└── processed/
+    ├── ocr_bakeoff/syllables.json, unaccented.json         # từ điển cho bộ dò (dựng từ SEA-PILE v2)
+    ├── vjol/vjol.parquet                                   # bản xem nhanh (không có cột meta)
+    ├── vjol_garbled_check/, vjol_reocr_plan/, vjol_diagnose/   # kết quả công cụ đo CPU
+    ├── vjol_font_canary/font_groups_bad.json.off           # nhóm font xấu: ĐÃ TẮT
+    └── pipeline_runs/&lt;run&gt;/
+        01_ingest … 05_dedup .parquet, [06_embeddings, 07_reduced]
+        clean.parquet, knowledge_units.parquet, cpt_segments.parquet
+        audit.json, manifest.json, report.html</code></pre>
+<p>Mọi đường dẫn trong checkpoint là <b>tương đối so với <code>--data-root</code></b>, nên chuyển cả thư mục dữ liệu sang đĩa khác vẫn chạy tiếp được. Khoá tên theo sha256 chứ không theo tên file, vì cùng nội dung ở nhiều đường dẫn chỉ cần một checkpoint (ghi đủ các đường dẫn), và đổi tên / chuyển file không làm mất kết quả.</p>
+
+<h2 id="cong-cu">8. Công cụ đo và kiểm</h2>
+<p>Hầu hết là CPU, đọc checkpoint hoặc kết quả một lần chạy, không sửa dữ liệu. Nguyên tắc chung của nhóm này: <b>đo trước, chỉnh ngưỡng sau</b>, và không chỉnh ngưỡng theo mẫu thi cuối.</p>
+<div class="tw"><table>
+<tr><th>Script (<code>scripts/vjol/</code>)</th><th>Dùng để</th></tr>
+<tr><td><code>check_garbled.py</code></td><td>Đo bộ dò chữ hỏng trên checkpoint: số trang / bài bị nghi, quét ngưỡng, phân bố theo năm, ước số phút OCR; ghi <code>blind_spots.txt</code> (trang đáng xem mà không bị nghi).</td></tr>
+<tr><td><code>check_garbled_missed.py</code></td><td>Đếm trang có lớp chữ lệch hẳn khỏi OCR (độ trùng từ thấp) mà bộ dò để lọt.</td></tr>
+<tr><td><code>check_control_chars.py</code></td><td>Phân bố tỷ lệ ký tự điều khiển của mọi trang <code>text</code> (cơ sở chốt ngưỡng 0,1).</td></tr>
+<tr><td><code>plan_reocr.py</code></td><td>Ước bao nhiêu bài / trang / giờ GPU nếu OCR lại cả bài theo từng bộ tín hiệu và ngưỡng; cảnh báo nếu &gt; 15% số trang.</td></tr>
+<tr><td><code>font_canary.py</code></td><td>OCR vài trang mỗi nhóm producer / creator để so với lớp chữ (độ giống ký tự, độ trùng từ). Hiện chỉ để đo.</td></tr>
+<tr><td><code>diagnose.py</code></td><td>Xem từng trang của một bài (<code>inspect</code>); phân bố producer (<code>producers</code>).</td></tr>
+<tr><td><code>audit_run.py</code></td><td>Lỗi còn lọt trong đoạn được giữ (email, "-" thay ư, tiêu đề, từ không dấu, từ lạ, perplexity cao…), tỷ lệ bị loại theo tạp chí / tạp chí × năm, đoạn bị loại chỉ vì một luật.</td></tr>
+<tr><td><code>groundtruth.py</code></td><td>Lấy ~400 đoạn (nửa nghi ngờ, nửa ngẫu nhiên, tối đa 3 đoạn / bài, chia hai nửa <i>theo bài</i> thành tune / holdout) để gán nhãn, rồi đo precision / recall từng bộ dò.</td></tr>
+<tr><td><code>compare_runs.py --paired</code></td><td>So hai lần chạy trên các đoạn có CÙNG <code>doc_id</code>: giữ / loại ra sao, mã đổi thế nào, chữ đổi ở đâu; phân biệt đổi ở thân với xê dịch biên đoạn.</td></tr>
+<tr><td><code>make_golden.py</code></td><td>Sinh ca thử vàng cho test (<code>tests/data/vjol_golden.jsonl</code>) từ nhãn chuẩn.</td></tr>
+<tr><td><code>make_final_sample.py</code> / <code>review_sample.py</code> / <code>show_flags.py</code></td><td>Mẫu thi cuối (hạt giống khác, chỉ đo một lần); bộ đọc tay chuẩn; xem chữ cụ thể của đoạn bị gắn cờ nhầm / sót.</td></tr>
+<tr><td><code>learn_tone_shift.py</code> / <code>eval_hyphen_lm.py</code></td><td>Học bảng lệch dấu từ dữ liệu; chọn <code>margin</code> của bộ chọn "ph-ơng".</td></tr>
+<tr><td><code>seed_ocr_cache.py</code></td><td>Nạp bộ nhớ đệm OCR từ checkpoint cũ trước khi trích lại sau khi đổi phiên bản.</td></tr>
+<tr><td><code>find_surrogate_pdfs.py</code></td><td>Tìm PDF có surrogate lẻ để tái hiện lỗi surrogate lẻ gặp khi chạy cả kho.</td></tr>
+</table></div>
+<div class="box warn"><b class="t">Giới hạn của nhãn chuẩn</b>
+<p>400 nhãn dùng để đo precision / recall là nhãn do một mô hình ngôn ngữ gán sau khi đọc đầu - giữa - cuối từng đoạn, nhóm dự án chốt dùng làm nhãn chuẩn, <b>không phải nhãn của người</b>. Nửa holdout chỉ để đo, không chỉnh ngưỡng theo nó.</p></div>
+
+<h2 id="so-do">9. Tiến độ và số đo thực tế</h2>
+
+<h3>9.1 Lượt trích text cả kho đang chạy (đo ngày 2026-11-05)</h3>
+<p>Số liệu lấy từ phiên theo dõi mỗi ~10 phút, 21 lần đo từ 05:20 đến 08:25. Số <b>checkpoint</b> (đếm file trong <code>interim/vjol_text/</code>) là con số đáng tin nhất; thanh tiến độ của chương trình cho thêm bức tranh toàn cục nhưng phần ước thời gian của nó dao động quá mạnh.</p>
+<div class="tw"><table>
+<tr><th>Chỉ số</th><th>Giá trị</th><th>Ghi chú</th></tr>
+<tr><td>Checkpoint đã có</td><td><b>69.807</b> lúc 08:25 (66.120 lúc 05:20)</td><td>Tính cả các file đã làm từ những lượt trước.</td></tr>
+<tr><td>Thanh tiến độ</td><td>69.331 / 167.512 mục (<b>41%</b>) sau 24 giờ 42 phút</td><td>167.512 nhỏ hơn 177.031 PDF. Nhiều khả năng do gộp các PDF trùng nội dung (một nội dung chỉ xử lý một lần); tôi suy ra từ cách code kiểm kê, chưa thấy dòng log kiểm kê để xác nhận.</td></tr>
+<tr><td>Tốc độ 3 giờ gần nhất</td><td>+3.687 checkpoint, khoảng <b>1.200 / giờ</b> (~20 / phút)</td><td>05:20 → 08:25.</td></tr>
+<tr><td>Tốc độ trung bình cả lượt</td><td>khoảng <b>2.800 mục / giờ</b></td><td>69.331 mục trong 24,7 giờ. Hai tốc độ chênh nhau hơn gấp đôi nên tốc độ không đều.</td></tr>
+<tr><td>Còn lại</td><td>~98.000 mục</td><td>Theo tốc độ 3 giờ gần nhất: ~82 giờ (~3,4 ngày). Theo tốc độ trung bình: ~35 giờ. Phần ước thời gian của thanh tiến độ nhảy từ 68 giờ lên hơn 9.000 giờ nên không dùng được.</td></tr>
+<tr><td>Tổng thời gian dự kiến</td><td>khoảng 2,5 đến 4,5 ngày</td><td>Kế hoạch ban đầu đặt ngưỡng dừng để xem xét lại nếu cả lượt quá ~7 ngày; ước lượng hiện tại vẫn dưới ngưỡng đó.</td></tr>
+<tr><td>Dung lượng checkpoint</td><td>2,5 → 2,6 GB cho ~69.800 file (~37 KB / file)</td><td>Nếu kích thước trung bình giữ nguyên thì cả kho khoảng 6 GB. Ổ đĩa còn 820 GB trống (83% đầy), không đổi trong 3 giờ.</td></tr>
+</table></div>
+<div class="box warn"><b class="t">Các đợt đứng rồi tăng vọt</b>
+<p>Tốc độ không trơn: từ 07:21 đến 07:53 chỉ thêm 45 checkpoint (67.978 → 68.023) trong 32 phút, rồi từ 07:53 đến 08:14 thêm 1.715 (68.023 → 69.738) trong 21 phút. Đợt đứng tương tự xuất hiện lúc 06:26 đến 06:37 (+32). Chưa rõ nguyên nhân. Một giả thuyết hợp lý là cả 4 GPU cùng gặp những file có nhiều trang scan (OCR chậm hơn đọc lớp chữ nhiều lần), nhưng đó mới là suy đoán; cần xem log từng GPU (<code>logs/vjol_extract_gpu*.out</code>) và <code>nvidia-smi</code> trong lúc đứng để biết chắc.</p></div>
+<p><b>Chưa có số:</b> tỷ lệ trang phải OCR, tỷ lệ trang bị loại (flagged), số file lỗi và kết quả đọc tay mẫu bài mới của lượt cả kho này.</p>
+<p><b>Hai lỗi thật đã gặp và sửa trong lượt cả kho:</b> (1) tên file tạm cố định làm 3 trong 4 tiến trình GPU chết cùng lúc vì ghi đè nhau; (2) ký tự surrogate lẻ trong vài PDF làm cả 4 tiến trình chết khi ghi JSON. Cả hai đều đã tái hiện bằng test và sửa (mục 4.5). Sau đó lượt chạy được khởi động lại một lần để lưu thêm bản markdown của OCR; file đã xong không bị làm lại.</p>
+
+<h3>9.2 Số đo trên các lần chạy mẫu</h3>
+<p>Hai điều cần nhớ khi đọc: các lần chạy mẫu (<code>vjol_10k_*</code>) là <b>10.000 đoạn</b> lấy từ ~2.900 bài, không phải cả kho; và số "giờ cộng dồn" cộng cả thời gian chờ dựng server vLLM của từng GPU nên không dùng để ước giờ cả kho.</p>
+<div class="tw"><table>
+<tr><th>Mốc</th><th>Số đo</th></tr>
+<tr><td><b>Lần chạy mẫu đầu</b></td><td>3.000 PDF → 2.937 nội dung duy nhất (63 file trùng sha256, chưa kiểm chắc), 7,3 trang / bài; trang <code>text</code> 16.381, <code>tcvn3</code> 1.870, <code>ocr_vlm</code> 2.911, <code>empty</code> 302. OCR: <code>mt4k</code> 2.785, <code>rp110</code> 49, <code>baseline</code> 77 (2,6%), flagged 0%. Pipeline: 16.452 đoạn → lấy 10.000, giữ 9.792, trùng chỉ 2 đoạn. <b>Phát hiện ~12% đoạn là chữ hỏng do font</b> mà bộ chấm không thấy.</td></tr>
+<tr><td><b>Sau khi có bộ dò chữ hỏng</b></td><td>Trang cần OCR lại 2.538 (91 bài nâng lên cấp bài); giữ 9.771 / 10.000, <code>garbled_font</code> còn 42 đoạn (0,4%, trước ~12%). 11,44 giờ cộng dồn, ~3 giờ đồng hồ trên 4 GPU. Ngôn ngữ vi 88,4%, en 10,8%, khác 0,8%.</td></tr>
+<tr><td><b>Phân bố công cụ tạo PDF</b></td><td>263 cặp producer / creator; 14,1% trang chữ trúng tín hiệu (đã OCR lại); 117 bài (4,0%) không có trang chữ nào (scan thuần).</td></tr>
+<tr><td><b>Sau khi sửa "ư" và cắt tiêu đề</b></td><td>Giữ 9.768 / 10.000; <code>lost_letters</code> 387 → 3; trích lại ~33 phút (1,74 giờ cộng dồn); 292 trang không lớp chữ được OCR; 23 trang bị lọc câu rác của VLM.</td></tr>
+<tr><td><b>Ký tự điều khiển</b></td><td>2.937 bài / 14.015 trang <code>text</code>: 13.724 trang đúng 0; ngưỡng 0,2 thêm 85 trang / 17 bài; ngưỡng được chốt là 0,1.</td></tr>
+<tr><td><b>Bộ chọn "ph-ơng"</b></td><td>674 chỗ mơ hồ, <code>margin</code> 4,0: 638 đúng / 3 sai / 33 bỏ qua.</td></tr>
+</table></div>
+
+<h2 id="vi-sao">10. Mỗi cơ chế sinh ra từ lỗi nào</h2>
+<p>Gần như mọi cơ chế ở trên được thêm vào vì <b>một lỗi đã thấy trong dữ liệu thật</b>, không phải thiết kế trước. Bảng này để người sau không bỏ nhầm một bước "trông thừa".</p>
+<div class="tw"><table>
+<tr><th>Cơ chế</th><th>Lỗi gây ra nó</th></tr>
+<tr><td>Bộ dò chữ hỏng theo dấu thanh</td><td>12% đoạn là "Baỷng, hieọu…" nhưng điểm 100, band A</td></tr>
+<tr><td>Thêm <code>case</code>, <code>foreign</code>, <code>unknown</code></td><td>Xem tay các trang không bị nghi: họ VNI, chữ lệch mã ASCII, OCR đời cũ, Windows-1258</td></tr>
+<tr><td>Danh sách từ không dấu sinh từ dữ liệu</td><td>Danh sách viết tay có "doanh", "cung" nên loại oan 102 đoạn kinh tế</td></tr>
+<tr><td>Bộ nhớ đệm OCR theo trang</td><td>Mỗi lần đổi tín hiệu phải OCR lại cả mẫu (~3 giờ)</td></tr>
+<tr><td>Xoay thử trang</td><td>Trang scan xoay 180° bị baseline đọc thành chữ ngược mà guard không thấy</td></tr>
+<tr><td>Vẽ thử trang không lớp chữ</td><td>Bài có trang ảnh nằm trong form XObject bị coi là trắng, bài rỗng mất âm thầm</td></tr>
+<tr><td><code>hyphen_fix</code></td><td>Font mất "ư": OCR cũng không cứu (ảnh in "-")</td></tr>
+<tr><td>Luật cả bài theo producer</td><td>OCR đời cũ ABBYY + ScanGate: perplexity 161 mà không trúng tín hiệu nào</td></tr>
+<tr><td>OCR lại cả bài khi <code>tone_shift</code> / <code>dropped_letters</code></td><td>Vá bằng luật có thể ra chữ sai nghĩa (sửa im lặng nguy hiểm hơn lỗi thấy được)</td></tr>
+<tr><td>Tín hiệu <code>control</code></td><td>7 bài bị bộ dò bỏ sót: lớp chữ gần như toàn ký tự điều khiển cắt vụn mọi từ</td></tr>
+<tr><td>Bỏ nhóm font xấu theo producer</td><td>Chỉ dựa trên mẫu; đo độ trùng từ cho mọi bài cần ~16 giờ 4 GPU để bắt ~0,2% bài</td></tr>
+<tr><td>Thay surrogate lẻ, ghi checkpoint lỗi</td><td>Lượt chạy cả kho: 4 GPU chết vì <code>UnicodeEncodeError</code></td></tr>
+<tr><td>File tạm riêng mỗi tiến trình; cache sha256</td><td>Lượt chạy cả kho: 3 / 4 GPU chết vì đua ghi; kiểm kê mất ~2 giờ</td></tr>
+<tr><td>Chunk lấy mẫu theo băm</td><td>Hai lần chạy khác mẫu nên mức tăng giảm vài chục đoạn không quy được cho lần sửa nào</td></tr>
+</table></div>
+
+<h2 id="con-do">11. Hạn chế đã biết</h2>
+<div class="tw"><table>
+<tr><th>Việc</th><th>Hiện trạng</th></tr>
+<tr><td>Kết quả cả kho</td><td>Lượt trích text chưa xong (mục 9.1). Tỷ lệ trang OCR, trang bị loại và số file lỗi của cả kho chưa có số.</td></tr>
+<tr><td>Bốn bộ dò lỗi chữ <code>joined_words</code>, <code>gibberish</code>, <code>tone_shift</code>, <code>dropped_letters</code> ở bước chất lượng</td><td>Chỉ <b>đo</b>, chưa loại đoạn, vì chưa bộ nào đạt precision ≥ 0,9 trên bộ nhãn chuẩn. (<code>tone_shift</code> và <code>dropped_letters</code> vẫn quyết định OCR lại cả bài ở giai đoạn A.)</td></tr>
+<tr><td>Bài có lớp chữ hỏng mà bộ dò bỏ sót</td><td>Khoảng 0,2% (7 bài trong 3.000 ở một phép thử). Đã thêm tín hiệu <code>control</code> cho một kiểu; các kiểu còn lại chưa có bộ dò.</td></tr>
+<tr><td>Lọc trang đọc bằng <code>baseline</code> theo tỷ lệ âm tiết</td><td>Chưa có ngưỡng. Trang baseline hiện vẫn vào kho nếu bộ kiểm trang không báo.</td></tr>
+<tr><td>Dữ liệu cá nhân</td><td>Đã chốt: email che thành <code>&lt;EMAIL&gt;</code>, số điện thoại che thành <code>&lt;PHONE&gt;</code>; khối tác giả đầu bài (dòng ngắn có email) bị bỏ. Tên tác giả ở chỗ khác trong bài không bị che.</td></tr>
+<tr><td>Quyền sử dụng</td><td>Chưa xác nhận giấy phép của từng bài: <code>rights_status = unknown</code>, chỉ gắn nhãn, không loại.</td></tr>
+<tr><td>Bài vừa có bản Việt vừa có bản Anh của cùng một nghiên cứu</td><td>Khác ngôn ngữ nên bước loại trùng không bắt; giữ cả hai. Chưa đo mức độ.</td></tr>
+<tr><td>Bản markdown của OCR (<code>text_md</code>)</td><td>Được lưu nhưng pipeline chưa đọc; cột <code>text_format</code> của segment luôn là "plain". Trang đã OCR trước khi có tính năng này không có <code>text_md</code>.</td></tr>
+<tr><td>Nhãn chuẩn dùng để đo bộ dò</td><td>400 đoạn do một mô hình ngôn ngữ gán nhãn (không phải người), nên chỉ chắc ở mức xu hướng.</td></tr>
+<tr><td>Chưa làm</td><td>Nhận diện font hỏng bằng bảng ánh xạ glyph; bộ phân tích bố cục (nhiều cột, bảng).</td></tr>
+</table></div>
+
+<h2 id="lenh">12. Lệnh chạy</h2>
+<pre><code># 1) Trích text, 4 GPU (trong tmux). Bỏ SAMPLE_DOCS = cả kho. Chạy lại đúng lệnh cũ để làm tiếp.
+DATA_ROOT=data VLLM_BIN=$(which vllm) [SAMPLE_DOCS=3000] ./scripts/vjol/run_extract_vlm.sh
+
+# Xem tiến độ / xuất Parquet xem nhanh
+uv run python scripts/vjol/extract.py --data-root data --status
+uv run python scripts/vjol/extract.py --data-root data --export-only
+
+# Thử không GPU, không OCR (trang scan thành needs_ocr)
+uv run python scripts/vjol/extract.py --data-root data --sample-docs 20 --no-ocr
+
+# 2) Pipeline chung trên mẫu 10.000 đoạn (hai cờ model là tuỳ chọn, cần GPU: chấm perplexity và gỡ chỗ "ph-ơng" mơ hồ)
+uv run python scripts/run_pipeline.py --data-root data --mix vjol=10000 --total 10000 --run-name vjol_10k \
+    [--perplexity-model Qwen/Qwen3-0.6B] [--hyphen-lm-model Qwen/Qwen3-0.6B] [--embedder none]
+
+# 3) Đo lỗi còn lọt, so hai lần chạy
+uv run python scripts/vjol/audit_run.py --run-dir data/processed/pipeline_runs/vjol_10k
+uv run python scripts/vjol/compare_runs.py --paired --old &lt;run cũ&gt; --new &lt;run mới&gt;
+
+# 4) Chuẩn bị huấn luyện CPT
+uv run python scripts/cpt_pack.py --segments data/processed/pipeline_runs/vjol_10k/cpt_segments.parquet --out data/processed/cpt_packed/vjol_10k.parquet   # --seq-len mặc định 8.192</code></pre>
+<p class="sub">Khi chạy thật cần thêm vài bước đi kèm (đặt <code>font_groups_bad.json.off</code>, nạp bộ nhớ đệm bằng <code>seed_ocr_cache.py</code> nếu trích lại sau khi đổi phiên bản, theo dõi 1–2 giờ đầu). Cờ của các lệnh trên đã đối chiếu với phần khai báo tham số trong code, nhưng tôi chưa chạy lệnh nào.</p>
+
+</main>
+</body>
+</html>

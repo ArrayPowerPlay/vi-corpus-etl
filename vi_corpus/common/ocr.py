@@ -58,15 +58,16 @@ def pdf_page_images(pdf_path: Path) -> Iterator[Image.Image]:
             yield page_image(page)
 
 
-def page_image(page: "pymupdf.Page") -> Image.Image:
+def page_image(page: "pymupdf.Page", render: bool = False) -> Image.Image:
     """
     Ảnh của một trang PDF để OCR.
 
     Trang đúng một ảnh (sách scan, PDF stbook) thì lấy thẳng ảnh gốc (không mất chất lượng);
-    trang không có ảnh hoặc nhiều ảnh thì render ở 200 dpi.
+    trang không có ảnh hoặc nhiều ảnh thì render ở 200 dpi. `render=True` luôn render cả trang (trang chữ lỗi font có
+    hình minh hoạ sẽ không bị lấy nhầm hình, J-10).
     """
     images = page.get_images()
-    if len(images) == 1:
+    if len(images) == 1 and not render:
         data = page.parent.extract_image(images[0][0])["image"]
     else:
         data = page.get_pixmap(dpi=200).tobytes("png")

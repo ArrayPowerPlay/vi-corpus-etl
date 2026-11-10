@@ -9,7 +9,7 @@ Runner của pipeline: nối các stage, mỗi stage ghi Parquet riêng vào <ru
       05_dedup.parquet       + rights_gate, status, họ trùng (TẤT CẢ bản ghi, kể cả bị loại)
       06_embeddings.parquet  (doc_id, embedding) để vẽ bản đồ (mọi bản ghi, hoặc chỉ bản giữ lại nếu embed_scope=kept)
       07_reduced.parquet     (doc_id, pca, umap, cluster_id)
-      clean.parquet, knowledge_units.parquet, cpt_blocks.parquet, audit.json, manifest.json, report.html  (finalize)
+      clean.parquet, knowledge_units.parquet, cpt_segments.parquet, audit.json, manifest.json, report.html  (finalize)
     <data_root>/state/dedup_index/<nguồn>/<run>.parquet   kho dấu vân tay dedup vòng 1 (D-09), ghi ở stage dedup
 
 Vân tay stage (G-02): mỗi stage có vân tay = băm(tham số của stage + phiên bản code + vân tay stage trước; ingest thì
@@ -57,7 +57,14 @@ STAGES = ("ingest", "prepare", "language", "quality", "dedup", "embed", "reduce"
 _FILES = {"ingest": "01_ingest.parquet", "prepare": "02_prepare.parquet", "language": "03_language.parquet",
           "quality": "04_quality.parquet", "dedup": "05_dedup.parquet", "embed": "06_embeddings.parquet",
           "reduce": "07_reduced.parquet"}
-_FINAL_FILES = ("clean.parquet", "knowledge_units.parquet", "cpt_blocks.parquet", "audit.json", "report.html")
+_FINAL_FILES = ("clean.parquet", "knowledge_units.parquet", "cpt_segments.parquet", "audit.json", "report.html")
+_STALE_FINAL_FILES = ("cpt_blocks.parquet",)  # đầu ra của bản cũ (trước T-07), finalize xoá để không bị dùng nhầm
+
+
+def peak_rss_mb() -> int:
+    """RAM đỉnh của tiến trình này tính đến giờ (MB, ru_maxrss của Linux tính bằng KB); để biết một lần chạy lớn cần bao nhiêu RAM (VS-06)."""
+    import resource
+    return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss // 1024
 
 
 def _files_of(stage: str) -> list[str]:
@@ -72,8 +79,9 @@ def _digest(obj) -> str:
 
 # Trường SourceProfile mà mỗi stage đọc: vân tay của stage chỉ băm các trường này, để chỉnh ngưỡng chất lượng (R-11)
 # không làm chạy lại prepare / language (tokenizer, fastText trên mọi bản ghi).
-PROFILE_FIELDS = {"ingest": ("chunked",), "prepare": ("chunked", "split_long", "in_doc_line_clean", "cross_line_clean"),
-                  "quality": ("min_words", "max_words", "min_alpha", "web_checks", "allowed_langs", "min_lang_score"),
+PROFILE_FIELDS = {"ingest": ("chunked",), "prepare": ("chunked", "split_long", "in_doc_line_clean", "cross_line_clean", "keep_table_cells"),
+                  "quality": ("min_words", "max_words", "min_alpha", "web_checks", "allowed_langs", "min_lang_score",
+                              "odd_words", "perplexity"),
                   "dedup": ("dedup_group",)}
 
 
@@ -90,7 +98,8 @@ def stage_params(name: str, cfg: RunConfig) -> dict:
     """
     return {
         "ingest": lambda: {"version": INGEST_VERSION, "mix": cfg.mix, "seed": cfg.seed, "rows_per_file": cfg.rows_per_file,
-                           "profiles": _profiles(cfg, "ingest")},
+                           "profiles": _profiles(cfg, "ingest"), "hyphen_lm": cfg.hyphen_lm_model,
+                           **({"shard": list(cfg.shard)} if cfg.shard else {})},  # chỉ khi đặt, để vân tay các lần chạy cũ không đổi (VS-06)
         "prepare": lambda: {"normalizer": normalize.NORMALIZER_VERSION, "lines": lines.LINES_VERSION,
                             "chunk": chunk.CHUNK_VERSION, "minhash": dedup.MINHASH_VERSION, "tokenizer": cfg.tokenizer,
                             "chunk_tokens": [cfg.chunk_target_tokens, cfg.chunk_max_tokens, cfg.chunk_min_tokens],
@@ -100,6 +109,8 @@ def stage_params(name: str, cfg: RunConfig) -> dict:
         "language": lambda: {"version": language.LANG_VERSION, "spans": spans.SPANS_VERSION, "model": cfg.lang_model,
                              "segments": cfg.lang_max_segments},
         "quality": lambda: {"version": quality.QUALITY_VERSION, "spans": spans.SPANS_VERSION,
+                            "vocab": quality.vocab_identity(cfg), "unaccented": quality.unaccented_identity(cfg),
+                            "perplexity": [cfg.perplexity_model, quality.PPL_HIGH] if cfg.perplexity_model else None,
                             "profiles": _profiles(cfg, "quality")},
         "dedup": lambda: {"version": dedup.DEDUP_VERSION, "minhash": dedup.MINHASH_VERSION, "keep_bands": cfg.keep_bands,
                           "rights_gate": cfg.rights_gate, "fuzzy": cfg.fuzzy_threshold, "priority": cfg.source_priority,
@@ -211,8 +222,8 @@ def run_pipeline(specs: dict[str, SourceSpec], data_root: Path, run_dir: Path, c
         rows, stats = fn()
         save_fingerprint(name)  # ghi trước file kết quả: chết giữa chừng thì file chưa có, stage chạy lại
         n = io.write_rows(path, rows)
-        io.update_manifest(run_dir, name, {"rows": n, "seconds": round(time.time() - t0, 1), **stats})
-        logger.info("[%s] %d bản ghi (%.1fs) %s", name, n, time.time() - t0,
+        io.update_manifest(run_dir, name, {"rows": n, "seconds": round(time.time() - t0, 1), "peak_rss_mb": peak_rss_mb(), **stats})
+        logger.info("[%s] %d bản ghi (%.1fs, RAM đỉnh %d MB) %s", name, n, time.time() - t0, peak_rss_mb(),
                     {k: v for k, v in stats.items() if k != "lines"})
         return rows
 
@@ -242,7 +253,9 @@ def run_pipeline(specs: dict[str, SourceSpec], data_root: Path, run_dir: Path, c
     def do_quality(rows):
         """Stage quality (song song nếu có backend)."""
         rows = backend.quality(rows, cfg) if backend else quality.annotate_quality(rows, cfg)
-        return rows, quality.quality_stats(rows)
+        odd = quality.annotate_odd_words(rows, cfg)  # J-22 (3) C: cần đếm số bài chứa từ, nên chạy tuần tự trên cả lần chạy
+        ppl = quality.annotate_perplexity(rows, cfg)  # J-25 D3: cần odd_word đã điền, GPU nhỏ; bỏ qua khi perplexity_model chưa đặt
+        return rows, {**quality.quality_stats(rows), "odd_words": odd, "perplexity": ppl}
 
     def do_dedup(rows):
         """Stage dedup vòng 1 + ghi kho dấu vân tay (D-09); không ghi kho thì xoá kho cũ của lần chạy (đã hết hiệu lực)."""
@@ -294,7 +307,7 @@ def run_pipeline(specs: dict[str, SourceSpec], data_root: Path, run_dir: Path, c
             t0 = time.time()
             targets = rows if cfg.embed_scope == "all" else [r for r in rows if r["status"] == "kept"]
             items = backend.embed(targets, cfg) if backend and cfg.embed_spec.startswith("hf:") else embed.embed_rows(
-                targets, cfg.embed_spec, "auto", cfg.embed_prompt, cfg.embed_batch_size, cfg.embed_max_seq)
+                targets, cfg.embed_spec, cfg.embed_device, cfg.embed_prompt, cfg.embed_batch_size, cfg.embed_max_seq)
             save_fingerprint("embed")
             embed.write_embeddings(emb_path, items)
             io.update_manifest(run_dir, "embed", {"rows": len(items), "spec": cfg.embed_spec, "scope": cfg.embed_scope,
@@ -321,11 +334,13 @@ def run_pipeline(specs: dict[str, SourceSpec], data_root: Path, run_dir: Path, c
 
 def finalize(rows: list[dict], run_dir: Path, cfg: RunConfig, counter, with_report: bool, red_path: Path) -> dict:
     """
-    Stage finalize: (tuỳ chọn) áp verdict dedup vòng 2, ghi clean / knowledge unit / khối CPT, audit, report.
+    Stage finalize: (tuỳ chọn) áp verdict dedup vòng 2, ghi clean / knowledge unit / segment CPT, audit, report.
+
+    cpt_blocks.parquet của bản cũ (nếu còn) bị xoá để không bị dùng nhầm (T-07).
 
     Luôn chạy lại (rẻ), không có vân tay.
     """
-    for f in _FINAL_FILES:
+    for f in _FINAL_FILES + _STALE_FINAL_FILES:
         (run_dir / f).unlink(missing_ok=True)
     stats: dict = {}
     if cfg.global_verdict:
@@ -335,7 +350,7 @@ def finalize(rows: list[dict], run_dir: Path, cfg: RunConfig, counter, with_repo
     n_clean = io.write_rows(run_dir / "clean.parquet", kept)
     units = knowledge.build_units(rows, counter)
     n_units = knowledge.write_units(run_dir / "knowledge_units.parquet", units)
-    n_blocks = knowledge.write_blocks(run_dir / "cpt_blocks.parquet", knowledge.pack_cpt_blocks(rows, cfg.cpt_context_tokens))
+    n_segments = knowledge.write_segments(run_dir / "cpt_segments.parquet", knowledge.build_cpt_segments(rows))
     bench = contamination.load_benchmarks(Path(cfg.benchmarks_dir) if cfg.benchmarks_dir else None)
     compare = {}
     for spec in cfg.compare_tokenizers:
@@ -343,11 +358,11 @@ def finalize(rows: list[dict], run_dir: Path, cfg: RunConfig, counter, with_repo
     report = audit.audit_rows(rows, cfg.tokenizer, contamination.scan(rows, bench), compare)
     write_json_atomic(run_dir / "audit.json", report)
     io.update_manifest(run_dir, "finalize", {
-        "clean_rows": n_clean, "knowledge_units": n_units, "cpt_blocks": n_blocks,
+        "clean_rows": n_clean, "knowledge_units": n_units, "cpt_segments": n_segments,
         "candidates": sum(u["unit_type"] == "cpt" for u in units),
         "instructions": sum(u["unit_type"] == "sft" for u in units), **stats})
     io.update_manifest(run_dir, "config", cfg.to_dict())
-    logger.info("[finalize] clean=%d, knowledge units=%d, khối CPT=%d, lineage(kept)=%.1f%%", n_clean, n_units, n_blocks,
+    logger.info("[finalize] clean=%d, knowledge units=%d, segment CPT=%d, lineage(kept)=%.1f%%", n_clean, n_units, n_segments,
                 100 * report["lineage_rate_kept"])
     manifest = io.read_manifest(run_dir)
     if with_report:

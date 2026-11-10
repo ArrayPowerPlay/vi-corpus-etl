@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 820" width="1000" height="820" font-family="DejaVu Sans, Arial, sans-serif">
+<title>Bảng chẩn đoán: thấy gì thì xử lý gì</title>
+<defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#455566"/></marker></defs>
+<rect width="1000" height="820" fill="#ffffff"/>
+<text x="500.0" y="34" text-anchor="middle" font-size="19" font-weight="700" fill="#1b2733" xml:space="preserve">Bảng chẩn đoán: thấy gì thì xử lý gì</text>
+<text x="500.0" y="58" text-anchor="middle" font-size="12" font-weight="400" fill="#52514e" xml:space="preserve">Thử các cách theo thứ tự từ trên xuống; mỗi dòng bắt nguồn từ bằng chứng ghi trong SUGGESTION.md</text>
+<rect x="30" y="82" width="330" height="100" rx="8" fill="#fbe9e7" stroke="#c4503f" stroke-width="1.5"/>
+<text x="42" y="104" text-anchor="start" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">IFEval / MMLU / GSM8K tụt</text>
+<text x="42" y="124" text-anchor="start" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">quá ngưỡng (đề xuất &gt; 3 điểm)</text>
+<text x="42" y="141" text-anchor="start" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">so với model gốc</text>
+<line x1="360" y1="132" x2="400" y2="132" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
+<rect x="400" y="82" width="570" height="100" rx="8" fill="#e9f5ee" stroke="#3f9b6b" stroke-width="1.5"/>
+<text x="412" y="104" text-anchor="start" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">Cách xử lý</text>
+<text x="412" y="124" text-anchor="start" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">① giảm learning rate hoặc rank   ② tăng replay lên 25–30%</text>
+<text x="412" y="141" text-anchor="start" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">③ chọn checkpoint sớm hơn (stability gap)</text>
+<text x="412" y="158" text-anchor="start" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">④ ở Tầng 3: giảm hệ số merge / SFT ngắn sửa chỉ thị</text>
+<rect x="30" y="204" width="330" height="100" rx="8" fill="#fbe9e7" stroke="#c4503f" stroke-width="1.5"/>
+<text x="42" y="226" text-anchor="start" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">Eval A thấp</text>
+<text x="42" y="246" text-anchor="start" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">sự kiện đã dạy, hỏi cách khác</text>
+<text x="42" y="263" text-anchor="start" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">thì không trả lời được</text>
+<line x1="360" y1="254" x2="400" y2="254" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
+<rect x="400" y="204" width="570" height="100" rx="8" fill="#e9f5ee" stroke="#3f9b6b" stroke-width="1.5"/>
+<text x="412" y="226" text-anchor="start" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">Cách xử lý</text>
+<text x="412" y="246" text-anchor="start" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">① thêm biến thể và cách diễn đạt (KHÔNG tăng epoch)</text>
+<text x="412" y="263" text-anchor="start" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">② thêm viết lại kiểu Active Reading</text>
+<text x="412" y="280" text-anchor="start" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">③ nếu sự kiện thuộc nhóm Unknown quá nhiều: chuyển sang RAG</text>
+<rect x="30" y="326" width="330" height="100" rx="8" fill="#fbe9e7" stroke="#c4503f" stroke-width="1.5"/>
+<text x="42" y="348" text-anchor="start" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">Eval B: bịa tăng</text>
+<text x="42" y="368" text-anchor="start" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">câu chưa thấy bị trả lời</text>
+<text x="42" y="385" text-anchor="start" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">bừa thay vì từ chối</text>
+<line x1="360" y1="376" x2="400" y2="376" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
+<rect x="400" y="326" width="570" height="100" rx="8" fill="#e9f5ee" stroke="#3f9b6b" stroke-width="1.5"/>
+<text x="412" y="348" text-anchor="start" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">Cách xử lý</text>
+<text x="412" y="368" text-anchor="start" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">① bớt sự kiện Unknown, giữ nhóm MaybeKnown (Gekhman)</text>
+<text x="412" y="385" text-anchor="start" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">② chọn checkpoint sớm, không train tới khi khớp</text>
+<text x="412" y="402" text-anchor="start" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">③ thêm mẫu 'không có thông tin'; định tuyến câu đuôi dài qua RAG</text>
+<rect x="30" y="448" width="330" height="100" rx="8" fill="#fbe9e7" stroke="#c4503f" stroke-width="1.5"/>
+<text x="42" y="470" text-anchor="start" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">RAG: recall@k thấp</text>
+<text x="42" y="490" text-anchor="start" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">câu hỏi sinh từ corpus mà</text>
+<text x="42" y="507" text-anchor="start" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">không lấy lại đúng chunk</text>
+<line x1="360" y1="498" x2="400" y2="498" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
+<rect x="400" y="448" width="570" height="100" rx="8" fill="#e9f5ee" stroke="#3f9b6b" stroke-width="1.5"/>
+<text x="412" y="470" text-anchor="start" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">Cách xử lý</text>
+<text x="412" y="490" text-anchor="start" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">① đổi embedder (Qwen3-Embedding ↔ BGE-M3), so trên tập tự dựng</text>
+<text x="412" y="507" text-anchor="start" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">② đổi độ dài chunk / thêm reranker (chunking tiếng Việt chưa có nguồn: tự đo)</text>
+<text x="412" y="524" text-anchor="start" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">③ kiểm lại cửa sổ ngữ cảnh khi đổi base</text>
+<rect x="30" y="570" width="330" height="100" rx="8" fill="#fbe9e7" stroke="#c4503f" stroke-width="1.5"/>
+<text x="42" y="592" text-anchor="start" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">Thuật ngữ miền sai</text>
+<text x="42" y="612" text-anchor="start" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">luật / y / kinh tế... vẫn sai dù</text>
+<text x="42" y="629" text-anchor="start" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">Tầng 2 và RAG đã tốt</text>
+<line x1="360" y1="620" x2="400" y2="620" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
+<rect x="400" y="570" width="570" height="100" rx="8" fill="#e9f5ee" stroke="#3f9b6b" stroke-width="1.5"/>
+<text x="412" y="592" text-anchor="start" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">Cách xử lý</text>
+<text x="412" y="612" text-anchor="start" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">→ mới cân nhắc Tầng 3: CPT nhẹ trên base (không phải instruct)</text>
+<text x="412" y="629" text-anchor="start" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">replay EN 10–30%, rồi merge delta instruct, rồi SFT ngắn</text>
+<text x="412" y="646" text-anchor="start" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">đo lại bằng IFEval và SEA-IFEval</text>
+<rect x="30" y="692" width="330" height="100" rx="8" fill="#fbe9e7" stroke="#c4503f" stroke-width="1.5"/>
+<text x="42" y="714" text-anchor="start" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">Điểm benchmark tăng lạ</text>
+<text x="42" y="734" text-anchor="start" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">VMLU / SeaExam tăng mạnh</text>
+<text x="42" y="751" text-anchor="start" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">mà kiến thức thật không tăng</text>
+<line x1="360" y1="742" x2="400" y2="742" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
+<rect x="400" y="692" width="570" height="100" rx="8" fill="#e9f5ee" stroke="#3f9b6b" stroke-width="1.5"/>
+<text x="412" y="714" text-anchor="start" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">Cách xử lý</text>
+<text x="412" y="734" text-anchor="start" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">① quét nhiễm 13-gram corpus ↔ bộ benchmark (contamination.py)</text>
+<text x="412" y="751" text-anchor="start" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">② nạp bộ benchmark vào configs/benchmarks/ (hiện đang rỗng)</text>
+<text x="412" y="768" text-anchor="start" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">③ chỉ báo điểm sau khi loại phần trùng</text>
+</svg>

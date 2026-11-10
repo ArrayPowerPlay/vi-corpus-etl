@@ -19,6 +19,7 @@ Kết quả ở <data-root>/processed/pipeline_runs/<run-name>/ (mở report.htm
 """
 
 import argparse
+import logging
 import os
 import sys
 from pathlib import Path
@@ -30,8 +31,8 @@ os.environ.setdefault("RAY_ENABLE_UV_RUN_RUNTIME_ENV", "0")
 
 from vi_corpus.common.registry import load_sources  # noqa: E402
 from vi_corpus.common.state import acquire_run_lock, setup_logging  # noqa: E402
-from vi_corpus.pipeline.config import (DEFAULT_LANG_MODEL, DEFAULT_MIX, DEFAULT_TOKENIZER, RunConfig,  # noqa: E402
-                                       scale_mix)
+from vi_corpus.pipeline.config import (DEFAULT_LANG_MODEL, DEFAULT_MIX, DEFAULT_TOKENIZER, TAKE_ALL, RunConfig,  # noqa: E402
+                                       parse_shard, scale_mix)
 from vi_corpus.pipeline.reduce import CLUSTER_SPACES  # noqa: E402
 from vi_corpus.pipeline.runner import STAGES, run_pipeline  # noqa: E402
 
@@ -45,12 +46,35 @@ def parse_mix(text: str | None) -> dict[str, int]:
     return {k.strip(): int(v) for k, v in (item.split("=") for item in text.split(","))}
 
 
+def specs_chunked(specs: dict) -> set[str]:
+    """Khoá các nguồn là nguồn sách (được lấy hết): theo hồ sơ PROFILES[...].chunked của RunConfig mặc định."""
+    cfg = RunConfig(mix={})
+    return {k for k in specs if cfg.profile(k).chunked}
+
+
+def take_all_mix(weights: dict[str, int], chunked: set[str]) -> dict[str, int]:
+    """
+    Cơ cấu "lấy hết": mỗi nguồn trong `weights` nhận TAKE_ALL mẫu (stage chunk không lấy mẫu xuống).
+
+    Raises:
+        ValueError: nếu có nguồn không phải nguồn sách (nguồn text như SEA phải lấy mẫu, vì không có "hết" theo nghĩa pipeline này).
+    """
+    bad = sorted(set(weights) - chunked)
+    if bad:
+        raise ValueError(f"--take-all chỉ dùng được cho nguồn sách, không dùng được cho: {', '.join(bad)}")
+    return {k: TAKE_ALL for k in weights}
+
+
 def build_parser() -> argparse.ArgumentParser:
     """Dựng bộ đọc tham số dòng lệnh."""
     p = argparse.ArgumentParser(description="Chạy pipeline end-to-end trên mẫu N bản ghi.")
     p.add_argument("--data-root", type=Path, default=Path(os.getenv("SEA_DATA_ROOT", "data")))
     p.add_argument("--total", type=int, default=10_000, help="Tổng số mẫu (nguồn sách tính theo số đoạn).")
     p.add_argument("--mix", default=None, help=f"Trọng số nguồn, vd sea_pile_v2=30,stbook=25 (mặc định {DEFAULT_MIX}).")
+    p.add_argument("--take-all", action="store_true",
+                   help="Lấy HẾT (không lấy mẫu): mọi nguồn trong --mix phải là nguồn sách (stbook, giao_trinh, vjol, vista); bỏ qua --total.")
+    p.add_argument("--shard", default=None, metavar="I/N",
+                   help="Chỉ đọc phần I trong N phần (băm sha256 PDF) của nguồn vjol / vista để chạy cả kho thành N lần nhỏ vừa RAM, vd 0/8; dedup_global.py gộp các phần.")
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--run-name", default=None, help="Tên thư mục kết quả (mặc định run_<total>_seed<seed>).")
     p.add_argument("--until", choices=STAGES, default=None, help="Dừng sau stage này (chạy từng bước).")
@@ -63,11 +87,20 @@ def build_parser() -> argparse.ArgumentParser:
                    help="Các tokenizer khác (cách nhau bằng dấu phẩy) chỉ để so tổng token giữ lại trong báo cáo.")
     p.add_argument("--lang-model", default=DEFAULT_LANG_MODEL,
                    help="Nhận diện ngôn ngữ: 'fasttext:lid.176' (tự tải), 'fasttext:<file.bin>' hoặc 'heuristic'.")
+    p.add_argument("--unaccented", type=Path, default=None,
+                   help="Danh sách từ không dấu cho mã lost_diacritics (mặc định <data-root>/processed/ocr_bakeoff/unaccented.json, sinh bằng scripts/build_unaccented.py; thiếu thì dùng danh sách tối thiểu).")
+    p.add_argument("--perplexity-model", default=None,
+                   help="Chấm perplexity đoạn bài báo khoa học (J-25 D3) bằng mô hình này, vd Qwen/Qwen3-0.6B; mặc định tắt. Cần GPU (--perplexity-device).")
+    p.add_argument("--hyphen-lm-model", default=None,
+                   help="Gỡ chỗ \"ph-ơng / l-ơng\" mơ hồ của VJOL (J-57) bằng mô hình này, vd Qwen/Qwen3-0.6B; mặc định tắt (chỉ dùng bằng chứng dấu thanh cả bài).")
+    p.add_argument("--hyphen-lm-device", default="cuda", choices=["cuda", "cpu", "auto"], help="Thiết bị của --hyphen-lm-model (mặc định cuda).")
+    p.add_argument("--perplexity-device", default="cuda", choices=["cuda", "cpu", "auto"], help="Thiết bị chấm perplexity (mặc định cuda, không rơi xuống CPU lặng lẽ).")
+    p.add_argument("--syllables", type=Path, default=None,
+                   help="Tập âm tiết cho chỉ số chữ đảo ngược / từ lạ ở stage quality (mặc định <data-root>/processed/ocr_bakeoff/syllables.json nếu có).")
     p.add_argument("--rights-gate", choices=["tag", "enforce"], default="tag")
     p.add_argument("--no-dedup-index", action="store_true", help="Không ghi kho dấu vân tay dedup vòng 1 (state/dedup_index/).")
     p.add_argument("--global-verdict", type=Path, default=None,
                    help="verdict.parquet của dedup vòng 2 (scripts/dedup_global.py), áp vào trước khi sinh knowledge unit.")
-    p.add_argument("--cpt-context", type=int, default=4096, help="Độ dài tối đa (token) một khối CPT khi nối đoạn.")
     p.add_argument("--ocr-books", type=int, default=0, help="OCR trước N cuốn stbook chưa OCR (cần --group ocr và GPU).")
     p.add_argument("--device", default="cuda", choices=["cuda", "cpu"], help="Thiết bị OCR.")
     g = p.add_argument_group("embedding / bản đồ")
@@ -75,6 +108,8 @@ def build_parser() -> argparse.ArgumentParser:
                    help="'hf:<model_id>' (GPU), 'tfidf' (CPU, thử nhanh, không song song) hoặc 'none' để bỏ embed/reduce/bản đồ.")
     g.add_argument("--embed-prompt", default="passage: ", help="Tiền tố trước văn bản khi nhúng (E5 cần 'passage: ').")
     g.add_argument("--embed-batch-size", type=int, default=64)
+    g.add_argument("--embed-device", choices=["auto", "cuda", "cpu"], default="auto",
+                   help="auto: GPU nếu có (không thì CPU kèm cảnh báo); cuda: không có GPU thì dừng với lỗi; cpu.")
     g.add_argument("--embed-scope", choices=["all", "kept"], default="all",
                    help="all: nhúng mọi bản ghi (bản đồ thấy cả bản bị loại); kept: chỉ phần còn sống (R-05, chạy lớn).")
     g.add_argument("--no-gpu-reduce", action="store_true", help="Giảm chiều bằng scikit-learn/umap-learn dù có cuML.")
@@ -98,20 +133,36 @@ def main() -> int:
     """Đọc tham số, (tuỳ chọn) OCR stbook, rồi chạy pipeline. Trả về 1 nếu kết quả không có bản ghi nào."""
     args = build_parser().parse_args()
     specs = load_sources(Path("configs/sources.json"))
-    mix = scale_mix(parse_mix(args.mix), args.total)
-    run_dir = args.data_root / "processed" / "pipeline_runs" / (args.run_name or f"run_{args.total}_seed{args.seed}")
+    try:
+        shard = parse_shard(args.shard)
+        mix = take_all_mix(parse_mix(args.mix), specs_chunked(specs)) if args.take_all else scale_mix(parse_mix(args.mix), args.total)
+        if shard and (extra := sorted(set(mix) - {"vjol", "vista"})):
+            raise ValueError(f"--shard chỉ dùng được khi --mix chỉ có vjol / vista, thừa: {', '.join(extra)}")
+    except ValueError as exc:
+        build_parser().error(str(exc))
+    suffix = "" if shard is None else f"_s{shard[0]}of{shard[1]}"
+    default_name = f"run_all_seed{args.seed}{suffix}" if args.take_all else f"run_{args.total}_seed{args.seed}{suffix}"
+    run_dir = args.data_root / "processed" / "pipeline_runs" / (args.run_name or default_name)
     _lock = acquire_run_lock(args.data_root / "state" / f"pipeline_{run_dir.name}")  # noqa: F841 — giữ khoá
     setup_logging(args.data_root / "logs", "pipeline")
 
-    cfg = RunConfig(mix=mix, seed=args.seed, tokenizer=args.tokenizer,
+    syllables = args.syllables or args.data_root / "processed" / "ocr_bakeoff" / "syllables.json"
+    if not syllables.is_file():
+        logging.getLogger("vi_corpus").warning("Không thấy tập âm tiết %s: bỏ chỉ số chữ đảo ngược / từ lạ ở stage quality", syllables)
+        syllables = None
+    unaccented = args.unaccented or args.data_root / "processed" / "ocr_bakeoff" / "unaccented.json"
+    if not unaccented.is_file():
+        logging.getLogger("vi_corpus").warning("Không thấy danh sách từ không dấu %s: mã lost_diacritics dùng danh sách tối thiểu (chạy scripts/build_unaccented.py)", unaccented)
+        unaccented = None
+    cfg = RunConfig(mix=mix, syllables=str(syllables) if syllables else None, unaccented=str(unaccented) if unaccented else None,
+                    hyphen_lm_model=args.hyphen_lm_model, hyphen_lm_device=args.hyphen_lm_device, perplexity_model=args.perplexity_model, perplexity_device=args.perplexity_device, seed=args.seed, tokenizer=args.tokenizer,
                     compare_tokenizers=tuple(t.strip() for t in args.compare_tokenizers.split(",") if t.strip()),
                     lang_model=args.lang_model, rights_gate=args.rights_gate, dedup_index=not args.no_dedup_index,
                     global_verdict=str(args.global_verdict) if args.global_verdict else None,
-                    cpt_context_tokens=args.cpt_context,
                     embed_spec=None if args.embedder == "none" else args.embedder, embed_prompt=args.embed_prompt,
-                    embed_batch_size=args.embed_batch_size, embed_scope=args.embed_scope,
+                    embed_batch_size=args.embed_batch_size, embed_scope=args.embed_scope, embed_device=args.embed_device,
                     prefer_gpu=not args.no_gpu_reduce, cluster_space=args.cluster_space,
-                    hdbscan_min_cluster_size=args.min_cluster_size, hdbscan_min_samples=args.min_samples)
+                    hdbscan_min_cluster_size=args.min_cluster_size, hdbscan_min_samples=args.min_samples, shard=shard)
 
     backend = None
     if args.executor:

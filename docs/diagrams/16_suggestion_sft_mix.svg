@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 630" width="1000" height="630" font-family="DejaVu Sans, Arial, sans-serif">
+<title>Tầng 2: hỗn hợp SFT và công thức LoRA</title>
+<defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#455566"/></marker></defs>
+<rect width="1000" height="630" fill="#ffffff"/>
+<text x="500.0" y="34" text-anchor="middle" font-size="19" font-weight="700" fill="#1b2733" xml:space="preserve">Tầng 2: hỗn hợp SFT và công thức LoRA</text>
+<text x="500.0" y="58" text-anchor="middle" font-size="12" font-weight="400" fill="#52514e" xml:space="preserve">Tỷ lệ là ĐIỂM KHỞI ĐẦU do tôi đề xuất, không bài nào chứng minh con số này — hãy quét 2–3 mức</text>
+<rect x="40.0" y="100" width="322.0" height="64" fill="#2a78d6" stroke="#ffffff" stroke-width="2"/>
+<text x="201.0" y="128" text-anchor="middle" font-size="13" font-weight="700" fill="#ffffff" xml:space="preserve">Kiến thức tổng hợp</text>
+<text x="201.0" y="149" text-anchor="middle" font-size="13" font-weight="400" fill="#ffffff" xml:space="preserve">35%</text>
+<rect x="362.0" y="100" width="138.0" height="64" fill="#3f9b6b" stroke="#ffffff" stroke-width="2"/>
+<text x="431.0" y="128" text-anchor="middle" font-size="13" font-weight="700" fill="#ffffff" xml:space="preserve">RAFT</text>
+<text x="431.0" y="149" text-anchor="middle" font-size="13" font-weight="400" fill="#ffffff" xml:space="preserve">15%</text>
+<rect x="500.0" y="100" width="230.0" height="64" fill="#c98a1a" stroke="#ffffff" stroke-width="2"/>
+<text x="615.0" y="128" text-anchor="middle" font-size="13" font-weight="700" fill="#ffffff" xml:space="preserve">Chỉ thị tiếng Việt</text>
+<text x="615.0" y="149" text-anchor="middle" font-size="13" font-weight="400" fill="#ffffff" xml:space="preserve">25%</text>
+<rect x="730.0" y="100" width="184.0" height="64" fill="#7a8aa0" stroke="#ffffff" stroke-width="2"/>
+<text x="822.0" y="128" text-anchor="middle" font-size="13" font-weight="700" fill="#ffffff" xml:space="preserve">Replay tiếng Anh</text>
+<text x="822.0" y="149" text-anchor="middle" font-size="13" font-weight="400" fill="#ffffff" xml:space="preserve">20%</text>
+<rect x="914.0" y="100" width="46.0" height="64" fill="#c4503f" stroke="#ffffff" stroke-width="2"/>
+<text x="937.0" y="92" text-anchor="middle" font-size="11" font-weight="700" fill="#1b2733" xml:space="preserve">Văn bản thật 5%</text>
+<text x="48" y="196" text-anchor="start" font-size="12" font-weight="700" fill="#1b2733" xml:space="preserve">Kiến thức tổng hợp 30–40%</text>
+<text x="300" y="196" text-anchor="start" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">từ Tầng 0 (0a/0b/0c). Đa dạng diễn đạt là đòn bẩy lớn nhất.</text>
+<text x="48" y="236" text-anchor="start" font-size="12" font-weight="700" fill="#1b2733" xml:space="preserve">RAFT 10–20%</text>
+<text x="300" y="236" text-anchor="start" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">dạy model dùng ngữ cảnh truy xuất, bỏ qua chunk nhiễu.</text>
+<text x="48" y="276" text-anchor="start" font-size="12" font-weight="700" fill="#1b2733" xml:space="preserve">Chỉ thị tiếng Việt 20–30%</text>
+<text x="300" y="276" text-anchor="start" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">giữ khả năng làm theo chỉ thị bằng tiếng Việt (SEA-Instruct có sẵn).</text>
+<text x="48" y="316" text-anchor="start" font-size="12" font-weight="700" fill="#1b2733" xml:space="preserve">Replay tiếng Anh 0–30%</text>
+<text x="300" y="316" text-anchor="start" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">chống quên; nên do chính model tự sinh để khớp phân phối của nó.</text>
+<text x="48" y="356" text-anchor="start" font-size="12" font-weight="700" fill="#1b2733" xml:space="preserve">Văn bản thật 0–10%</text>
+<text x="300" y="356" text-anchor="start" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">tránh học hoàn toàn từ dữ liệu tổng hợp (WRAP: chỉ tổng hợp thì kém hơn).</text>
+<rect x="30" y="408" width="450" height="176" rx="8" fill="#e3eefb" stroke="#2a78d6" stroke-width="1.5"/>
+<text x="42" y="430" text-anchor="start" font-size="14" font-weight="700" fill="#1b2733" xml:space="preserve">Công thức LoRA (điểm khởi đầu)</text>
+<text x="42" y="450" text-anchor="start" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">rank 64–256 (256 khớp full fine-tuning với cỡ dữ liệu SFT)</text>
+<text x="42" y="467" text-anchor="start" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">áp lên MỌI lớp tuyến tính (MLP quan trọng nhất)</text>
+<text x="42" y="484" text-anchor="start" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">alpha = 2 × rank</text>
+<text x="42" y="501" text-anchor="start" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">learning rate: quét quanh mức gấp ~10 lần full FT</text>
+<text x="42" y="518" text-anchor="start" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">1–3 epoch, chọn checkpoint tốt nhất</text>
+<text x="42" y="535" text-anchor="start" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">dữ liệu cỡ 100–200M token: vài giờ trên 4 A100 (ước tính)</text>
+<text x="42" y="552" text-anchor="start" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">thứ tự: câu hỏi–đáp trước, tài liệu sau (PIT) — nên thử</text>
+<rect x="520" y="408" width="450" height="176" rx="8" fill="#fbe9e7" stroke="#c4503f" stroke-width="1.5"/>
+<text x="532" y="430" text-anchor="start" font-size="14" font-weight="700" fill="#1b2733" xml:space="preserve">Vòng kiểm ở MỌI checkpoint</text>
+<text x="532" y="450" text-anchor="start" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">① Eval A: sự kiện đã dạy, hỏi cách mới</text>
+<text x="532" y="467" text-anchor="start" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">② Eval B: câu chưa thấy → bịa hay biết từ chối?</text>
+<text x="532" y="484" text-anchor="start" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">③ Giữ năng lực: IFEval, MMLU, GSM8K; VMLU, SEA-IFEval</text>
+<text x="532" y="501" text-anchor="start" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">④ Điểm VMLU/SeaExam chỉ tin sau khi quét nhiễm 13-gram</text>
+<text x="532" y="518" text-anchor="start" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">tụt IFEval &gt; 3 điểm so với model gốc → dừng và xem sơ đồ 17</text>
+<text x="532" y="535" text-anchor="start" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">(3 điểm là ngưỡng tôi đề xuất, chỉnh sau khi có điểm gốc)</text>
+<text x="532" y="552" text-anchor="start" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">tụt rồi hồi (stability gap): lưu nhiều checkpoint</text>
+<text x="500" y="612" text-anchor="middle" font-size="11" font-weight="400" fill="#52514e" xml:space="preserve">Trên model cỡ 7–14B, 4 A100 40GB đủ cho LoRA; full fine-tuning cỡ 30B không vừa bộ nhớ.</text>
+</svg>

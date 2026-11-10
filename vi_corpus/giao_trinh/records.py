@@ -7,15 +7,13 @@ chất lượng (các trường language, quality_band... để trống cho các
 """
 
 import json
-from collections.abc import Iterable, Iterator
+from collections.abc import Iterator
 from pathlib import Path
 
-import pyarrow as pa
-import pyarrow.parquet as pq
-
+from vi_corpus.common.parquet_export import export_parquet  # noqa: F401 — tên cũ vẫn import được từ đây
 from vi_corpus.common.pdf_text import clean_pages
 from vi_corpus.common.registry import SourceSpec
-from vi_corpus.common.schema import CORPUS_SCHEMA, make_doc_id, text_sha256
+from vi_corpus.common.schema import make_doc_id, text_sha256
 from vi_corpus.common.state import read_json
 from vi_corpus.giao_trinh.extract import TEXT_DIR
 
@@ -23,7 +21,6 @@ OUT_PATH = "processed/giao_trinh/giao_trinh.parquet"
 # Định dạng mà mỗi dòng đã là một đoạn (slide, đoạn văn Word, khối HTML / EPUB): clean_pages không bỏ tiêu đề chạy
 # và không ghép dòng (xem clean_pages, slides=True). PDF / DJVU thì làm sạch theo trang như sách.
 LINE_PARAGRAPH_FORMATS = frozenset({"pptx", "ppt", "docx", "doc", "html", "epub"})
-BATCH = 64  # số bản ghi ghi mỗi lần, để không giữ cả kho trong RAM
 
 
 def iter_records(spec: SourceSpec, data_root: Path, limit_files: int | None = None,
@@ -70,26 +67,3 @@ def iter_records(spec: SourceSpec, data_root: Path, limit_files: int | None = No
             rec["meta"] = json.dumps({"format": done["format"], "nganh": done.get("nganh"), "mon": done.get("mon"),
                                       "page_lines_removed": page_stats.get("lines_removed", 0)}, ensure_ascii=False)
         yield rec
-
-
-def export_parquet(records: Iterable[dict], out_path: Path) -> int:
-    """
-    Ghi các bản ghi ra Parquet (CORPUS_SCHEMA), từng lô BATCH bản ghi, nguyên tử (file tạm rồi os.replace).
-
-    Returns:
-        Số bản ghi đã ghi.
-    """
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = out_path.with_name(out_path.name + ".tmp")
-    total, batch = 0, []
-    with pq.ParquetWriter(tmp, CORPUS_SCHEMA) as writer:
-        for rec in records:
-            batch.append(rec)
-            if len(batch) == BATCH:
-                writer.write_table(pa.Table.from_pylist(batch, schema=CORPUS_SCHEMA))
-                total, batch = total + len(batch), []
-        if batch:
-            writer.write_table(pa.Table.from_pylist(batch, schema=CORPUS_SCHEMA))
-            total += len(batch)
-    tmp.replace(out_path)
-    return total

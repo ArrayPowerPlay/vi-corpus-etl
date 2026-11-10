@@ -10,11 +10,15 @@ Hai bộ nhúng, chọn bằng chuỗi `spec`:
 Embedding lưu riêng ở <run_dir>/06_embeddings.parquet (doc_id, embedding): schema bản ghi chính không đổi.
 """
 
+import logging
+import time
 from pathlib import Path
 
 import numpy as np
 import pyarrow as pa
 import pyarrow.parquet as pq
+
+logger = logging.getLogger("vi_corpus")
 
 DEFAULT_SPEC = "hf:intfloat/multilingual-e5-base"
 DEFAULT_PROMPT = "passage: "  # họ E5 cần tiền tố này cho văn bản (document); mô hình khác đặt "" bằng --embed-prompt
@@ -32,8 +36,9 @@ class HfEmbedder:
 
         Args:
             model_id:       Tên / đường dẫn mô hình HF.
-            device:         "auto" (cuda nếu có, ngược lại cpu), "cuda" hoặc "cpu". Trong actor Ray có 1 GPU được cấp,
-                            "cuda" luôn là GPU đó (CUDA_VISIBLE_DEVICES do Ray đặt).
+            device:         "auto" (cuda nếu có, ngược lại cpu và ghi cảnh báo), "cuda" (không có GPU thì báo lỗi, không rơi xuống
+                            CPU lặng lẽ, J-22 (8)) hoặc "cpu". Trong actor Ray có 1 GPU được cấp, "cuda" luôn là GPU đó
+                            (CUDA_VISIBLE_DEVICES do Ray đặt).
             max_seq_length: Số token tối đa mỗi văn bản (phần dư bị cắt).
             batch_size:     Số văn bản mỗi lần chạy mô hình.
             prompt:         Tiền tố gắn trước mỗi văn bản.
@@ -41,7 +46,17 @@ class HfEmbedder:
         import torch
         from transformers import AutoModel, AutoTokenizer
 
-        self.device = "cuda" if device == "auto" and torch.cuda.is_available() else ("cpu" if device == "auto" else device)
+        if device not in ("auto", "cuda", "cpu"):
+            raise ValueError(f"device embedding không hợp lệ: {device!r} (auto | cuda | cpu)")
+        has_cuda = torch.cuda.is_available()
+        if device == "cuda" and not has_cuda:
+            raise RuntimeError(f"Yêu cầu GPU cho embedding nhưng torch {torch.__version__} không thấy CUDA (bản torch CPU, "
+                               "hoặc không có GPU được cấp); dừng thay vì chạy CPU rất chậm. Dùng device 'auto' hoặc 'cpu' nếu chủ ý.")
+        self.device = "cuda" if device == "cuda" or (device == "auto" and has_cuda) else "cpu"
+        if device == "auto" and self.device == "cpu":
+            logger.warning("[embed] device=auto nhưng không có CUDA (torch %s): nhúng bằng CPU, sẽ rất chậm", torch.__version__)
+        logger.info("[embed] model=%s device=%s torch=%s gpu=%s batch=%d max_seq=%d", model_id, self.device, torch.__version__,
+                    torch.cuda.get_device_name(0) if self.device == "cuda" else "-", batch_size, max_seq_length)
         self.tokenizer = AutoTokenizer.from_pretrained(model_id)
         self.model = AutoModel.from_pretrained(
             model_id, torch_dtype=torch.float16 if self.device == "cuda" else torch.float32).to(self.device).eval()
@@ -52,7 +67,9 @@ class HfEmbedder:
         import torch
 
         out = []
+        t_start = time.time()
         for i in range(0, len(texts), self.batch_size):
+            t_batch = time.time()
             batch = [self.prompt + (t or "")[:MAX_CHARS] for t in texts[i:i + self.batch_size]]
             enc = self.tokenizer(batch, padding=True, truncation=True, max_length=self.max_seq_length,
                                  return_tensors="pt").to(self.device)
@@ -61,6 +78,10 @@ class HfEmbedder:
             mask = enc["attention_mask"].unsqueeze(-1).to(hidden.dtype)
             vec = (hidden * mask).sum(dim=1) / mask.sum(dim=1).clamp(min=1)
             out.append(torch.nn.functional.normalize(vec.float(), dim=-1).cpu().numpy())
+            logger.debug("[embed] lô %d-%d: %.2f giây", i, i + len(batch), time.time() - t_batch)
+        if texts:
+            took = max(time.time() - t_start, 1e-9)
+            logger.info("[embed] %d văn bản trong %.1f giây (%.1f văn bản/giây, device=%s)", len(texts), took, len(texts) / took, self.device)
         return np.concatenate(out) if out else np.zeros((0, 1), dtype=np.float32)
 
 

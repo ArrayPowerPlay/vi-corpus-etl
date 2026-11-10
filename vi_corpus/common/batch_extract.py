@@ -6,6 +6,8 @@ làm ở đây:
 1. inventory: sha256 từng file; cùng sha256 ở nhiều đường dẫn thì chỉ xử lý một lần, giữ đủ đường dẫn.
 2. run_batch: trích text từng file chưa làm, ghi checkpoint <data-root>/<text_dir>/<sha256>.json (nguyên tử,
    khoá sha256); chạy lại đúng lệnh cũ để làm tiếp. File lỗi được ghi lỗi và thử lại ở lần chạy sau.
+   Nhiều tiến trình (mỗi GPU một tiến trình) chạy cùng lúc được nếu truyền claim_dir: mỗi file được "nhận" bằng
+   một khoá flock, file đã có tiến trình khác làm thì bỏ qua (xem claim_file).
 3. make_ocr_getter: nạp lười bộ OCR (chỉ khi gặp trang scan).
 4. status: tóm tắt tiến độ từ checkpoint.
 
@@ -14,15 +16,19 @@ Checkpoint có dạng:
      "error", "skipped", "parser_version", "created_at"}
 """
 
+import fcntl
 import hashlib
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Collection, Iterator
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
 from tqdm import tqdm
 
 from vi_corpus.common.state import read_json, write_json_atomic
+from vi_corpus.common.unicode_clean import scrub_obj
 
 logger = logging.getLogger("vi_corpus")
 
@@ -49,21 +55,50 @@ def list_files(root: Path) -> list[Path]:
     )
 
 
-def inventory(root: Path, limit_files: int | None = None) -> dict[str, list[Path]]:
+def inventory(root: Path, limit_files: int | None = None, files: list[Path] | None = None,
+              cache_path: Path | None = None, workers: int = 8) -> dict[str, list[Path]]:
     """
     Kiểm kê: gom file theo sha256 nội dung.
+
+    Băm song song (hashlib nhả GIL, việc chính là chờ đĩa mạng). Nếu có `cache_path`, sha256 của file được nhớ theo
+    (đường dẫn, size, mtime): lần chạy sau, hoặc tiến trình khác sau khi tiến trình đầu lưu, không băm lại file chưa đổi.
 
     Args:
         root:        Thư mục nguồn.
         limit_files: Chỉ tính N file đầu (chạy thử).
+        files:       Danh sách file cụ thể (vd mẫu của VJOL); None thì liệt kê mọi file trong `root`.
+        cache_path:  File JSON cache {đường dẫn: [size, mtime_ns, sha256]}; None = không cache.
+        workers:     Số luồng băm.
 
     Returns:
         {sha256: [đường dẫn các file trùng nội dung, theo thứ tự đường dẫn]}, theo thứ tự xuất hiện đầu tiên.
     """
+    cache: dict[str, list] = (read_json(cache_path) or {}) if cache_path else {}
+    fresh: dict[str, list] = {}
+
+    def sha_of(path: Path) -> str:
+        """sha256 của một file: lấy từ cache nếu size và mtime không đổi, không thì băm."""
+        st = path.stat()
+        key = str(path)
+        hit = cache.get(key)
+        if hit and hit[0] == st.st_size and hit[1] == st.st_mtime_ns:
+            sha = hit[2]
+        else:
+            sha = file_sha256(path)
+        fresh[key] = [st.st_size, st.st_mtime_ns, sha]
+        return sha
+
     groups: dict[str, list[Path]] = {}
-    # ponytail: băm lại mọi file mỗi lần chạy; thêm cache theo (đường dẫn, size, mtime) nếu kho lớn hàng chục GB.
-    for path in tqdm(list_files(root)[:limit_files], desc="Kiểm kê (sha256)", unit="file"):
-        groups.setdefault(file_sha256(path), []).append(path)
+    todo = (list_files(root) if files is None else files)[:limit_files]
+    with ThreadPoolExecutor(workers) as pool:
+        # map giữ thứ tự đầu vào nên thứ tự nhóm không đổi giữa các tiến trình
+        for i, (path, sha) in enumerate(zip(todo, tqdm(pool.map(sha_of, todo), total=len(todo),
+                                                       desc="Kiểm kê (sha256)", unit="file")), 1):
+            groups.setdefault(sha, []).append(path)
+            if cache_path and i % 20000 == 0:
+                write_json_atomic(cache_path, {**cache, **fresh})  # lưu dần để chết giữa chừng không mất hết
+    if cache_path:
+        write_json_atomic(cache_path, {**cache, **fresh})
     return groups
 
 
@@ -97,21 +132,81 @@ def make_ocr_getter(device: str, enabled: bool = True) -> Callable[[], object | 
     return get_ocr
 
 
-def _needs_redo(done: dict | None, ocr_enabled: bool, retry_skipped: bool = False) -> bool:
+@contextmanager
+def claim_file(data_root: Path, claim_dir: str, name: str) -> Iterator[bool]:
     """
-    Checkpoint cần làm lại: chưa có, lần trước lỗi, lần trước bị bỏ qua mà retry_skipped, hoặc còn trang needs_ocr mà
-    lần này có OCR.
+    Nhận một file để làm: giữ khoá flock không chặn trên <data_root>/<claim_dir>/<name>.lock suốt khối `with`.
+
+    Tiến trình chết thì hệ điều hành tự nhả khoá, nên không bao giờ kẹt.
+
+    Yields:
+        True nếu nhận được, False nếu tiến trình khác đang làm file này.
+    """
+    path = data_root / claim_dir / f"{name}.lock"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w") as f:
+        try:
+            fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            yield False
+            return
+        yield True
+
+
+@contextmanager
+def _always() -> Iterator[bool]:
+    """Ngữ cảnh luôn "nhận được" (chạy một tiến trình, không cần khoá)."""
+    yield True
+
+
+def _needs_redo(done: dict | None, ocr_enabled: bool, retry_skipped: bool = False,
+                extract_versions: Collection[str] | None = None) -> bool:
+    """
+    Checkpoint cần làm lại: chưa có, lần trước lỗi, lần trước bị bỏ qua mà retry_skipped, được ghi bởi bản trích text cũ
+    (extract_version không nằm trong extract_versions), hoặc còn trang needs_ocr mà lần này có OCR.
     """
     if done is None or done.get("error") or (retry_skipped and done.get("skipped")):
         return True
+    if extract_versions is not None and done.get("extract_version") not in extract_versions:
+        return True
     return ocr_enabled and any(p["method"] == "needs_ocr" for p in done["pages"])
+
+
+def _write_checkpoint(ckpt: Path, sha: str, paths: list[Path], rels: list[str], path_meta: Callable[[Path], dict], result: dict) -> dict:
+    """
+    Ghi checkpoint của một file; một file không ghi được không được làm dừng cả lượt (nhiều tiến trình GPU sẽ lần lượt nhận lại đúng file đó rồi chết theo).
+
+    Surrogate lẻ (U+D800–U+DFFF) trong bất kỳ chuỗi nào được thay bằng U+FFFD trước khi ghi (lớp cuối, sau khi extract_pdf và OCR đã làm sạch). Nếu vẫn
+    không ghi được vì lỗi dữ liệu (UnicodeEncodeError, TypeError, ValueError) thì ghi checkpoint lỗi gọn (không trang) để lần chạy sau thử lại và `--status`
+    đếm được. Lỗi hệ thống (đĩa đầy, hết quyền) vẫn ném ra.
+
+    Returns:
+        `result` như nhận vào, hoặc bản lỗi nếu phải ghi checkpoint lỗi (khoá "error" khác None).
+    """
+    payload = {"sha256": sha, "size": paths[0].stat().st_size, "paths": rels, **path_meta(paths[0]), **result,
+               "created_at": datetime.now(timezone.utc).isoformat()}
+    payload, replaced = scrub_obj(payload)
+    if replaced:
+        logger.warning("%s: thay %d ký tự surrogate lẻ bằng U+FFFD trước khi ghi checkpoint", rels[0], replaced)
+    try:
+        write_json_atomic(ckpt, payload)
+        return result
+    except (UnicodeEncodeError, TypeError, ValueError) as exc:
+        error = f"CheckpointWriteError: {type(exc).__name__}: {exc}"[:300]
+        logger.error("Không ghi được checkpoint của %s: %s", rels[0], error)
+        failed = {"sha256": sha, "size": payload["size"], "paths": rels, "format": result.get("format"), "pages": [], "error": error,
+                  "skipped": None, "created_at": datetime.now(timezone.utc).isoformat()}
+        write_json_atomic(ckpt, failed)
+        return {**result, "pages": [], "error": error}
 
 
 def run_batch(root: Path, data_root: Path, text_dir: str,
               extract_file: Callable[[Path, Callable[[], object | None]], dict],
               path_meta: Callable[[Path], dict],
               get_ocr: Callable[[], object | None], ocr_enabled: bool = True,
-              limit_files: int | None = None, desc: str = "Trích text", retry_skipped: bool = False) -> int:
+              limit_files: int | None = None, desc: str = "Trích text", retry_skipped: bool = False,
+              files: list[Path] | None = None, claim_dir: str | None = None,
+              extract_versions: Collection[str] | None = None) -> int:
     """
     Kiểm kê rồi trích text mọi file chưa làm, ghi checkpoint từng file ngay khi xong.
 
@@ -129,32 +224,49 @@ def run_batch(root: Path, data_root: Path, text_dir: str,
         limit_files:  Chỉ xét N file đầu (chạy thử).
         desc:         Nhãn thanh tiến độ.
         retry_skipped: Làm lại cả file từng bị bỏ qua (định dạng mới được hỗ trợ, vừa cài công cụ ngoài).
+        files:        Chỉ xử lý các file này thay vì mọi file trong `root` (vd mẫu của VJOL, tránh băm cả kho).
+        claim_dir:    Thư mục khoá (tương đối so với data_root) để nhiều tiến trình cùng chạy mà không làm trùng file;
+                      None = một tiến trình. File mà tiến trình khác vừa làm xong trong lần chạy này được tính là đã có.
+        extract_versions: Các phiên bản cách trích text của nguồn mà lần chạy này coi là đã xong (extract_file phải ghi extract_version
+                      trong kết quả); checkpoint ghi bởi phiên bản khác (hoặc không có trường này) bị làm lại, vd khi thêm bước dò chữ hỏng
+                      (J-10). None = không kiểm.
 
     Returns:
         Số file bị lỗi trong lần chạy này.
+
+    Raises:
+        Mọi ngoại lệ extract_file ném ra (extract_file chỉ nên ném lỗi hệ thống như ServerDown, cần dừng cả lượt);
+        file đã xong trước đó vẫn nằm trong checkpoint.
     """
-    groups = inventory(root, limit_files)
+    started = datetime.now(timezone.utc).isoformat()
+    # cache sha256 dùng chung các tiến trình (ghi nguyên tử, tên tạm riêng) nên chạy lại không băm lại cả kho
+    groups = inventory(root, limit_files, files, cache_path=data_root / "state" / f"inventory_{Path(text_dir).name}.json")
     logger.info("Kiểm kê: %d file, %d nội dung duy nhất", sum(map(len, groups.values())), len(groups))
-    failed = done_count = 0
+    failed = done_count = busy = 0
     for sha, paths in tqdm(groups.items(), desc=desc, unit="file"):
         rels = [str(p.relative_to(data_root)) if p.is_relative_to(data_root) else str(p) for p in paths]
         ckpt = checkpoint_path(data_root, text_dir, sha)
         done = read_json(ckpt)
-        if not _needs_redo(done, ocr_enabled, retry_skipped):
+        if not _needs_redo(done, ocr_enabled, retry_skipped, extract_versions):
             done_count += 1
             if done["paths"] != rels:
                 write_json_atomic(ckpt, {**done, "paths": rels})
             continue
-        result = extract_file(paths[0], get_ocr)
-        write_json_atomic(ckpt, {
-            "sha256": sha, "size": paths[0].stat().st_size, "paths": rels,
-            **path_meta(paths[0]), **result, "created_at": datetime.now(timezone.utc).isoformat(),
-        })
+        with claim_file(data_root, claim_dir, sha) if claim_dir else _always() as got:
+            if not got:
+                busy += 1  # tiến trình khác đang làm file này
+                continue
+            now = read_json(ckpt)
+            if claim_dir and now and now.get("created_at", "") >= started:
+                done_count += 1  # tiến trình khác vừa làm xong (kể cả lỗi) trong lần chạy này, không làm lại
+                continue
+            result = extract_file(paths[0], get_ocr)
+            result = _write_checkpoint(ckpt, sha, paths, rels, path_meta, result)
         if result["error"]:
             failed += 1
             logger.warning("Lỗi %s: %s", rels[0], result["error"])
-    logger.info("Xong: %d file làm mới hoặc làm lại, %d đã có checkpoint, %d lỗi",
-                len(groups) - done_count, done_count, failed)
+    logger.info("Xong: %d file làm mới hoặc làm lại, %d đã có checkpoint, %d đang do tiến trình khác làm, %d lỗi",
+                len(groups) - done_count - busy, done_count, busy, failed)
     return failed
 
 

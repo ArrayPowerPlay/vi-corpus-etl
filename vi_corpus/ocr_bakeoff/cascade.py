@@ -290,7 +290,9 @@ class CascadeOcr:
         Returns:
             {"text": văn bản được nhận ("" nếu trang trắng hoặc bị loại), "status": "ok" | "blank" | "flagged", "tier": engine
              được chọn, "finish_reason", "reasons": mã bộ kiểm còn lại trên bản chọn, "attempts": [{"tier", "reasons", "error"?}]
-             (chỉ khi phải chạy lại), "rejected_text": văn bản bị loại (chỉ khi flagged, để kiểm tay)}.
+             (chỉ khi phải chạy lại), "rejected_text": văn bản bị loại (chỉ khi flagged, để kiểm tay), "text_md": đầu ra gốc
+             của engine (markdown: tiêu đề #, bảng, công thức) khi trang "ok" và bản gốc khác "text" (T-06: "text" là chữ thuần
+             cho các bộ lọc, cấu trúc bị to_plain bỏ nên giữ bản gốc cho CPT sau này)}.
             "blank" = mọi engine đều trả trang rỗng (trang trắng thật, không phải lỗi). "flagged" = engine cuối vẫn bị báo.
         """
         attempts: list[dict] = []
@@ -317,6 +319,9 @@ class CascadeOcr:
             out["attempts"] = attempts
         if status == "flagged":
             out["rejected_text"] = text
+        raw = (rec or {}).get("raw")
+        if status == "ok" and isinstance(raw, str) and raw.strip() and raw.strip() != text.strip():
+            out["text_md"] = raw
         return out
 
     def page_text(self, image) -> str:

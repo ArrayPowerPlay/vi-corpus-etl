@@ -7,13 +7,14 @@ ETL xây **corpus tiếng Việt cho LLM** từ nhiều nguồn, có truy vết 
 | SEA (3 bộ của AI Singapore) | Văn bản web + hội thoại instruct, phần tiếng Việt | Đã có bước **tải** (mục 1–7 bên dưới); bước xử lý: kế hoạch |
 | stbook.vn | Sách NXB Chính trị quốc gia Sự thật (PDF dạng ảnh, tải bằng repo `stbook-crawler`) | Đã có bước **OCR → text** (Phần B) |
 | Giáo trình (Google Drive) | Giáo trình đại học 16 ngành (PDF, pptx), tải bằng rclone | Đang viết bước xử lý (`docs/GIAO_TRINH.md`) |
-| VJOL, VISTA | Bài báo khoa học (PDF), **chỉ xử lý** dữ liệu có sẵn, không crawl | Kế hoạch: `raw/VJOL/`, cấu trúc sẽ bổ sung khi có dữ liệu |
+| VJOL | Bài báo khoa học (PDF theo thư mục năm + metadata tạp chí), **chỉ xử lý** dữ liệu có sẵn, không crawl | Đã có bước **trích text** (Phần G); `raw/vjol/` |
+| VISTA | Bài báo khoa học (PDF), chỉ xử lý | Kế hoạch: đường dẫn tạm |
 
 Chiến lược xử lý (nguồn → parse → ngôn ngữ → làm sạch → chất lượng → loại trùng → knowledge unit → audit):
 xem [`docs/PIPELINE.md`](PIPELINE.md), [`docs/SOURCES.md`](SOURCES.md) và lộ trình [`docs/ROADMAP.md`](ROADMAP.md).
 Các quyết định đã chốt qua từng phiên làm việc: [`docs/DECISION_LOG.md`](DECISION_LOG.md); sơ đồ luồng chính và luồng con: [`docs/diagrams/`](diagrams/).
 Cấu trúc repo và thư mục dữ liệu: [`docs/PROJECT_ARCHITECTURE.md`](PROJECT_ARCHITECTURE.md).
-Phần còn lại của README mô tả phần đã có code: **Phần A** tải dữ liệu SEA, **Phần B** OCR sách stbook, **Phần C** chạy tất cả bằng `scripts/run_all.py`, **Phần D** pipeline xử lý end-to-end trên N mẫu (có visualize, chạy nhiều GPU), **Phần E** công cụ hệ thống đọc .doc / .ppt / .djvu, **Phần F** so sánh engine OCR.
+Phần còn lại của README mô tả phần đã có code: **Phần A** tải dữ liệu SEA, **Phần B** OCR sách stbook, **Phần C** chạy tất cả bằng `scripts/run_all.py`, **Phần G** trích text VJOL, **Phần D** pipeline xử lý end-to-end trên N mẫu (có visualize, chạy nhiều GPU), **Phần E** công cụ hệ thống đọc .doc / .ppt / .djvu, **Phần F** so sánh engine OCR.
 
 ---
 
@@ -386,18 +387,19 @@ cuốn nào kết quả không đổi thì không ghi lại file. Báo cáo ở 
 
 # Phần C — Chạy tất cả bằng `scripts/run_all.py`
 
-Mỗi nguồn có một thư mục script riêng (`scripts/sea/`, `scripts/stbook/`, `scripts/giao_trinh/`); `run_all.py` chạy lần lượt script của từng phần
-(SEA tải → stbook OCR → giáo trình trích text), truyền `--data-root` cho từng script:
+Mỗi nguồn có một thư mục script riêng (`scripts/sea/`, `scripts/stbook/`, `scripts/giao_trinh/`, `scripts/vjol/`); `run_all.py` chạy lần lượt script của từng phần
+(SEA tải → stbook OCR → giáo trình trích text → VJOL trích text), truyền `--data-root` cho từng script:
 
 ```bash
-uv run python scripts/run_all.py --data-root /duong/dan/data                     # cả 3 phần
+uv run python scripts/run_all.py --data-root /duong/dan/data                     # cả 4 phần
 uv run python scripts/run_all.py --data-root /duong/dan/data --only sea,giao_trinh   # chọn phần
 uv run python scripts/run_all.py --data-root /duong/dan/data --status            # xem tiến độ từng phần
 ```
-- Phần xử lý (`stbook`, `giao_trinh`) thiếu thư mục `raw/...` thì bị bỏ qua, có dòng log nói rõ. `sea` là bước tải nên luôn chạy.
+- Phần xử lý (`stbook`, `giao_trinh`, `vjol`) thiếu thư mục `raw/...` thì bị bỏ qua, có dòng log nói rõ. `sea` là bước tải nên luôn chạy.
 - Một phần lỗi không làm dừng các phần sau; cuối cùng in tóm tắt và thoát với mã khác 0 nếu có phần lỗi.
 - Tham số riêng của từng script (`--workers`, `--device cpu`, ...) không đi qua `run_all`; muốn dùng thì chạy trực tiếp script của phần đó.
 - Giáo trình tải bằng `rclone` (xem `docs/GIAO_TRINH.md`), không nằm trong `run_all`.
+- `vjol` qua `run_all` xử lý **mọi** PDF với tham số mặc định (cần server VLM đã chạy sẵn nếu có trang scan); chạy mẫu hoặc nhiều GPU thì gọi thẳng script (Phần G).
 
 ---
 
@@ -415,7 +417,7 @@ Mục đích: kiểm tra pipeline và chất lượng dữ liệu trước khi c
 | 5 | `dedup` | Trùng theo văn bản: chính xác + gần trùng (MinHash) + văn bản nằm trong văn bản lớn hơn, rồi trùng chính xác theo đoạn; cổng quyền chỉ gắn nhãn. Ghi kho dấu vân tay cho dedup vòng 2 | `05_dedup.parquet`, `<data-root>/state/dedup_index/<nguồn>/<run>.parquet` |
 | 6 | `embed` | Vector hóa văn bản — **song song nhiều GPU** | `06_embeddings.parquet` |
 | 7 | `reduce` | Gom cụm HDBSCAN trên embedding gốc; PCA + UMAP xuống 2D chỉ để vẽ (cuML nếu có, không thì scikit-learn/umap-learn) | `07_reduced.parquet` |
-| 8 | `finalize` | Bộ sạch, knowledge unit, khối CPT, quét nhiễm benchmark, audit, bản đồ plotly, báo cáo | `clean.parquet`, `knowledge_units.parquet`, `cpt_blocks.parquet`, `audit.json`, `report.html` (đã nhúng bản đồ) |
+| 8 | `finalize` | Bộ sạch, knowledge unit, segment CPT, quét nhiễm benchmark, audit, bản đồ plotly, báo cáo | `clean.parquet`, `knowledge_units.parquet`, `cpt_segments.parquet`, `audit.json`, `report.html` (đã nhúng bản đồ) |
 
 Mọi kết quả nằm ở `<data-root>/processed/pipeline_runs/<run-name>/` (mặc định `run_<total>_seed<seed>`). Mỗi stage có checkpoint kèm **vân tay** (tham số của stage + phiên bản code + dữ liệu đầu vào): chạy lại thì stage nào đã có file và vân tay khớp sẽ được bỏ qua; đổi tham số (tokenizer, ngưỡng, bộ nhúng...) hoặc dữ liệu `raw/` thì stage đó và các stage sau tự chạy lại (log ghi rõ). Muốn cố ý dùng lại kết quả cũ: thêm `--keep-stale`.
 
@@ -483,7 +485,6 @@ Các tham số mới (đợt code 2026-10-08, chi tiết `docs/PIPELINE.md` mụ
 | `--lang-model fasttext:lid.176\|heuristic` | Bộ nhận diện ngôn ngữ (mặc định fastText) |
 | `--embed-scope all\|kept` | Nhúng mọi bản ghi (để vẽ cả bản bị loại) hay chỉ bản giữ lại |
 | `--cluster-space raw\|pca50\|umap10`, `--min-cluster-size N`, `--min-samples N` | Không gian và tham số HDBSCAN (mặc định embedding gốc, `max(2, min(20, n/10))`) |
-| `--cpt-context N` | Độ dài tối đa (token) của khối CPT trong `cpt_blocks.parquet` (mặc định 4.096) |
 | `--no-dedup-index` | Không ghi kho dấu vân tay dedup vòng 1 |
 | `--global-verdict <verdict.parquet>` | Áp kết quả dedup vòng 2 trước khi dựng knowledge unit |
 | `--keep-stale` | Dùng lại kết quả cũ dù vân tay lệch |
@@ -531,6 +532,14 @@ Kiểm tra GPU đang chạy bằng `nvidia-smi` ở terminal khác. Kết quả 
 - `report.html`: số liệu từng stage, phân bố band/ngôn ngữ/điểm, lý do loại, mẫu văn bản, và mục **Bản đồ embedding** (chọn cách tô màu bằng các nút).
 - Bản đồ embedding nằm **ngay trong `report.html`** (plotly.js và dữ liệu nhúng sẵn, ~vài MB, không cần mạng, không iframe): chỉ cần tải mỗi file `report.html` về rồi mở bằng trình duyệt. Bấm nút `<umap|pca>-<nguồn|trạng thái|band|ngôn ngữ|cụm>` để đổi cách vẽ / tô màu; rê chuột vào điểm để đọc đoạn đầu văn bản và reason code. Cách đọc: tô theo **nguồn** để xem các nguồn tách nhau thế nào; tô theo **trạng thái** để xem mẫu bị loại (chất lượng / trùng / quyền) nằm ở vùng nào, mẫu rác thường dồn thành cụm riêng.
 - `audit.json`: tỉ lệ lineage, số trùng, số bị quarantine, tokenizer, token/từ, kết quả quét nhiễm benchmark (đặt file `*.txt` / `*.jsonl` vào `configs/benchmarks/`; hiện rỗng). `manifest.json`: cấu hình, vân tay, thời gian từng stage, tham số gom cụm, số candidate / instruction.
+- `cpt_segments.parquet` (T-07): mỗi dòng là một đoạn văn bản liền mạch (không giới hạn độ dài) để làm dữ liệu CPT, kèm nguồn gốc, quyền, họ trùng, metadata (cột `title`, `meta_json`). Muốn có chuỗi huấn luyện độ dài cố định thì chạy bước đóng gói (CPU, đọc từng phần nên chạy được với hàng tỷ token):
+
+  ```bash
+  uv run python scripts/cpt_pack.py --segments <run_dir>/cpt_segments.parquet [<run_dir2>/cpt_segments.parquet ...] \
+      --out <data-root>/processed/cpt_packed/train_8k.parquet --buckets 0-89      # 8.192 token mặc định (T-08)
+  # thêm --use-metadata-prefix để có tiền tố tiêu đề / tạp chí / năm... ở cột prefix (mặc định TẮT, T-09)
+  ```
+  Đầu ra: mỗi dòng một mảnh, các mảnh cùng `seq_id` ghép theo `seq_pos` thành một chuỗi; `eos` = True thì thêm EOS sau mảnh (chỉ ở cuối thật của văn bản). Khi train phải che attention giữa các mảnh trong cùng chuỗi (reset `position_ids` / `cu_seqlens` ở đầu mỗi mảnh) và không tính loss trên `prefix`. Thống kê (số chuỗi, tỉ lệ lấp, mảnh quá dài) ở `<out>.stats.json`.
 
 ## D7. Xử lý sự cố
 
@@ -683,6 +692,37 @@ tests/                 # test (không cần mạng): uv run pytest
 pyproject.toml         # khai báo thư viện; uv.lock ghi phiên bản chính xác (commit cả hai)
 ```
 Muốn thêm một bộ dữ liệu HF mới: thêm một `DatasetSpec` vào `vi_corpus/sea/datasets.py`, rồi tạo script mới theo mẫu của một script có sẵn.
+
+---
+
+# Phần G — Trích text VJOL (bài báo khoa học, J-01 ... J-06, J-10)
+
+Dữ liệu: `<data-root>/raw/vjol/<năm>/<article_id>_<galley_id>.pdf` + `raw/vjol/metadata/vjol_merged.jsonl` (mỗi dòng một bài: tiêu đề, tạp chí, năm, ngôn ngữ, DOI, ...).
+Chỉ **xử lý**, không crawl. Mỗi trang đọc tối đa 2 lần (R-26): lần 1 PyMuPDF cho mọi trang (lớp chữ Unicode, đổi font TCVN3), lần 2 chỉ cho **trang scan** và **trang lỗi font** (J-10, xem dưới), bằng chuỗi
+engine VLM của stbook (O-20: `qwen3vl_8b_mt4k` → `qwen3vl_8b_rp110` → Paddle + VietOCR → bỏ trang). Các trang scan của một PDF được gửi song song (`--concurrency`, mặc định 32).
+
+```bash
+# thử nhanh không GPU: 20 bài chia đều theo năm, trang scan để needs_ocr
+uv run python scripts/vjol/extract.py --data-root /duong/dan/data --sample-docs 20 --no-ocr
+# một GPU, tự dựng server vLLM lúc gặp trang scan đầu tiên và tắt khi xong
+uv run --no-sync python scripts/vjol/extract.py --data-root /duong/dan/data --sample-docs 3000 --seed 0 --gpu 0 --serve --vllm-bin $(which vllm)
+# 4 GPU (mỗi GPU một server + một tiến trình, PDF chia nhau bằng khoá); xong tự xuất Parquet và in thống kê
+DATA_ROOT=/duong/dan/data VLLM_BIN=$(which vllm) SAMPLE_DOCS=3000 ./scripts/vjol/run_extract_vlm.sh
+uv run python scripts/vjol/extract.py --data-root /duong/dan/data --status        # tiến độ, trang theo method / engine / trạng thái, trang lỗi font, checkpoint cũ
+# đo chữ hỏng do font trên checkpoint có sẵn (CPU, J-10): số trang / bài bị nghi, quét ngưỡng, phân bố theo năm, ví dụ
+uv run python scripts/vjol/check_garbled.py --data-root /duong/dan/data      # -> processed/vjol_garbled_check/
+# pipeline chung trên mẫu 10.000 đoạn VJOL
+uv run python scripts/run_pipeline.py --data-root /duong/dan/data --mix vjol=10000 --total 10000 --run-name vjol_10k
+```
+
+- **Mẫu** (`--sample-docs N --seed S`): N bài chia đều theo thư mục năm (năm ít bài nhường chỗ cho năm khác). Mẫu nhỏ luôn nằm trong mẫu lớn (cùng seed), nên tăng N rồi chạy lại chỉ làm phần mới. Không có cờ này thì xử lý mọi PDF.
+- **Kết quả**: `interim/vjol_text/<sha256>.json` (text từng trang, `method` = `text` / `tcvn3` / `ocr_vlm` / `empty` / `needs_ocr`; trang `ocr_vlm` có `tier` và `status` = `ok` / `blank` / `flagged`, trang `flagged` có text rỗng và `rejected_text`).
+  Checkpoint theo PDF (sha256), bị ngắt thì chạy lại đúng lệnh cũ. `processed/vjol/vjol.parquet` để xem; pipeline đọc thẳng checkpoint.
+- **Trang lỗi font (J-10)**: lớp chữ toàn chữ Latinh có dấu nhưng sai ("Baỷng, hieọu, ngửụứi"; không phải TCVN3, ~12% đoạn ở mẫu 3.000 bài đầu tiên). Dò theo từng trang, không phụ thuộc ngôn ngữ (`vi_corpus/common/garbled.py`), bốn tín hiệu, trang bị nghi nếu một tín hiệu vượt ngưỡng: **tone** (>= 10 từ và >= 5% từ mang từ hai dấu thanh trở lên; tiếng Việt đúng chỉ có tối đa một dấu thanh mỗi âm tiết; J-13), **case** (>= 5% từ >= 4 chữ cái có chữ hoa đứng sau chữ thường, "xuAáT", "7K{QJWLQYjJLảLSKiSNKRDKọFF", họ chữ lệch mã ASCII; J-16), **foreign** (>= 0,3% chữ cái là ñ ö ï ø å và có ít nhất 5 chữ cái như vậy, họ VNI; J-18), **unknown** (>= 30% từ Latinh không có trong `processed/ocr_bakeoff/syllables.json`, họ sai dấu kiểu Windows-1258; J-16). Ngưỡng case / foreign / unknown đã chỉnh theo số đo lần 3 (J-17, J-18). Thiếu `syllables.json` thì bỏ tín hiệu unknown (có cảnh báo; checkpoint ghi `extract_version` không có `+vocab`, lần chạy sau có file sẽ tự làm lại các bài đó; cờ `--syllables` / biến `SYLLABLES` đổi đường dẫn). Trang bị nghi đi OCR như trang scan, nhưng **vẽ lại cả trang** (200 dpi PNG) thay vì lấy ảnh nhúng; bài có >= 30% số trang có chữ bị nghi thì **cả bài** đi OCR. Mục trang ghi `reason` (`garbled_text_layer` | `garbled_doc`), `signals` (tín hiệu nào vượt ngưỡng) và `garbled_text` (chữ hỏng, giữ để kiểm tra, không dùng); OCR bị `flagged` thì trang rỗng, không quay lại dùng chữ hỏng; `--no-ocr` thì trang thành `needs_ocr`. Checkpoint ghi `extract_version`; checkpoint do bản cũ ghi (thiếu hoặc khác `EXTRACT_VERSION`) bị **làm lại** ở lần chạy sau. Lưới an toàn ở stage quality: mã cứng `garbled_font` (band D, ngưỡng đoạn văn 8%). Ngưỡng là điểm khởi đầu: chạy `check_garbled.py` trước khi tốn GPU để chỉnh (`GARBLED_RATIO`, `GARBLED_HARD_RATIO`, `GARBLED_MIN_WORDS`, `GARBLED_DOC_SHARE` trong `garbled.py`). Kết quả đo còn có `new_signals.txt` (trang chỉ một tín hiệu mới bắt, và trang sát dưới ngưỡng, để kiểm độ chính xác và độ sót bằng mắt) và `blind_spots.txt` (trang không bị nghi nhưng đáng xem); `summary.json` quét ngưỡng riêng cho từng tín hiệu (`sweep.by_signal`) và tone x ngưỡng cấp bài (`sweep.tone_x_doc_share`).
+- **Làm sạch lúc sinh bản ghi** (`vi_corpus/vjol/clean.py`, không lưu vào interim): bỏ trang bìa (trang đầu < 40 từ, bài >= 3 trang), trang mục lục, phần Tài liệu tham khảo / References (từ tiêu đề đến Abstract / Phụ lục / Lời cảm ơn kế tiếp hoặc hết bài), rồi tiêu đề chạy và số trang như giáo trình. Ngưỡng là điểm khởi đầu.
+- **Metadata**: `vjol_merged.jsonl` đọc theo luồng một lượt, chỉ giữ bài có trong mẫu, nối qua `article_id`; PDF không có dòng metadata vẫn thành bản ghi (thiếu trường). Có trong cột `meta` của pipeline: `journal_slug`, `journal_title`, `year`, `language`, `doi`, `title`, `keywords`, `article_id`, `galley_id`, và số trang lỗi font phải OCR lại, số trang / dòng bị bỏ.
+- **Lỗi hệ thống** (`ServerDown`, `EngineUnavailable`) dừng cả lượt, không loại trang âm thầm (O-24); PDF đã xong vẫn nằm trong checkpoint. PDF hỏng chỉ tính một lỗi. Quyền `rights_status = unknown` (chỉ gắn nhãn, R-01).
+- **Chưa làm ở bản đầu**: `cmap_healer` (V-10; chữ hỏng do font được xử lý bằng OCR, J-10), parser bố cục (GROBID / Marker / Docling), dedup VJOL với nguồn khác (chạy `scripts/dedup_global.py` sau), bộ lọc trang `baseline` theo tỷ lệ âm tiết (O-27 c, chưa có ngưỡng).
 
 ## Giấy phép dữ liệu
 Các bộ SEA dùng giấy phép [ODC-By 1.0](https://opendatacommons.org/licenses/by/1-0/), và người dùng cần tuân thủ [CommonCrawl ToU](https://commoncrawl.org/terms-of-use/).

@@ -26,8 +26,13 @@ class SourceProfile:
                           nhãn markdown lặp là nội dung; vòng lặp do mô hình sinh đã bị repeated_ngrams / duplicate_lines
                           loại cả mẫu ở stage quality.
         cross_line_clean: Xoá dòng lặp ở nhiều văn bản của cùng nguồn (D-04 mục C, chỉ dành cho nguồn web).
+        keep_table_cells: Mục A không xoá dòng ngắn lặp khi nó nằm cạnh dòng ngắn khác (ô bảng trích từ PDF: mỗi ô một đoạn, giá trị lặp là nội dung, J-33 G).
         allowed_langs:    Ngôn ngữ chấp nhận; ngoài danh sách thì loại (lang_not_allowed).
         min_lang_score:   Ngưỡng lang_score (độ thuần x độ tin cậy, D-02); thấp hơn thì gắn mã low_lang_score (trừ điểm nhẹ).
+        perplexity:       Chấm perplexity của đoạn bằng mô hình ngôn ngữ nhỏ (J-25 D3, vi_corpus.pipeline.quality.annotate_perplexity) làm tín hiệu thứ hai; cần
+                          RunConfig.perplexity_model. Mới dùng cho bài báo khoa học.
+        odd_words:        Bật chỉ số "từ lạ" (J-22 (3) C, vi_corpus.pipeline.quality.annotate_odd_words): đoạn tiếng Việt có tỷ lệ từ
+                          lạ cao bị loại (odd_words). Cần tập âm tiết (RunConfig.syllables); mới dùng cho bài báo khoa học.
         dedup_group:      Nhóm dedup: "cpt" dedup toàn cục giữa mọi nguồn, "sft" (hỏi - đáp) chỉ dedup trong nhóm của mình (Q4).
     """
 
@@ -39,8 +44,11 @@ class SourceProfile:
     web_checks: bool = False
     in_doc_line_clean: bool = True
     cross_line_clean: bool = False
+    keep_table_cells: bool = False
     allowed_langs: tuple[str, ...] = ("vi",)
     min_lang_score: float = 0.65
+    odd_words: bool = False
+    perplexity: bool = False
     dedup_group: str = "cpt"
 
 
@@ -55,7 +63,12 @@ PROFILES: dict[str, SourceProfile] = {
     "stbook": SourceProfile(chunked=True, min_words=80, allowed_langs=("vi", "en")),
     # giữ sách tiếng Anh (P-08); ngưỡng lang_score thấp hơn vì giáo trình hay trộn Việt - Anh
     "giao_trinh": SourceProfile(chunked=True, min_words=80, allowed_langs=("vi", "en"), min_lang_score=0.5),
+    # bài báo khoa học: giữ cả bản Việt và bản Anh (R-26, P-08); ngưỡng là điểm khởi đầu như giáo trình, chưa kiểm trên bài thật
+    "vjol": SourceProfile(chunked=True, min_words=80, allowed_langs=("vi", "en"), min_lang_score=0.5, odd_words=True,
+                           perplexity=True, keep_table_cells=True),
 }
+# VISTA là bài báo khoa học như VJOL (VS-02): cùng bộ xử lý, cùng hồ sơ ngưỡng (điểm khởi đầu, chưa kiểm trên bài VISTA thật, bước V3).
+PROFILES["vista"] = PROFILES["vjol"]
 
 # Cơ cấu mặc định khi không chỉ định --mix (tỷ lệ, sẽ được quy về --total).
 DEFAULT_MIX: dict[str, int] = {"sea_pile_v2": 30, "sea_lion_pile_v1": 30, "sea_instruct_2602": 15, "stbook": 25}
@@ -73,6 +86,27 @@ DEFAULT_PRIORITY = 3
 
 DEFAULT_TOKENIZER = "hf:Qwen/Qwen3-0.6B"  # tokenizer chính thức để đếm KPI và cắt đoạn (D-01, R-35)
 DEFAULT_LANG_MODEL = "fasttext:lid.176"  # fastText lid.176.bin (D-02, R-20)
+
+
+TAKE_ALL = 10**12  # số mẫu "lấy hết" (VS-06): lớn hơn số đoạn của bất kỳ nguồn nào nên stage chunk không lấy mẫu xuống
+
+
+def parse_shard(text: str | None) -> tuple[int, int] | None:
+    """
+    Đọc "I/N" (phần thứ I trong N phần, I từ 0) thành (I, N); None hoặc rỗng thì None.
+
+    Raises:
+        ValueError: nếu không đúng dạng "I/N" hoặc không thoả 0 <= I < N.
+    """
+    if not text:
+        return None
+    try:
+        i, n = (int(x) for x in text.split("/"))
+    except ValueError as exc:
+        raise ValueError(f"shard phải có dạng I/N (vd 0/8), nhận {text!r}") from exc
+    if not 0 <= i < n:
+        raise ValueError(f"shard {text!r}: cần 0 <= I < N")
+    return i, n
 
 
 def scale_mix(weights: dict[str, int], total: int) -> dict[str, int]:
@@ -128,6 +162,7 @@ class RunConfig:
         embed_prompt:         Tiền tố gắn trước văn bản khi nhúng (E5 cần "passage: ").
         embed_batch_size:     Số văn bản mỗi lần chạy mô hình nhúng.
         embed_max_seq:        Số token tối đa khi nhúng.
+        embed_device:         Thiết bị nhúng: "auto" (GPU nếu có, không thì CPU kèm cảnh báo), "cuda" (không có GPU thì dừng với lỗi, J-22 (8)) hoặc "cpu".
         embed_scope:          "all" nhúng mọi bản ghi (bản đồ thấy cả bản bị loại, dùng cho chạy mẫu); "kept" chỉ nhúng phần
                               còn sống sau lọc rẻ (R-05, dùng khi chạy lớn).
         prefer_gpu:           Giảm chiều bằng cuML (GPU) nếu cài; không thì scikit-learn / umap-learn trên CPU.
@@ -135,8 +170,17 @@ class RunConfig:
                               trung gian khi raw quá chậm. Không bao giờ gom trên toạ độ 2D.
         hdbscan_min_cluster_size: None = mặc định ViLA max(2, min(20, n // 10)) (R-29).
         hdbscan_min_samples:  None = để HDBSCAN tự đặt; chỉ truyền khi đặt rõ (R-29).
-        cpt_context_tokens:   Độ dài tối đa một khối CPT khi nối các đoạn liền nhau còn giữ (D-10). Chưa chốt theo mô hình đích.
         benchmarks_dir:       Thư mục tập benchmark cho quét rò rỉ 13-gram; rỗng / không có = danh sách rỗng (R-16).
+        syllables:            File tập âm tiết (processed/ocr_bakeoff/syllables.json) cho các chỉ số cần từ điển ở stage quality: chữ đảo
+                              ngược (reversed_text) và từ lạ (odd_words). None = bỏ các chỉ số này.
+        unaccented:           File danh sách từ không dấu (processed/ocr_bakeoff/unaccented.json, sinh bằng scripts/build_unaccented.py, J-25 A) cho mã lost_diacritics;
+                              None = danh sách tối thiểu trong vi_corpus.common.garbled.
+        perplexity_model:     Mô hình chấm perplexity cho các nguồn bật SourceProfile.perplexity (J-25 D3), vd "Qwen/Qwen3-0.6B"; None = tắt (không GPU).
+        perplexity_device:    "cuda" | "cpu" | "auto" cho mô hình trên.
+        hyphen_lm_model:      Mô hình chọn cách đọc cho chỗ "ph-ơng" mơ hồ khi ingest VJOL (J-57), vd "Qwen/Qwen3-0.6B"; None = chỉ dùng bằng chứng dấu thanh cả bài (không GPU).
+        hyphen_lm_device:     "cuda" | "cpu" | "auto" cho mô hình trên.
+        shard:                (I, N): chỉ đọc các PDF có sha256 thuộc phần I trong N phần (băm ổn định) của nguồn sách VJOL / VISTA (VS-06), để chạy cả kho thành N lần chạy
+                              nhỏ vừa RAM; dedup vòng 2 (scripts/dedup_global.py) gộp các phần. None = đọc hết.
         global_verdict:       Đường dẫn verdict.parquet của dedup vòng 2 (D-09); có thì áp vào trước khi sinh knowledge unit.
         profiles:             Hồ sơ theo nguồn.
     """
@@ -168,13 +212,20 @@ class RunConfig:
     embed_batch_size: int = 64
     embed_max_seq: int = 512
     embed_scope: str = "all"
+    embed_device: str = "auto"
     prefer_gpu: bool = True
     cluster_space: str = "raw"
     hdbscan_min_cluster_size: int | None = None
     hdbscan_min_samples: int | None = None
-    cpt_context_tokens: int = 4096
     benchmarks_dir: str | None = "configs/benchmarks"
+    shard: tuple[int, int] | None = None
     global_verdict: str | None = None
+    syllables: str | None = None
+    unaccented: str | None = None
+    perplexity_model: str | None = None
+    perplexity_device: str = "cuda"
+    hyphen_lm_model: str | None = None
+    hyphen_lm_device: str = "cuda"
     profiles: dict[str, SourceProfile] = field(default_factory=lambda: dict(PROFILES))
 
     def profile(self, source_key: str) -> SourceProfile:

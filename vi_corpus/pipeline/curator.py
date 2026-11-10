@@ -120,7 +120,7 @@ def _embed_fn(cfg: RunConfig) -> RowsFn:
     spec = cfg.embed_spec or ""
     if not spec.startswith("hf:"):
         raise ValueError("Chạy song song chỉ hỗ trợ embedder 'hf:<model_id>' (tfidf phải fit trên toàn corpus, chạy tuần tự)")
-    model = embed_mod.HfEmbedder(spec[3:], "auto", cfg.embed_max_seq, cfg.embed_batch_size, cfg.embed_prompt)
+    model = embed_mod.HfEmbedder(spec[3:], cfg.embed_device, cfg.embed_max_seq, cfg.embed_batch_size, cfg.embed_prompt)
 
     def run(rows: list[dict]) -> list[dict]:
         """Nhúng các bản ghi của một phân vùng."""

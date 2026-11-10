@@ -1,6 +1,6 @@
 """
 Khảo sát nhanh giáo trình đã tải về (mặc định <data-root>/raw/giao_trinh; dùng --root cho nguồn khác,
-vd VJOL: --root <data-root>/raw/VJOL, khi đó cột "ngành" là thư mục cấp 1 = năm) trước khi viết bước xử lý.
+vd VJOL: --root <data-root>/raw/vjol, khi đó cột "ngành" là thư mục cấp 1 = năm) trước khi viết bước xử lý.
 
 Với mỗi PDF, lấy tối đa --max-pages trang rải đều và phân loại từng trang như extract_pdf sẽ làm:
 text / tcvn3 / scan (cần OCR) / empty. Ngoài ra đo tỉ lệ chữ có dấu tiếng Việt (để tách sách
