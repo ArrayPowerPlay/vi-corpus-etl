@@ -130,4 +130,24 @@ Dùng lại bộ xử lý bài báo của VJOL, không chép code. Thêm một `
 
 Thứ tự ưu tiên khi trùng: VISTA nằm nhóm "các dataset khác" (R-15) nên VJOL (mức 0) được giữ trước. Test: `tests/test_vista.py` (8 test), toàn bộ 379 test qua, VJOL không đổi (cùng checkpoint, cùng `meta`).
 
-Chưa làm (đợi V2/V3): nhóm font xấu và bảng lệch dấu riêng của VISTA, đo độ trùng tóm tắt với trang đầu, đánh dấu PDF cả số tạp chí (`whole_issue`), cờ `PROFILES["vista"]` riêng. `scripts/vjol/run_extract_vlm.sh` giữ nguyên (không sửa file shell đang có thể được bash đọc dở); sau khi lượt full VJOL xong có thể gộp hai file shell làm một.
+Chưa làm (đợi V3): nhóm font xấu và bảng lệch dấu riêng của VISTA, đo độ trùng tóm tắt với trang đầu, đánh dấu PDF cả số tạp chí (`whole_issue`), cờ `PROFILES["vista"]` riêng. `scripts/vjol/run_extract_vlm.sh` giữ nguyên (không sửa file shell đang có thể được bash đọc dở); sau khi lượt full VJOL xong có thể gộp hai file shell làm một.
+
+## 7. Chạy toàn bộ pipeline (VS-06, 2026-11-09)
+
+Một script cho cả đường đi: `scripts/vista/run_vista.sh <bước>` (hướng dẫn đầy đủ ở `docs/SERVER_TASK.md` S-26).
+
+| Bước | Việc | Máy |
+|---|---|---|
+| `check` | `check_raw.py`: raw/vista khớp nhật ký tải | CPU |
+| `survey` | `producer_survey.py`: producer còn thiếu trong luật OCR cả bài | CPU |
+| `sample-extract` | trích text 3.000 PDF chia đều theo năm | 4 GPU, ~30 phút (ước) |
+| `sample-pipeline` | pipeline trên mẫu (20.000 đoạn, có bản đồ embedding), `vista_sample/report.html` | GPU nhỏ |
+| **dừng, chủ dự án duyệt mẫu** | | |
+| `full-extract` | trích text cả kho | 4 GPU, ~2 ngày (ước) |
+| `full-pipeline` | pipeline cả kho, `--take-all --shard i/N` (N=8), không embed | CPU |
+| `dedup` | `dedup_global.py` rồi áp verdict vào từng phần | CPU |
+| `summary` | `summarize_runs.py`: đoạn, token giữ, phễu, RAM đỉnh, giờ | CPU |
+
+Vì sao chia phần: mọi stage của `run_pipeline.py` giữ toàn bộ bản ghi trong RAM; cả kho VISTA (~273.000 PDF, ước hàng triệu đoạn) có thể vượt RAM server (chưa biết). `--shard i/N` chia PDF theo sha256 thành N phần rời nhau; mỗi phần là một lần chạy độc lập có kho dấu vân tay riêng; vòng 2 gộp lại nên trùng giữa các phần và với VJOL vẫn bị bắt. Kết quả cuối là các `clean.parquet` của `vista_full_s*of8` sau khi áp verdict (chưa có bước gộp thành một file; `cpt_pack.py` đọc từng phần).
+
+Chưa làm: bước ghép các `cpt_segments.parquet` của các phần thành một đầu vào cho `scripts/cpt_pack.py`; nhóm font / bảng lệch dấu riêng của VISTA; chỉnh ngưỡng chất lượng sau khi xem `vista_sample/report.html`.

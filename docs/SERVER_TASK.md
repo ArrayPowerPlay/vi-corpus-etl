@@ -38,6 +38,7 @@
 | S-22 | VJOL: đo độ chính xác bộ chọn "ph-ơng / l-ơng" (J-57), chạy `vjol_10k_v10` và so với `v9` | J-57 | CHẠY SAU S-21 | đo vài phút GPU + pipeline ~15 phút | 1 |
 | S-23 | VJOL: trích text CẢ KHO (177.031 PDF) và theo dõi 1–2 giờ đầu | J-60 | CHẠY SAU S-22 | chưa ước được (đo trong chính lần chạy này) | 4 |
 | S-25 | VISTA: chép `sti.vista.gov.vn/` về `raw/vista`, kiểm bản chép so với nhật ký tải, thử trích 20 bài không OCR (V0 + kiểm V1) | VS-02, VS-03 | A: CHẠY NGAY (không cần code mới); B, C: SAU KHI lượt full VJOL (S-23/S-24) xong | A vài giờ (234 GB); B vài phút CPU; C vài phút | không |
+| S-26 | VISTA: chạy toàn bộ pipeline bằng `scripts/vista/run_vista.sh` (kiểm bản chép -> khảo sát producer -> mẫu 3.000 PDF -> pipeline mẫu -> trích cả kho -> pipeline cả kho chia phần -> dedup toàn cục -> tổng hợp) | VS-06 | CHẠY SAU KHI lượt full VJOL xong và S-25 A xong | mẫu ~30 phút GPU; cả kho ~2 ngày GPU (ước, đo ở mẫu) + pipeline vài giờ CPU | 4 (trích text) |
 | S-26 | VJOL + VISTA: đếm số file và số trang cần OCR bằng `scripts/count_ocr_pages.py` (nhanh hơn `--status`, có bộ nhớ đệm) | yêu cầu 2026-11-06 | CHẠY NGAY (VJOL); VISTA sau khi lượt full VJOL xong | VJOL vài phút; VISTA quét CPU vài giờ | không |
 
 Thứ tự khuyến nghị: S-10 (VJOL ưu tiên cao nhất, R-15) → S-0 → S-1 → S-2 → S-3 (có đủ số để tính giờ OCR) → S-4 → S-5. S-6 đến S-9 và S-11 làm sau phiên code (S-11 cần script `scripts/dedup_pairs_sample.py`, viết ở gói G-05 bước 2).
@@ -952,6 +953,38 @@ uv run --no-sync python scripts/count_ocr_pages.py --data-root $SEA_DATA_ROOT --
 ```
 Kết quả: bảng in ra màn hình, `processed/ocr_count/<nguồn>.json`, `<nguồn>_by_year.csv`. Chạy lại cùng lệnh là tiếp tục; `--no-cache` đọc lại mọi checkpoint. Checkpoint do `--scan-missing` ghi (trang `needs_ocr`) được lượt OCR thật tự làm lại; trang có lớp chữ tốt không bị OCR.
 
+## S-26. VISTA: chạy toàn bộ pipeline  [CHẠY SAU KHI lượt full VJOL (S-23/S-24) xong và S-25 A xong]
+
+**Mục đích**: VS-06. Một script `scripts/vista/run_vista.sh <bước>` chạy từng bước; mỗi bước chạy lại được. **Không chạy bước GPU khi lượt VJOL còn chạy** (VS-02). Cả kho được chia `SHARDS` phần (mặc định 8, theo sha256 PDF) chạy thành các lần pipeline nhỏ vừa RAM; `dedup` gộp các phần (và gộp với VJOL, SEA ... nếu có kho dấu vân tay của chúng).
+
+```bash
+cd /home/jovyan/dinh/vi-corpus-etl && git pull && source /home/jovyan/dinh/env.sh
+export DATA_ROOT=$SEA_DATA_ROOT VLLM_BIN=$(which vllm)
+tmux new -s vista
+# 1) kiểm bản chép + khảo sát producer (CPU, vài phút đến vài chục phút). Dừng ở đây nếu check báo thiếu file hoặc survey có producer lạ (gửi Claude)
+./scripts/vista/run_vista.sh check
+./scripts/vista/run_vista.sh survey
+# 2) mẫu 3.000 PDF: trích text (4 GPU) rồi pipeline mẫu có bản đồ embedding
+./scripts/vista/run_vista.sh sample-extract
+./scripts/vista/run_vista.sh sample-pipeline        # mở $DATA_ROOT/processed/pipeline_runs/vista_sample/report.html, đọc tay ~30 bài
+```
+**Dừng và báo Claude sau bước 2** (đừng chạy cả kho ngay). Cần dán lại: dòng `--status` cuối `sample-extract` (tỉ lệ trang OCR theo method, flagged, baseline), thời gian trích 3.000 PDF, và hai con số của pipeline mẫu: `jq '.prepare.rows, .quality.bands, .ingest.peak_rss_mb' $DATA_ROOT/processed/pipeline_runs/vista_sample/manifest.json`. Từ đó ước giờ GPU cả kho (3.000 -> ~273.000 PDF, nhân ~91) và chọn `SHARDS`: RAM mỗi phần ~ RAM đỉnh của mẫu x (số đoạn mỗi phần / số đoạn mẫu), giữ dưới ~50% RAM của server.
+
+```bash
+# 3) sau khi Claude / chủ dự án duyệt mẫu: trích text cả kho (4 GPU, chạy lại là tiếp tục), theo dõi 1-2 giờ đầu như S-23
+./scripts/vista/run_vista.sh full-extract
+# 4) pipeline cả kho: SHARDS phần chạy tuần tự (--take-all, không embed). Cần xong full-extract. PIPE_ARGS giống nhau ở bước 4 và 5
+SHARDS=8 ./scripts/vista/run_vista.sh full-pipeline
+# 5) dedup vòng 2 toàn cục rồi áp verdict vào từng phần; 6) tổng hợp
+SHARDS=8 ./scripts/vista/run_vista.sh dedup
+SHARDS=8 ./scripts/vista/run_vista.sh summary
+```
+Đọc `summary`: mỗi phần có `đoạn`, `giữ`, `token giữ`, `RAM MB` (đỉnh), `giây`; dòng TỔNG cộng các phần đã xong; cảnh báo nếu còn phần dang dở hoặc chưa áp verdict. Phần nào lỗi thì chạy lại đúng lệnh `full-pipeline` (phần đã xong dùng lại kết quả stage). Nếu một phần chết vì hết RAM: tăng `SHARDS` (đổi `SHARDS` thì tên và nội dung các phần đổi, xoá `processed/pipeline_runs/vista_full_*` và `state/dedup_index/vista/vista_full_*` của lần cũ trước khi chạy lại).
+
+Ghi chú: mặc định tokenizer `hf:Qwen/Qwen3-0.6B` và `fasttext:lid.176` cần tải một lần (internet hoặc đã có trong `VI_CORPUS_MODEL_DIR`). `PIPE_ARGS="--perplexity-model Qwen/Qwen3-0.6B"` bật chấm perplexity (GPU nhỏ) như VJOL J-25; mặc định tắt. Cần `processed/ocr_bakeoff/syllables.json` và `unaccented.json` (đã có từ VJOL).
+
+**Báo lại cho Claude**: kết quả bước 2 (số liệu ở trên); sau bước 5-6: bảng `summary`, danh sách phần lỗi nếu có.
+
 ## Bảng ghi kết quả
 
 (Điền sau khi chạy. Ghi ngày, người chạy, lệnh đã chạy nếu khác hướng dẫn.)
@@ -977,3 +1010,4 @@ Kết quả: bảng in ra màn hình, `processed/ocr_count/<nguồn>.json`, `<ng
 | S-23 | | bài/giờ (sau khi server dựng xong): ; checkpoint sau 1 giờ và 2 giờ: ; dung lượng interim/vjol_text lúc đó: GB; đĩa trống: GB; trang theo method: ; ocr flagged: %; errors: ; đọc tay 30 bài: / 30 hỏng; giờ cả kho: | |
 | S-25 | | chép: GB, giờ; check_raw: missing / size_mismatch / extra / unknown_dir: ; thử 20 bài: ; producer_survey: producer chưa phủ top 5: | |
 | S-26 | | VJOL / VISTA: file; đã quét / chưa quét; tổng trang; trang cần OCR (đã OCR + còn chờ); ước giờ GPU: | |
+| S-26 | | mẫu: giờ trích 3.000 PDF, trang OCR %, RAM đỉnh pipeline mẫu; cả kho: giờ trích, `summary` (đoạn / token giữ / RAM từng phần): | |
