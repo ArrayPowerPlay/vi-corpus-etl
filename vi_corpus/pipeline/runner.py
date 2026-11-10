@@ -61,6 +61,12 @@ _FINAL_FILES = ("clean.parquet", "knowledge_units.parquet", "cpt_segments.parque
 _STALE_FINAL_FILES = ("cpt_blocks.parquet",)  # đầu ra của bản cũ (trước T-07), finalize xoá để không bị dùng nhầm
 
 
+def peak_rss_mb() -> int:
+    """RAM đỉnh của tiến trình này tính đến giờ (MB, ru_maxrss của Linux tính bằng KB); để biết một lần chạy lớn cần bao nhiêu RAM (VS-06)."""
+    import resource
+    return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss // 1024
+
+
 def _files_of(stage: str) -> list[str]:
     """Các file kết quả của một stage trong run_dir."""
     return list(_FINAL_FILES) if stage == "finalize" else [_FILES[stage]]
@@ -92,7 +98,8 @@ def stage_params(name: str, cfg: RunConfig) -> dict:
     """
     return {
         "ingest": lambda: {"version": INGEST_VERSION, "mix": cfg.mix, "seed": cfg.seed, "rows_per_file": cfg.rows_per_file,
-                           "profiles": _profiles(cfg, "ingest"), "hyphen_lm": cfg.hyphen_lm_model},
+                           "profiles": _profiles(cfg, "ingest"), "hyphen_lm": cfg.hyphen_lm_model,
+                           **({"shard": list(cfg.shard)} if cfg.shard else {})},  # chỉ khi đặt, để vân tay các lần chạy cũ không đổi (VS-06)
         "prepare": lambda: {"normalizer": normalize.NORMALIZER_VERSION, "lines": lines.LINES_VERSION,
                             "chunk": chunk.CHUNK_VERSION, "minhash": dedup.MINHASH_VERSION, "tokenizer": cfg.tokenizer,
                             "chunk_tokens": [cfg.chunk_target_tokens, cfg.chunk_max_tokens, cfg.chunk_min_tokens],
@@ -215,8 +222,8 @@ def run_pipeline(specs: dict[str, SourceSpec], data_root: Path, run_dir: Path, c
         rows, stats = fn()
         save_fingerprint(name)  # ghi trước file kết quả: chết giữa chừng thì file chưa có, stage chạy lại
         n = io.write_rows(path, rows)
-        io.update_manifest(run_dir, name, {"rows": n, "seconds": round(time.time() - t0, 1), **stats})
-        logger.info("[%s] %d bản ghi (%.1fs) %s", name, n, time.time() - t0,
+        io.update_manifest(run_dir, name, {"rows": n, "seconds": round(time.time() - t0, 1), "peak_rss_mb": peak_rss_mb(), **stats})
+        logger.info("[%s] %d bản ghi (%.1fs, RAM đỉnh %d MB) %s", name, n, time.time() - t0, peak_rss_mb(),
                     {k: v for k, v in stats.items() if k != "lines"})
         return rows
 

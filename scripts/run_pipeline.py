@@ -31,8 +31,8 @@ os.environ.setdefault("RAY_ENABLE_UV_RUN_RUNTIME_ENV", "0")
 
 from vi_corpus.common.registry import load_sources  # noqa: E402
 from vi_corpus.common.state import acquire_run_lock, setup_logging  # noqa: E402
-from vi_corpus.pipeline.config import (DEFAULT_LANG_MODEL, DEFAULT_MIX, DEFAULT_TOKENIZER, RunConfig,  # noqa: E402
-                                       scale_mix)
+from vi_corpus.pipeline.config import (DEFAULT_LANG_MODEL, DEFAULT_MIX, DEFAULT_TOKENIZER, TAKE_ALL, RunConfig,  # noqa: E402
+                                       parse_shard, scale_mix)
 from vi_corpus.pipeline.reduce import CLUSTER_SPACES  # noqa: E402
 from vi_corpus.pipeline.runner import STAGES, run_pipeline  # noqa: E402
 
@@ -46,12 +46,35 @@ def parse_mix(text: str | None) -> dict[str, int]:
     return {k.strip(): int(v) for k, v in (item.split("=") for item in text.split(","))}
 
 
+def specs_chunked(specs: dict) -> set[str]:
+    """Khoá các nguồn là nguồn sách (được lấy hết): theo hồ sơ PROFILES[...].chunked của RunConfig mặc định."""
+    cfg = RunConfig(mix={})
+    return {k for k in specs if cfg.profile(k).chunked}
+
+
+def take_all_mix(weights: dict[str, int], chunked: set[str]) -> dict[str, int]:
+    """
+    Cơ cấu "lấy hết": mỗi nguồn trong `weights` nhận TAKE_ALL mẫu (stage chunk không lấy mẫu xuống).
+
+    Raises:
+        ValueError: nếu có nguồn không phải nguồn sách (nguồn text như SEA phải lấy mẫu, vì không có "hết" theo nghĩa pipeline này).
+    """
+    bad = sorted(set(weights) - chunked)
+    if bad:
+        raise ValueError(f"--take-all chỉ dùng được cho nguồn sách, không dùng được cho: {', '.join(bad)}")
+    return {k: TAKE_ALL for k in weights}
+
+
 def build_parser() -> argparse.ArgumentParser:
     """Dựng bộ đọc tham số dòng lệnh."""
     p = argparse.ArgumentParser(description="Chạy pipeline end-to-end trên mẫu N bản ghi.")
     p.add_argument("--data-root", type=Path, default=Path(os.getenv("SEA_DATA_ROOT", "data")))
     p.add_argument("--total", type=int, default=10_000, help="Tổng số mẫu (nguồn sách tính theo số đoạn).")
     p.add_argument("--mix", default=None, help=f"Trọng số nguồn, vd sea_pile_v2=30,stbook=25 (mặc định {DEFAULT_MIX}).")
+    p.add_argument("--take-all", action="store_true",
+                   help="Lấy HẾT (không lấy mẫu): mọi nguồn trong --mix phải là nguồn sách (stbook, giao_trinh, vjol, vista); bỏ qua --total.")
+    p.add_argument("--shard", default=None, metavar="I/N",
+                   help="Chỉ đọc phần I trong N phần (băm sha256 PDF) của nguồn vjol / vista để chạy cả kho thành N lần nhỏ vừa RAM, vd 0/8; dedup_global.py gộp các phần.")
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--run-name", default=None, help="Tên thư mục kết quả (mặc định run_<total>_seed<seed>).")
     p.add_argument("--until", choices=STAGES, default=None, help="Dừng sau stage này (chạy từng bước).")
@@ -110,8 +133,16 @@ def main() -> int:
     """Đọc tham số, (tuỳ chọn) OCR stbook, rồi chạy pipeline. Trả về 1 nếu kết quả không có bản ghi nào."""
     args = build_parser().parse_args()
     specs = load_sources(Path("configs/sources.json"))
-    mix = scale_mix(parse_mix(args.mix), args.total)
-    run_dir = args.data_root / "processed" / "pipeline_runs" / (args.run_name or f"run_{args.total}_seed{args.seed}")
+    try:
+        shard = parse_shard(args.shard)
+        mix = take_all_mix(parse_mix(args.mix), specs_chunked(specs)) if args.take_all else scale_mix(parse_mix(args.mix), args.total)
+        if shard and (extra := sorted(set(mix) - {"vjol", "vista"})):
+            raise ValueError(f"--shard chỉ dùng được khi --mix chỉ có vjol / vista, thừa: {', '.join(extra)}")
+    except ValueError as exc:
+        build_parser().error(str(exc))
+    suffix = "" if shard is None else f"_s{shard[0]}of{shard[1]}"
+    default_name = f"run_all_seed{args.seed}{suffix}" if args.take_all else f"run_{args.total}_seed{args.seed}{suffix}"
+    run_dir = args.data_root / "processed" / "pipeline_runs" / (args.run_name or default_name)
     _lock = acquire_run_lock(args.data_root / "state" / f"pipeline_{run_dir.name}")  # noqa: F841 — giữ khoá
     setup_logging(args.data_root / "logs", "pipeline")
 
@@ -131,7 +162,7 @@ def main() -> int:
                     embed_spec=None if args.embedder == "none" else args.embedder, embed_prompt=args.embed_prompt,
                     embed_batch_size=args.embed_batch_size, embed_scope=args.embed_scope, embed_device=args.embed_device,
                     prefer_gpu=not args.no_gpu_reduce, cluster_space=args.cluster_space,
-                    hdbscan_min_cluster_size=args.min_cluster_size, hdbscan_min_samples=args.min_samples)
+                    hdbscan_min_cluster_size=args.min_cluster_size, hdbscan_min_samples=args.min_samples, shard=shard)
 
     backend = None
     if args.executor:

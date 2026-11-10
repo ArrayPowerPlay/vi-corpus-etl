@@ -144,14 +144,19 @@ def _vjol_meta_head(done: dict, md: dict | None, year: int | None) -> dict:
 VJOL_ADAPTER = RecordAdapter(label="VJOL", text_dir=TEXT_DIR, metadata_rel=METADATA_REL, load_metadata=_vjol_load_metadata, meta_head=_vjol_meta_head)
 
 
+def in_shard(sha256: str, shard: tuple[int, int] | None) -> bool:
+    """True nếu PDF có sha256 này thuộc phần `shard` = (I, N) (băm 8 ký tự hex đầu chia dư N); shard None thì mọi PDF đều thuộc."""
+    return shard is None or int(sha256[:8], 16) % shard[1] == shard[0]
+
+
 def iter_records(spec: SourceSpec, data_root: Path, limit_files: int | None = None, with_meta: bool = False,
-                 metadata_path: Path | None = None, hyphen_chooser=None) -> Iterator[dict]:
+                 metadata_path: Path | None = None, hyphen_chooser=None, shard: tuple[int, int] | None = None) -> Iterator[dict]:
     """Bản ghi VJOL: iter_paper_records với VJOL_ADAPTER (xem iter_paper_records về các tham số)."""
-    yield from iter_paper_records(spec, data_root, VJOL_ADAPTER, limit_files, with_meta, metadata_path, hyphen_chooser)
+    yield from iter_paper_records(spec, data_root, VJOL_ADAPTER, limit_files, with_meta, metadata_path, hyphen_chooser, shard)
 
 
 def iter_paper_records(spec: SourceSpec, data_root: Path, adapter: RecordAdapter, limit_files: int | None = None, with_meta: bool = False,
-                       metadata_path: Path | None = None, hyphen_chooser=None) -> Iterator[dict]:
+                       metadata_path: Path | None = None, hyphen_chooser=None, shard: tuple[int, int] | None = None) -> Iterator[dict]:
     """
     Sinh bản ghi CORPUS_SCHEMA từ checkpoint trích text của một nguồn bài báo (adapter.text_dir), mỗi checkpoint (mỗi PDF duy nhất) một bản ghi.
 
@@ -167,6 +172,7 @@ def iter_paper_records(spec: SourceSpec, data_root: Path, adapter: RecordAdapter
                        số trang / dòng bị bỏ (bìa, mục lục, tài liệu tham khảo, tiêu đề chạy).
         metadata_path: File metadata (mặc định <data-root>/<spec.path>/<adapter.metadata_rel>); chỉ đọc khi with_meta.
         hyphen_chooser: Bộ chọn cách đọc cho chỗ "ph-ơng" mơ hồ (vi_corpus.vjol.hyphen_lm.LmChooser, J-57); None thì chỉ dùng bằng chứng dấu thanh cả bài.
+        shard:         (I, N): chỉ lấy checkpoint thuộc phần I trong N phần theo sha256 (in_shard); metadata chỉ nối cho phần này. None = lấy hết.
 
     Cuối lượt ghi log số bài bị bỏ theo lý do (lỗi / bỏ qua / không có chữ), để bài không mất im lặng trước ingest (J-33 B).
     Tập âm tiết (<data-root>/processed/ocr_bakeoff/syllables.json) dùng để khôi phục "ư" bị font vẽ thành "-" (vi_corpus.vjol.hyphen_fix, J-33 A); thiếu file thì bỏ bước đó (ghi cảnh báo).
@@ -178,7 +184,7 @@ def iter_paper_records(spec: SourceSpec, data_root: Path, adapter: RecordAdapter
         logger.warning("Không thấy tập âm tiết %s: bỏ bước khôi phục \"ư\" cho trang font gạch nối (J-33 A)", data_root / SYLLABLES_REL)
     for path in sorted((data_root / adapter.text_dir).glob("*.json"))[:limit_files]:
         done = read_json(path)
-        if not done:
+        if not done or not in_shard(path.stem, shard):  # tên checkpoint là sha256 (batch_extract.checkpoint_path)
             continue
         if done.get("error") or done.get("skipped"):
             dropped["error" if done.get("error") else "skipped"] += 1

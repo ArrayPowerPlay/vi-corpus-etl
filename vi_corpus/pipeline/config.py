@@ -85,6 +85,27 @@ DEFAULT_TOKENIZER = "hf:Qwen/Qwen3-0.6B"  # tokenizer chính thức để đếm
 DEFAULT_LANG_MODEL = "fasttext:lid.176"  # fastText lid.176.bin (D-02, R-20)
 
 
+TAKE_ALL = 10**12  # số mẫu "lấy hết" (VS-06): lớn hơn số đoạn của bất kỳ nguồn nào nên stage chunk không lấy mẫu xuống
+
+
+def parse_shard(text: str | None) -> tuple[int, int] | None:
+    """
+    Đọc "I/N" (phần thứ I trong N phần, I từ 0) thành (I, N); None hoặc rỗng thì None.
+
+    Raises:
+        ValueError: nếu không đúng dạng "I/N" hoặc không thoả 0 <= I < N.
+    """
+    if not text:
+        return None
+    try:
+        i, n = (int(x) for x in text.split("/"))
+    except ValueError as exc:
+        raise ValueError(f"shard phải có dạng I/N (vd 0/8), nhận {text!r}") from exc
+    if not 0 <= i < n:
+        raise ValueError(f"shard {text!r}: cần 0 <= I < N")
+    return i, n
+
+
 def scale_mix(weights: dict[str, int], total: int) -> dict[str, int]:
     """
     Quy các trọng số về số mẫu nguyên có tổng đúng bằng `total` (phương pháp phần dư lớn nhất).
@@ -155,6 +176,8 @@ class RunConfig:
         perplexity_device:    "cuda" | "cpu" | "auto" cho mô hình trên.
         hyphen_lm_model:      Mô hình chọn cách đọc cho chỗ "ph-ơng" mơ hồ khi ingest VJOL (J-57), vd "Qwen/Qwen3-0.6B"; None = chỉ dùng bằng chứng dấu thanh cả bài (không GPU).
         hyphen_lm_device:     "cuda" | "cpu" | "auto" cho mô hình trên.
+        shard:                (I, N): chỉ đọc các PDF có sha256 thuộc phần I trong N phần (băm ổn định) của nguồn sách VJOL / VISTA (VS-06), để chạy cả kho thành N lần chạy
+                              nhỏ vừa RAM; dedup vòng 2 (scripts/dedup_global.py) gộp các phần. None = đọc hết.
         global_verdict:       Đường dẫn verdict.parquet của dedup vòng 2 (D-09); có thì áp vào trước khi sinh knowledge unit.
         profiles:             Hồ sơ theo nguồn.
     """
@@ -192,6 +215,7 @@ class RunConfig:
     hdbscan_min_cluster_size: int | None = None
     hdbscan_min_samples: int | None = None
     benchmarks_dir: str | None = "configs/benchmarks"
+    shard: tuple[int, int] | None = None
     global_verdict: str | None = None
     syllables: str | None = None
     unaccented: str | None = None

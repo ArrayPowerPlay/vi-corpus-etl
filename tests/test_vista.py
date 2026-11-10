@@ -238,3 +238,125 @@ def test_khao_sat_producer_tim_producer_mat_dau_chua_phu(tmp_path):
     assert by["LạLùngOCR 9.0"]["covered"] is False and by["LạLùngOCR 9.0"]["uncovered_suspect"] == 2 and res["table"][0]["producer"] == "LạLùngOCR 9.0"
     assert by["Adobe PDF Library 5.0"]["text_share"] == 0.0 and by["Adobe PDF Library 5.0"]["suspect_share"] is None
     assert (tmp_path / "processed/vista_producer_survey/producers.csv").is_file()
+
+
+# --------------------------------------------------------------------------------------------------------------------
+# Pipeline cả kho (VS-06): --take-all, --shard, RAM đỉnh, tổng hợp, script bước
+# --------------------------------------------------------------------------------------------------------------------
+
+
+WORDS = ("nghiên cứu", "phương pháp", "kinh tế", "phát triển", "giáo dục", "của", "và", "là", "các", "những", "trong", "được", "một", "cho", "với", "người", "công nghệ",
+         "doanh nghiệp", "thị trường", "chính sách", "nông nghiệp", "môi trường", "sinh viên", "kết quả", "đánh giá", "hệ thống", "quản lý", "xã hội", "văn hoá", "khoa học",
+         "đất nước", "nguồn lực", "chất lượng", "hiệu quả", "giải pháp", "thực trạng", "mô hình", "dữ liệu", "ứng dụng", "năng lực", "tăng trưởng", "đầu tư", "bền vững")
+
+
+def varied_text(seed: int, n_words: int = 400) -> str:
+    """Văn bản tiếng Việt giả KHÔNG lặp (chọn từ ngẫu nhiên theo seed, thêm số để câu khác nhau) để qua được cổng chất lượng và dedup."""
+    import random
+
+    rng = random.Random(seed)
+    sentences = []
+    for _ in range(n_words // 12):
+        sentences.append(" ".join(rng.choice(WORDS) for _ in range(10)).capitalize() + f" năm {rng.randint(1000, 9999)}.")
+    return " ".join(sentences)
+
+
+def make_many(root: Path, n: int = 12) -> Path:
+    """raw/vista với n PDF khác nhau (mỗi bài có dòng metadata), đã trích text không OCR; trả về data_root."""
+    raw = root / "raw/vista"
+    rows = []
+    for k in range(n):
+        text_pdf(raw / f"{2010 + k % 4}/{1000 + k}.pdf", [varied_text(100 + k)])
+        rows.append(detail_row(str(1000 + k), 2010 + k % 4, f"Bài số {k}"))
+    (raw / "metadata").mkdir(parents=True)
+    (raw / "metadata/vista_detail.jsonl").write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in rows) + "\n", encoding="utf-8")
+    assert run_cli("--data-root", str(root), "--no-ocr", "--no-export").returncode == 0
+    return root
+
+
+def run_pipe(root: Path, *args) -> subprocess.CompletedProcess:
+    """Chạy scripts/run_pipeline.py như người dùng gõ lệnh, offline (đếm từ, ngôn ngữ heuristic, không embed)."""
+    return subprocess.run([sys.executable, str(REPO / "scripts/run_pipeline.py"), "--data-root", str(root), "--tokenizer", "words", "--lang-model", "heuristic",
+                           "--embedder", "none", *args], capture_output=True, text=True, timeout=600, check=False, cwd=REPO)
+
+
+def test_chia_phan_va_lay_het():
+    """parse_shard đọc I/N và từ chối dạng sai; take_all_mix chỉ nhận nguồn sách; in_shard chia sha256 thành các phần rời nhau phủ kín."""
+    import pytest
+
+    from scripts.run_pipeline import specs_chunked, take_all_mix
+    from vi_corpus.pipeline.config import TAKE_ALL, parse_shard
+    from vi_corpus.vjol.records import in_shard
+
+    assert parse_shard(None) is None and parse_shard("3/8") == (3, 8)
+    for bad in ("8/8", "-1/4", "a/b", "3", "0/0"):
+        with pytest.raises(ValueError):
+            parse_shard(bad)
+    assert take_all_mix({"vista": 1, "vjol": 5}, specs_chunked(SOURCES)) == {"vista": TAKE_ALL, "vjol": TAKE_ALL}
+    with pytest.raises(ValueError, match="sea_pile_v2"):
+        take_all_mix({"vista": 1, "sea_pile_v2": 1}, specs_chunked(SOURCES))
+    shas = [f"{i * 2654435761 % 2**32:08x}" + "0" * 56 for i in range(200)]
+    parts = [{s for s in shas if in_shard(s, (i, 4))} for i in range(4)]
+    assert sum(map(len, parts)) == 200 and set().union(*parts) == set(shas) and all(40 < len(p) < 60 for p in parts)
+    assert all(in_shard(s, None) for s in shas)
+
+
+def test_van_tay_ingest_khong_doi_khi_khong_chia_phan():
+    """Không đặt shard thì vân tay ingest y như trước (lần chạy cũ không bị chạy lại); đặt shard thì vân tay đổi theo phần."""
+    from vi_corpus.pipeline.runner import stage_params
+
+    base = make_cfg(mix={"vista": 10})
+    assert "shard" not in stage_params("ingest", base)
+    a, b = make_cfg(mix={"vista": 10}, shard=(0, 2)), make_cfg(mix={"vista": 10}, shard=(1, 2))
+    assert stage_params("ingest", a) != stage_params("ingest", b) != stage_params("ingest", base)
+
+
+def test_pipeline_ca_kho_chia_phan_gop_dedup_toan_cuc_va_tong_hop(tmp_path):
+    """
+    E2E dòng lệnh: --take-all --shard 0/2 và 1/2 cùng đọc đủ 12 bài không trùng nhau, manifest có RAM đỉnh; dedup_global rồi chạy lại từng phần với
+    --global-verdict; summarize_runs gộp hai phần; --shard với nguồn SEA hoặc --take-all với nguồn SEA bị từ chối.
+    """
+    root = make_many(tmp_path)
+    parts = []
+    for i in (0, 1):
+        r = run_pipe(root, "--mix", "vista=1", "--take-all", "--shard", f"{i}/2", "--run-name", f"vista_full_s{i}of2")
+        assert r.returncode in (0, 1), r.stdout + r.stderr
+        manifest = json.loads((root / f"processed/pipeline_runs/vista_full_s{i}of2/manifest.json").read_text())
+        assert manifest["ingest"]["peak_rss_mb"] > 0 and manifest["config"]["shard"] == [i, 2]
+        parts.append(pio.read_rows(root / f"processed/pipeline_runs/vista_full_s{i}of2/01_ingest.parquet"))
+    ids = [{r["doc_id"] for r in p} for p in parts]
+    assert not ids[0] & ids[1] and len(ids[0] | ids[1]) == 12 and all(ids)
+    assert run_pipe(root, "--mix", "vista=1", "--take-all").returncode in (0, 1)  # tên mặc định run_all_seed42
+    assert (root / "processed/pipeline_runs/run_all_seed42").is_dir()
+    vd = subprocess.run([sys.executable, str(REPO / "scripts/dedup_global.py"), "--data-root", str(root)], capture_output=True, text=True, timeout=300, check=False, cwd=REPO)
+    assert vd.returncode == 0, vd.stdout + vd.stderr
+    verdict = root / "processed/dedup_global/verdict.parquet"
+    for i in (0, 1):
+        r = run_pipe(root, "--mix", "vista=1", "--take-all", "--shard", f"{i}/2", "--run-name", f"vista_full_s{i}of2", "--global-verdict", str(verdict))
+        assert r.returncode in (0, 1), r.stdout + r.stderr
+    from vi_corpus.vista.summary import summarize
+
+    res = summarize(root, "vista_full")
+    assert [r["run"] for r in res["runs"]] == ["vista_full_s0of2", "vista_full_s1of2"] and all(r["finished"] and r["global_verdict"] for r in res["runs"])
+    assert res["total"]["chunks"] == sum(r["chunks"] for r in res["runs"]) >= 12 and not res["total"]["unfinished"] and not res["total"]["without_global_verdict"]
+    assert res["total"]["kept"] > 0 and res["total"]["tokens_kept"] > 0  # văn bản giả đủ tốt để có đoạn được giữ (không phải toàn bộ bị loại)
+    out = subprocess.run([sys.executable, str(REPO / "scripts/vista/summarize_runs.py"), "--data-root", str(root)], capture_output=True, text=True, timeout=120, check=False)
+    assert "vista_full_s0of2" in out.stdout and "TỔNG" in out.stdout
+    bad = run_pipe(root, "--mix", "sea_pile_v2=1", "--shard", "0/2")
+    assert bad.returncode == 2 and "chỉ dùng được khi --mix chỉ có vjol / vista" in bad.stderr
+    bad = run_pipe(root, "--mix", "sea_pile_v2=1", "--take-all")
+    assert bad.returncode == 2 and "chỉ dùng được cho nguồn sách" in bad.stderr
+
+
+def test_script_buoc_run_vista(tmp_path):
+    """run_vista.sh: không đối số thì in hướng dẫn và thoát 2; bước check chạy được trên dữ liệu có nhật ký tải khớp."""
+    script = str(REPO / "scripts/vista/run_vista.sh")
+    r = subprocess.run([script], capture_output=True, text=True, timeout=60, check=False, cwd=REPO)
+    assert r.returncode == 2 and "full-pipeline" in r.stdout
+    raw = tmp_path / "raw/vista"
+    text_pdf(raw / "2020/5.pdf", [vi_text(4, 1)])
+    (raw / "metadata").mkdir(parents=True)
+    size = (raw / "2020/5.pdf").stat().st_size
+    (raw / "metadata/pdf_download_log.jsonl").write_text(json.dumps({"publication_id": "5", "status": "downloaded", "sha256": "x", "bytes": size}) + "\n", encoding="utf-8")
+    r = subprocess.run([script, "check"], capture_output=True, text=True, timeout=120, check=False, cwd=REPO, env={**__import__("os").environ, "DATA_ROOT": str(tmp_path)})
+    assert r.returncode == 0 and '"missing": 0' in r.stdout and (tmp_path / "logs/vista_check_raw.json").is_file()

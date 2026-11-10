@@ -94,6 +94,6 @@ VISTA_ADAPTER = RecordAdapter(label="VISTA", text_dir=TEXT_DIR, metadata_rel=MET
 
 
 def iter_records(spec: SourceSpec, data_root: Path, limit_files: int | None = None, with_meta: bool = False,
-                 metadata_path: Path | None = None, hyphen_chooser=None) -> Iterator[dict]:
+                 metadata_path: Path | None = None, hyphen_chooser=None, shard: tuple[int, int] | None = None) -> Iterator[dict]:
     """Bản ghi VISTA: iter_paper_records với VISTA_ADAPTER, mỗi PDF duy nhất một bản ghi (xem vi_corpus.vjol.records.iter_paper_records về các tham số)."""
-    yield from iter_paper_records(spec, data_root, VISTA_ADAPTER, limit_files, with_meta, metadata_path, hyphen_chooser)
+    yield from iter_paper_records(spec, data_root, VISTA_ADAPTER, limit_files, with_meta, metadata_path, hyphen_chooser, shard)

@@ -26,7 +26,7 @@ logger = logging.getLogger("vi_corpus")
 
 # Phiên bản code của stage ingest, nằm trong vân tay stage (F-04): nâng khi đổi iter_records / row_to_record / cột meta
 # để 01_ingest.parquet cũ tự chạy lại. 2 = lần đầu đưa vào vân tay (meta stbook có page_lines_removed, commit 24bc92a).
-INGEST_VERSION = "8"  # 3 = J-28: VJOL che số điện thoại chỉ khi đúng dạng số điện thoại (không che số liệu bảng)
+INGEST_VERSION = "8"  # VS-06: cfg.shard chỉ vào vân tay khi được đặt nên không đổi số này  # 3 = J-28: VJOL che số điện thoại chỉ khi đúng dạng số điện thoại (không che số liệu bảng)
 # 4 = J-33: VJOL khôi phục "ư" (font gạch nối), lọc câu rác VLM, bỏ trang ban biên tập, cắt tiêu đề tạp chí ở mọi vị trí, năm 1970 coi là thiếu
 # 5 = J-35: khôi phục "ư" thêm dạng liền chữ không cần ngưỡng cả bài, dạng bỏ "-" thừa ("t-ướng"), dạng "đ- ược"; cắt tiêu đề "Tạp chí X số N - năm" ở mọi vị trí
 # 6 = J-37: khôi phục "ư" thêm "V- ơng" viết hoa, " - ơng" / " - ớc", "- u", "nh- “", "xư a" / "nư óc" / "hư ớng" (ư tách rời); cắt tiêu đề tạp chí ở đầu bài (strip_front_headers)
@@ -105,6 +105,9 @@ def sample_text_source(spec: SourceSpec, data_root: Path, n: int, cfg: RunConfig
 
 def iter_book_source(spec: SourceSpec, data_root: Path, cfg: RunConfig | None = None) -> Iterator[dict]:
     """Sinh bản ghi từng cuốn sách / tài liệu của nguồn dài (stbook đã làm sạch theo trang; giao_trinh, vjol đã làm sạch sẵn)."""
+    shard = cfg.shard if cfg is not None else None
+    if shard and spec.key not in ("vjol", "vista"):
+        raise ValueError(f"--shard chỉ hỗ trợ nguồn vjol và vista, không hỗ trợ {spec.key}")
     if spec.key == "stbook":
         from vi_corpus.stbook.ocr_books import iter_records
         yield from iter_records(spec, data_root, clean=True, with_meta=True)
@@ -117,14 +120,14 @@ def iter_book_source(spec: SourceSpec, data_root: Path, cfg: RunConfig | None = 
         if cfg is not None and cfg.hyphen_lm_model:
             from vi_corpus.vjol.hyphen_lm import LmChooser
             chooser = LmChooser(cfg.hyphen_lm_model, cfg.hyphen_lm_device)
-        yield from iter_records(spec, data_root, with_meta=True, hyphen_chooser=chooser)
+        yield from iter_records(spec, data_root, with_meta=True, hyphen_chooser=chooser, shard=shard)
     elif spec.key == "vista":
         from vi_corpus.vista.records import iter_records
         chooser = None
         if cfg is not None and cfg.hyphen_lm_model:
             from vi_corpus.vjol.hyphen_lm import LmChooser
             chooser = LmChooser(cfg.hyphen_lm_model, cfg.hyphen_lm_device)
-        yield from iter_records(spec, data_root, with_meta=True, hyphen_chooser=chooser)
+        yield from iter_records(spec, data_root, with_meta=True, hyphen_chooser=chooser, shard=shard)
     else:
         raise ValueError(f"Chưa có adapter nguồn sách cho {spec.key}")
 
