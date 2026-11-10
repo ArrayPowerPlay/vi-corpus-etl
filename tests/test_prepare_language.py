@@ -259,3 +259,17 @@ def test_mien_xoa_dong_code_pascal():
 
     pascal = "Chương trình:\nbegin\na := 1;\nb := a + 2;\nend;\nbegin\nc := b * 2;\nend."
     assert has_code_or_table(pascal)
+
+
+def test_stbook_giu_tieng_viet_va_tieng_anh_loai_ngoai_ngu_khac():
+    """O-30 mục 1: hồ sơ stbook chấp nhận vi và en; Nga, Lào, Tây Ban Nha bị gắn lang_not_allowed (loại cứng)."""
+    from vi_corpus.pipeline.config import PROFILES
+
+    profile = PROFILES["stbook"]
+    m = compute_metrics(vi_text(120, 1))
+    for lang in ("vi", "en"):
+        _, codes = score_metrics(m, lang, profile, 0.9)
+        assert "lang_not_allowed" not in codes, lang
+    for lang in ("ru", "lo", "es", "zh"):
+        _, codes = score_metrics(m, lang, profile, 0.9)
+        assert "lang_not_allowed" in codes, lang
