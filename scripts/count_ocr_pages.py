@@ -24,7 +24,7 @@ from vi_corpus.vjol.ocr_count import LAYOUTS, count_source, format_result, scan_
 
 
 def main() -> int:
-    """Đọc tham số, đếm từng nguồn (quét nốt PDF chưa quét nếu được yêu cầu), in tóm tắt. Trả về 0."""
+    """Đọc tham số, đếm từng nguồn (quét nốt PDF chưa quét nếu được yêu cầu), in tóm tắt. Trả về 1 nếu quét nốt thất bại hoàn toàn (không có checkpoint nào), ngược lại 0."""
     p = argparse.ArgumentParser(description="Đếm số file và số trang cần OCR của VJOL / VISTA (CPU).")
     p.add_argument("--data-root", type=Path, default=Path(os.getenv("SEA_DATA_ROOT", "data")), help="Thư mục dữ liệu gốc.")
     p.add_argument("--sources", default="vjol,vista", help="Các nguồn cần đếm, cách nhau dấu phẩy (mặc định %(default)s).")
@@ -40,16 +40,20 @@ def main() -> int:
         p.error(f"Nguồn không biết: {unknown}; chọn trong {sorted(LAYOUTS)}")
     setup_logging(args.data_root / "logs", "count_ocr_pages")
     repo_root = Path(__file__).resolve().parents[1]
+    failed = False
     for key in keys:
         result = count_source(key, args.data_root, args.workers, not args.no_cache)
         if args.scan_missing and result["total"]["missing_files"]:
             print(f"[{key}] {result['total']['missing_files']:,} PDF chưa quét: chạy {args.scan_missing} tiến trình extract.py --no-ocr (log: logs/{key}_count_cpu*.log)", flush=True)
-            bad = scan_missing(key, args.data_root, args.scan_missing, repo_root)
+            bad, tail = scan_missing(key, args.data_root, args.scan_missing, repo_root)
             if bad:
-                print(f"[{key}] {bad} tiến trình thoát mã khác 0 (xem log; mã 1 thường chỉ là có PDF lỗi)")
+                print(f"[{key}] {bad} tiến trình thoát mã khác 0 (mã 1 có thể chỉ là có PDF lỗi). 15 dòng cuối log của tiến trình đầu tiên bị lỗi:\n{tail}", flush=True)
             result = count_source(key, args.data_root, args.workers, not args.no_cache)
+            if bad and result["total"]["scanned_files"] == 0:
+                print(f"[{key}] QUÉT THẤT BẠI: chưa có checkpoint nào, các con số 0 bên dưới KHÔNG phải kết quả thật. Sửa lỗi ở trên rồi chạy lại.", flush=True)
+                failed = True
         print(format_result(result, args.gpus, args.pages_per_sec), flush=True)
-    return 0
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":

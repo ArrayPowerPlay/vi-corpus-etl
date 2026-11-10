@@ -300,7 +300,7 @@ def format_result(result: dict, gpus: int, pages_per_sec: float) -> str:
     return "\n".join(lines)
 
 
-def scan_missing(key: str, data_root: Path, procs: int, repo_root: Path) -> int:
+def scan_missing(key: str, data_root: Path, procs: int, repo_root: Path) -> tuple[int, str]:
     """
     Quét nốt PDF chưa có checkpoint bằng `scripts/<key>/extract.py --no-ocr` (CPU, không GPU), `procs` tiến trình chia việc bằng khoá flock.
 
@@ -308,18 +308,24 @@ def scan_missing(key: str, data_root: Path, procs: int, repo_root: Path) -> int:
     file còn trang `needs_ocr` được lượt OCR thật làm lại. Không chạy khi lượt GPU của cùng nguồn đang chạy (hai bên tranh file).
 
     Returns:
-        Số tiến trình thoát với mã khác 0 (1 = có PDF lỗi, vẫn bình thường).
+        (số tiến trình thoát mã khác 0, 15 dòng cuối log của tiến trình đầu tiên thoát mã khác 0 hoặc "" nếu không có). Mã 1 có thể chỉ là có PDF lỗi; mã khác
+        1 hoặc không ghi được checkpoint nào là tiến trình chết vì lỗi chung, và đoạn log cho biết lỗi gì.
     """
     script = repo_root / "scripts" / key / "extract.py"
     log_dir = data_root / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
     procs_list = []
     for i in range(procs):
-        log = open(log_dir / f"{key}_count_cpu{i}.log", "w", encoding="utf-8")  # noqa: SIM115 — phải sống đến khi tiến trình con xong
+        log_path = log_dir / f"{key}_count_cpu{i}.log"
+        log = open(log_path, "w", encoding="utf-8")  # noqa: SIM115 — phải sống đến khi tiến trình con xong
         cmd = [sys.executable, str(script), "--data-root", str(data_root), "--no-ocr", "--no-export", "--worker-name", f"count{i}"]
-        procs_list.append((subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT), log))
-    bad = 0
-    for p, log in procs_list:
-        bad += p.wait() != 0
+        procs_list.append((subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT), log, log_path))
+    bad, tail = 0, ""
+    for p, log, log_path in procs_list:
+        code = p.wait()
         log.close()
-    return bad
+        if code != 0:
+            bad += 1
+            if not tail:
+                tail = "\n".join(log_path.read_text(encoding="utf-8", errors="replace").splitlines()[-15:])
+    return bad, tail

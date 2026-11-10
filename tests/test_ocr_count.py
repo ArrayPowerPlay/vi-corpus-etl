@@ -104,3 +104,14 @@ def test_uoc_phan_chua_quet_theo_tung_nam():
     assert y2020["scanned_files"] == 2 and y2020["missing_files"] == 4 and y2020["ocr_pages"] == 10 and y2020["est_missing_ocr_pages"] == 20
     assert y1999["scanned_files"] == 0 and y1999["est_missing_ocr_pages"] == 0
     assert agg["total"]["files"] == 7 and agg["total"]["missing_files"] == 5 and agg["total"]["est_total_ocr_pages"] == 30 and agg["total"]["pages"] == 11
+
+
+def test_quet_that_bai_hoan_toan_bao_loi_thay_vi_in_so_0(tmp_path):
+    """Nếu mọi tiến trình quét chết (ở đây: không có thư mục script của nguồn nào dùng được vì bố trí raw thiếu metadata không gây chết, nên giả lập bằng script lỗi), lệnh in log lỗi, báo QUÉT THẤT BẠI và thoát mã 1."""
+    from vi_corpus.vjol.ocr_count import scan_missing
+
+    fake_repo = tmp_path / "repo"
+    (fake_repo / "scripts/vista").mkdir(parents=True)
+    (fake_repo / "scripts/vista/extract.py").write_text("import sys\nprint('Lỗi giả: thiếu file X')\nsys.exit(2)\n", encoding="utf-8")
+    bad, tail = scan_missing("vista", tmp_path / "data", 2, fake_repo)
+    assert bad == 2 and "Lỗi giả: thiếu file X" in tail
