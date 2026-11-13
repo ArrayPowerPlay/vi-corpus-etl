@@ -277,10 +277,9 @@ def count_source(key: str, data_root: Path, workers: int, use_cache: bool = True
     return result
 
 
-def format_result(result: dict, gpus: int, pages_per_sec: float) -> str:
-    """Bản tóm tắt dễ đọc của `count_source`, kèm ước giờ GPU cho số trang cần OCR (chỉ là ước, tốc độ đo trên stbook)."""
+def format_result(result: dict) -> str:
+    """Bản tóm tắt dễ đọc của `count_source`; cảnh báo khi số trang chưa chính xác (còn file chưa quét hoặc checkpoint bản cũ)."""
     t = result["total"]
-    est_hours = t["est_total_ocr_pages"] / (gpus * pages_per_sec) / 3600
     lines = [
         f"== {result['source']} ==",
         f"File PDF trong raw        : {t['files']:,}",
@@ -295,7 +294,10 @@ def format_result(result: dict, gpus: int, pages_per_sec: float) -> str:
     if t["missing_files"]:
         lines.append(f"Ước cho {t['missing_files']:,} file chưa quét  : +{t['est_missing_ocr_pages']:,} trang (theo trung bình từng năm)")
         lines.append(f"Ước TỔNG trang cần OCR    : {t['est_total_ocr_pages']:,}  (phần chưa quét chỉ là ước; quét nốt bằng --scan-missing để có số thật)")
-    lines.append(f"Ước giờ GPU để OCR hết    : {est_hours:,.1f} giờ trên {gpus} GPU ở {pages_per_sec} trang/giây/GPU (chưa tính ~0,6% trang đọc lại)")
+    if t["old_version"]:
+        lines.append(f"CẢNH BÁO: {t['old_version']:,} checkpoint là bản trích cũ, sẽ bị trích lại nên số trang cần OCR ở trên CHƯA chính xác (chạy extract.py --no-ocr để làm mới).")
+    if t["errors"]:
+        lines.append(f"CẢNH BÁO: {t['errors']:,} checkpoint lỗi, trang của chúng không được đếm.")
     lines.append(f"(bộ nhớ đệm: {result['cache_hits']:,} checkpoint khỏi đọc lại; không đọc được: {result['unreadable']})")
     return "\n".join(lines)
 

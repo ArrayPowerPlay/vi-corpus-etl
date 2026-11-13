@@ -31,8 +31,6 @@ def main() -> int:
     p.add_argument("--workers", type=int, default=min(16, os.cpu_count() or 4), help="Số luồng kiểm kê và tiến trình đọc checkpoint (mặc định %(default)s).")
     p.add_argument("--no-cache", action="store_true", help="Bỏ bộ nhớ đệm: đọc lại mọi checkpoint (chậm, dùng khi nghi bộ nhớ đệm sai).")
     p.add_argument("--scan-missing", type=int, default=0, metavar="N", help="Quét nốt PDF chưa có checkpoint bằng N tiến trình extract.py --no-ocr (CPU), rồi đếm lại.")
-    p.add_argument("--gpus", type=int, default=4, help="Số GPU để ước giờ OCR (mặc định %(default)s).")
-    p.add_argument("--pages-per-sec", type=float, default=1.55, help="Trang/giây/GPU để ước giờ (mặc định %(default)s, đo trên stbook, O-22).")
     args = p.parse_args()
     keys = [k.strip() for k in args.sources.split(",") if k.strip()]
     unknown = [k for k in keys if k not in LAYOUTS]
@@ -52,7 +50,7 @@ def main() -> int:
             if bad and result["total"]["scanned_files"] == 0:
                 print(f"[{key}] QUÉT THẤT BẠI: chưa có checkpoint nào, các con số 0 bên dưới KHÔNG phải kết quả thật. Sửa lỗi ở trên rồi chạy lại.", flush=True)
                 failed = True
-        print(format_result(result, args.gpus, args.pages_per_sec), flush=True)
+        print(format_result(result), flush=True)
     return 1 if failed else 0
 
 
