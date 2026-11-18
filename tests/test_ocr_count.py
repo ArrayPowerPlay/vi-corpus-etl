@@ -14,7 +14,7 @@ from tests.test_vista import make_raw
 from tests.test_vjol import scan_pdf
 from vi_corpus.vista.layout import VISTA_LAYOUT
 from vi_corpus.vjol import extract as vx
-from vi_corpus.vjol.ocr_count import aggregate, count_source, list_pdfs
+from vi_corpus.vjol.ocr_count import aggregate, bucket_of, count_source, format_result, list_pdfs
 
 REPO = Path(__file__).resolve().parents[1]
 
@@ -115,3 +115,16 @@ def test_quet_that_bai_hoan_toan_bao_loi_thay_vi_in_so_0(tmp_path):
     (fake_repo / "scripts/vista/extract.py").write_text("import sys\nprint('Lỗi giả: thiếu file X')\nsys.exit(2)\n", encoding="utf-8")
     bad, tail = scan_missing("vista", tmp_path / "data", 2, fake_repo)
     assert bad == 2 and "Lỗi giả: thiếu file X" in tail
+
+
+def test_nhom_checkpoint_theo_ty_le_trang_can_ocr_va_trang_ocr_thua():
+    """4 checkpoint: không cần OCR, rất ít (1/100), một phần (50/100), cả file scan (10/10). Trang OCR thừa = trang chữ tốt nằm trong file có trang cần OCR."""
+    def entry(name, ocr, text):
+        return {"pages": ocr + text, "methods": {"needs_ocr": ocr, "text": text}, "vlm": {}, "error": False, "skipped": False, "current": True, "year": "2020", "paths": [name]}
+    entries = {"a.json": entry("a", 0, 10), "b.json": entry("b", 1, 99), "c.json": entry("c", 50, 50), "d.json": entry("d", 10, 0)}
+    agg = aggregate(entries, {"2020": ["a", "b", "c", "d"]})
+    t = agg["total"]
+    assert t["buckets"] == {"none": 1, "tiny": 1, "partial": 1, "all": 1}
+    assert t["wasted_pages"] == 99 + 50
+    assert bucket_of(0, 0) == "none" and bucket_of(3, 0) == "all"
+    assert "Checkpoint KHÔNG cần OCR  : 1 / 4" in format_result({"source": "vjol", **agg, "cache_hits": 0, "unreadable": 0})
