@@ -224,7 +224,7 @@ def aggregate(entries: dict[str, dict], listed: dict[str, list[str]]) -> dict:
     def row(label: str) -> dict:
         """Dòng của một năm (tạo khi gặp lần đầu)."""
         return by_year.setdefault(label, {"files": 0, "scanned_files": 0, "missing_files": 0, "contents": 0, "errors": 0, "skipped": 0, "old_version": 0,
-                                          "pages": 0, "methods": Counter(), "vlm": Counter(), "buckets": Counter(), "wasted_pages": 0})
+                                          "pages": 0, "methods": Counter(), "vlm": Counter(), "buckets": Counter()})
 
     for label, paths in listed.items():
         r = row(label)
@@ -243,10 +243,8 @@ def aggregate(entries: dict[str, dict], listed: dict[str, list[str]]) -> dict:
             r["vlm"].update(e["vlm"])
             pending = e["methods"].get(OCR_PENDING, 0)
             r["buckets"][bucket_of(pending, e["pages"])] += 1
-            if pending:  # checkpoint theo file: cả file bị OCR lại, trang đã có chữ tốt bị OCR thừa
-                r["wasted_pages"] += e["pages"] - pending
     total = {"files": 0, "scanned_files": 0, "missing_files": 0, "contents": 0, "errors": 0, "skipped": 0, "old_version": 0, "pages": 0,
-             "methods": Counter(), "vlm": Counter(), "buckets": Counter(), "wasted_pages": 0, "est_missing_ocr_pages": 0.0}
+             "methods": Counter(), "vlm": Counter(), "buckets": Counter(), "est_missing_ocr_pages": 0.0}
     for label in sorted(by_year):
         r = by_year[label]
         r["ocr_done"], r["ocr_pending"] = r["methods"][OCR_DONE], r["methods"][OCR_PENDING]
@@ -318,10 +316,9 @@ def format_result(result: dict) -> str:
     if t["contents"]:
         lines += [
             f"Checkpoint KHÔNG cần OCR  : {b.get('none', 0):,} / {t['contents']:,}  ({b.get('none', 0) / t['contents']:.1%} tổng checkpoint; lỗi không tính vào nhóm nào)",
-            f"  cần OCR, cả file scan   : {b.get('all', 0):,}  (>= {ALL_RATIO:.0%} trang cần OCR: OCR lại cả file không lãng phí)",
+            f"  cần OCR, cả file scan   : {b.get('all', 0):,}  (>= {ALL_RATIO:.0%} trang cần OCR: file scan hoặc bị ép OCR cả bài)",
             f"  cần OCR, một phần       : {b.get('partial', 0):,}  ({TINY_RATIO:.0%} đến {ALL_RATIO:.0%} trang)",
             f"  cần OCR, rất ít trang   : {b.get('tiny', 0):,}  (< {TINY_RATIO:.0%} trang: file gần như chữ)",
-            f"Trang OCR thừa do checkpoint theo file: {t['wasted_pages']:,} (so với {t['ocr_pages']:,} trang thật sự cần OCR)",
         ]
     if t["missing_files"]:
         lines.append(f"Ước cho {t['missing_files']:,} file chưa quét  : +{t['est_missing_ocr_pages']:,} trang (theo trung bình từng năm)")

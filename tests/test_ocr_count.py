@@ -118,13 +118,12 @@ def test_quet_that_bai_hoan_toan_bao_loi_thay_vi_in_so_0(tmp_path):
 
 
 def test_nhom_checkpoint_theo_ty_le_trang_can_ocr_va_trang_ocr_thua():
-    """4 checkpoint: không cần OCR, rất ít (1/100), một phần (50/100), cả file scan (10/10). Trang OCR thừa = trang chữ tốt nằm trong file có trang cần OCR."""
+    """4 checkpoint: không cần OCR, rất ít (1/100), một phần (50/100), cả file scan (10/10). Chỉ GPU xử lý trang needs_ocr nên không có khái niệm trang OCR thừa."""
     def entry(name, ocr, text):
         return {"pages": ocr + text, "methods": {"needs_ocr": ocr, "text": text}, "vlm": {}, "error": False, "skipped": False, "current": True, "year": "2020", "paths": [name]}
     entries = {"a.json": entry("a", 0, 10), "b.json": entry("b", 1, 99), "c.json": entry("c", 50, 50), "d.json": entry("d", 10, 0)}
     agg = aggregate(entries, {"2020": ["a", "b", "c", "d"]})
     t = agg["total"]
     assert t["buckets"] == {"none": 1, "tiny": 1, "partial": 1, "all": 1}
-    assert t["wasted_pages"] == 99 + 50
     assert bucket_of(0, 0) == "none" and bucket_of(3, 0) == "all"
     assert "Checkpoint KHÔNG cần OCR  : 1 / 4" in format_result({"source": "vjol", **agg, "cache_hits": 0, "unreadable": 0})
