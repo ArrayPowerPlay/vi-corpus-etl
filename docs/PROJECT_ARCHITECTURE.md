@@ -16,7 +16,7 @@ vi-corpus-etl/
 ├── pyproject.toml, uv.lock          # thư viện quản lý bằng uv (nhóm ocr: uv sync --group ocr)
 ├── .env                             # HF_TOKEN (không đưa lên git)
 ├── docs/                            # README, PROJECT_ARCHITECTURE, PIPELINE, SOURCES, ROADMAP, PROGRESS, GIAO_TRINH, DECISION_LOG
-│   └── diagrams/                    # 00_pipeline.svg/png (luồng chính) + 01..13_*.svg (luồng con từng module)
+│   └── diagrams/                    # 00_pipeline.svg/png (luồng chính) + 01..13_*.svg (luồng con từng module) + 19..21 (SUGGESTION_v2: tổng quan, dữ liệu, huấn luyện + eval) + 26 (phụ thuộc task)
 ├── configs/ocr_bakeoff/engines.json # cấu hình engine OCR cho đợt so sánh (lệnh dựng server, lời nhắc, giấy phép)
 ├── scripts/
 │   ├── run_all.py                   # script tổng: chạy các script con bên dưới

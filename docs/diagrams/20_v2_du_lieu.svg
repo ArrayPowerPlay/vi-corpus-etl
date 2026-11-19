@@ -1,0 +1,95 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1040 948" width="1040" height="948" font-family="DejaVu Sans, Arial, sans-serif">
+<title>Dữ liệu: từ đoạn sạch tới gói CPT và SFT</title>
+<defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#455566"/></marker></defs>
+<rect width="1040" height="948" fill="#ffffff"/>
+<text x="520.0" y="34" text-anchor="middle" font-size="19" font-weight="700" fill="#1b2733" xml:space="preserve">Dữ liệu: từ đoạn sạch tới gói CPT và SFT</text>
+<text x="520.0" y="58" text-anchor="middle" font-size="12" font-weight="400" fill="#52514e" xml:space="preserve">Luồng chính của Tầng 2–3; chi tiết từng bước nằm ở mục 8, 9, 10</text>
+<rect x="40" y="80" width="16" height="16" rx="3" fill="#eef2f7" stroke="#7a8aa0" stroke-width="1.5"/>
+<text x="62" y="93" text-anchor="start" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">đã có, đã chạy</text>
+<rect x="177.828125" y="80" width="16" height="16" rx="3" fill="#e9f5ee" stroke="#3f9b6b" stroke-width="1.5"/>
+<text x="199.828125" y="93" text-anchor="start" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">đã code, chưa đo trên server</text>
+<rect x="401.171875" y="80" width="16" height="16" rx="3" fill="#e3eefb" stroke="#2a78d6" stroke-width="1.5"/>
+<text x="423.171875" y="93" text-anchor="start" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">đề xuất mới</text>
+<rect x="522.953125" y="80" width="16" height="16" rx="3" fill="#fdf3dc" stroke="#c98a1a" stroke-width="1.5"/>
+<text x="544.953125" y="93" text-anchor="start" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">tuỳ chọn</text>
+<rect x="625.34375" y="80" width="16" height="16" rx="3" fill="#fbe9e7" stroke="#c4503f" stroke-width="1.5"/>
+<text x="647.34375" y="93" text-anchor="start" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">cổng kiểm tra / đo</text>
+<rect x="785.140625" y="80" width="16" height="16" rx="3" fill="#f1eafb" stroke="#7b4fc4" stroke-width="1.5"/>
+<text x="807.140625" y="93" text-anchor="start" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">cần chốt</text>
+<rect x="300" y="120" width="440" height="69" rx="8" fill="#eef2f7" stroke="#7a8aa0" stroke-width="1.5"/>
+<text x="520.0" y="142" text-anchor="middle" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">Đoạn còn sống sau dedup vòng 2</text>
+<text x="520.0" y="159" text-anchor="middle" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">~1.024 token mỗi đoạn, mang lineage + dedup_family_id</text>
+<text x="40" y="211" text-anchor="start" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">Chọn theo chất lượng (mục 8)</text>
+<rect x="40" y="225" width="300" height="100" rx="8" fill="#eef2f7" stroke="#7a8aa0" stroke-width="1.5"/>
+<text x="190.0" y="247" text-anchor="middle" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">Rule + band A–D</text>
+<text x="190.0" y="264" text-anchor="middle" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">mã cứng: garbled_font, lost_letters,</text>
+<text x="190.0" y="280" text-anchor="middle" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">too_short…</text>
+<rect x="370" y="225" width="300" height="101" rx="8" fill="#e3eefb" stroke="#2a78d6" stroke-width="1.5"/>
+<text x="520.0" y="247" text-anchor="middle" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">Judge 50.000 đoạn → bộ chấm nhỏ</text>
+<text x="520.0" y="264" text-anchor="middle" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">LLM judge chấm mẫu; đầu MLP trên</text>
+<text x="520.0" y="280" text-anchor="middle" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">Qwen3-Embedding chấm cả corpus; kiểm với</text>
+<text x="520.0" y="296" text-anchor="middle" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">FineWeb-C (E-13)</text>
+<rect x="700" y="225" width="300" height="101" rx="8" fill="#e3eefb" stroke="#2a78d6" stroke-width="1.5"/>
+<text x="850.0" y="247" text-anchor="middle" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">Xếp tầng quality_tier</text>
+<text x="850.0" y="264" text-anchor="middle" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">ensemble hạng phân vị trong từng nguồn;</text>
+<text x="850.0" y="280" text-anchor="middle" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">điểm quyết định lặp bao nhiêu lần, không bỏ</text>
+<text x="850.0" y="296" text-anchor="middle" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">cứng</text>
+<line x1="360" y1="189" x2="190.0" y2="225" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
+<line x1="520.0" y1="189" x2="520.0" y2="225" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
+<line x1="680" y1="189" x2="850.0" y2="225" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
+<line x1="340" y1="275" x2="370" y2="275" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
+<line x1="670" y1="275" x2="700" y2="275" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
+<rect x="40" y="359" width="960" height="69" rx="8" fill="#fbe9e7" stroke="#c4503f" stroke-width="1.5"/>
+<text x="520.0" y="381" text-anchor="middle" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">Cổng chống nhiễm (mục 7)</text>
+<text x="520.0" y="398" text-anchor="middle" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">gắn holdout_group; quét benchmark theo từng câu trên MỌI dữ liệu train (CPT, replay, SFT, dữ liệu sinh)</text>
+<line x1="850.0" y1="326" x2="850.0" y2="359" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
+<text x="40" y="454" text-anchor="start" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">Nhánh CPT (mục 9)</text>
+<text x="450" y="454" text-anchor="start" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">Nhánh SFT (mục 10)</text>
+<rect x="40" y="468" width="380" height="85" rx="8" fill="#e9f5ee" stroke="#3f9b6b" stroke-width="1.5"/>
+<text x="230.0" y="490" text-anchor="middle" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">cpt_segments.parquet (T-07)</text>
+<text x="230.0" y="507" text-anchor="middle" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">mọi đoạn liền nhau của 1 văn bản; doc_start / doc_end,</text>
+<text x="230.0" y="523" text-anchor="middle" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">split_bucket</text>
+<rect x="40" y="581" width="380" height="101" rx="8" fill="#e3eefb" stroke="#2a78d6" stroke-width="1.5"/>
+<text x="230.0" y="603" text-anchor="middle" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">cpt_mix (L-06)</text>
+<text x="230.0" y="620" text-anchor="middle" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">2 pha: ổn định ~80–85% token, decay ở cuối; trần lặp 4</text>
+<text x="230.0" y="636" text-anchor="middle" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">lần; thêm replay toán / code và chỉ thị có sẵn (giấy phép</text>
+<text x="230.0" y="652" text-anchor="middle" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">K-11); hỏi–đáp ngắn từ corpus là tuỳ chọn</text>
+<line x1="230.0" y1="553" x2="230.0" y2="581" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
+<rect x="40" y="710" width="380" height="85" rx="8" fill="#e9f5ee" stroke="#3f9b6b" stroke-width="1.5"/>
+<text x="230.0" y="732" text-anchor="middle" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">cpt_pack (T-07..T-09)</text>
+<text x="230.0" y="749" text-anchor="middle" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">cắt ở ranh giới đoạn, best-fit; EOS chỉ ở cuối văn bản thật;</text>
+<text x="230.0" y="765" text-anchor="middle" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">chuỗi 8.192 token</text>
+<line x1="230.0" y1="682" x2="230.0" y2="710" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
+<rect x="40" y="823" width="380" height="85" rx="8" fill="#e3eefb" stroke="#2a78d6" stroke-width="1.5"/>
+<text x="230.0" y="845" text-anchor="middle" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">Adapter HF / TRL (L-07)</text>
+<text x="230.0" y="862" text-anchor="middle" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">gom theo seq_id, position_ids về 0 mỗi mảnh, label = −100</text>
+<text x="230.0" y="878" text-anchor="middle" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">trên prefix</text>
+<line x1="230.0" y1="795" x2="230.0" y2="823" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
+<rect x="450" y="468" width="345" height="101" rx="8" fill="#f1eafb" stroke="#7b4fc4" stroke-width="1.5"/>
+<text x="622.5" y="490" text-anchor="middle" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">Nguồn theo mức quyền (K-03)</text>
+<text x="622.5" y="507" text-anchor="middle" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">XANH: SEA-Instruct vi, Aya vi, an toàn tiếng Việt.</text>
+<text x="622.5" y="523" text-anchor="middle" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">VÀNG: có output GPT / Gemini, chỉ để thí nghiệm. ĐỎ:</text>
+<text x="622.5" y="539" text-anchor="middle" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">NC hoặc không giấy phép, không dùng</text>
+<rect x="810" y="468" width="190" height="101" rx="8" fill="#fdf3dc" stroke="#c98a1a" stroke-width="1.5"/>
+<text x="905.0" y="490" text-anchor="middle" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">SFT dựng từ corpus</text>
+<text x="905.0" y="506" text-anchor="middle" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">(K-18)</text>
+<text x="905.0" y="523" text-anchor="middle" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">mở sách / đóng sách; chỉ</text>
+<text x="905.0" y="539" text-anchor="middle" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">chạy hàng loạt sau cổng</text>
+<text x="905.0" y="555" text-anchor="middle" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">đọc tay</text>
+<rect x="450" y="597" width="550" height="69" rx="8" fill="#e3eefb" stroke="#2a78d6" stroke-width="1.5"/>
+<text x="725.0" y="619" text-anchor="middle" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">KU SFT = 1 hội thoại nguyên vẹn (L-04)</text>
+<text x="725.0" y="636" text-anchor="middle" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">messages, mode think, loss_turns, task, origin, rights_tier, split_bucket</text>
+<line x1="622" y1="569" x2="622" y2="597" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
+<line x1="905.0" y1="569" x2="905.0" y2="597" stroke="#455566" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#ah)"/>
+<rect x="450" y="694" width="550" height="85" rx="8" fill="#e3eefb" stroke="#2a78d6" stroke-width="1.5"/>
+<text x="725.0" y="716" text-anchor="middle" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">Dedup + chọn đa dạng</text>
+<text x="725.0" y="733" text-anchor="middle" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">dedup theo câu hỏi đầu (exact + MinHash); chọn theo cụm embedding, luôn so với</text>
+<text x="725.0" y="749" text-anchor="middle" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">chọn ngẫu nhiên cùng số mẫu</text>
+<line x1="725.0" y1="666" x2="725.0" y2="694" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
+<rect x="450" y="807" width="550" height="69" rx="8" fill="#f1eafb" stroke="#7b4fc4" stroke-width="1.5"/>
+<text x="725.0" y="829" text-anchor="middle" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">Trộn theo tỉ lệ tác vụ (phỏng Tulu 3, chỉnh theo T-04)</text>
+<text x="725.0" y="846" text-anchor="middle" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">rồi render theo chat template và chế độ suy nghĩ (K-17, L-09)</text>
+<line x1="725.0" y1="779" x2="725.0" y2="807" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
+<line x1="230.0" y1="428" x2="230.0" y2="468" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
+<line x1="725.0" y1="428" x2="725.0" y2="468" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
+</svg>

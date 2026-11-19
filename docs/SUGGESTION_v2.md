@@ -1,4 +1,4 @@
-# SUGGESTION v2: pipeline dữ liệu CPT + SFT đầy đủ cho corpus tiếng Việt hàng tỷ token
+# SUGGESTION v2: Pipeline dữ liệu CPT + SFT đầy đủ cho corpus tiếng Việt hàng tỷ token
 
 > **Trạng thái: đề xuất, chưa phải quyết định.** Viết ngày 2026-11-05 theo yêu cầu của chủ dự án. Tổng hợp mọi đợt nghiên cứu: `docs/SUGGESTION.md` (bản đầu), `docs/SUGGESTION_V2_300M.md` (bản viết khi còn tưởng corpus ~300M token, đổi tên từ `SUGGESTION_V2.md`), `reports/Knowledge injection cho SFT tiếng Việt.md`, và 10 ghi chú đợt 2 trong `research_notes/*_v2.md`. Tài liệu này **thay** hai bản SUGGESTION trước ở mọi chỗ mâu thuẫn.
 >
@@ -62,30 +62,17 @@ Giải thích bằng lời đơn giản. Cột "Trong dự án" cho biết nó n
 
 | Thuật ngữ | Nghĩa đơn giản | Trong dự án |
 |---|---|---|
-| **Token / tokenizer** | Model không đọc chữ mà đọc "mảnh chữ" gọi là token; tokenizer là bộ cắt chữ thành token. | Đếm bằng tokenizer Qwen3 (R-35): ~1,37 token mỗi âm tiết tiếng Việt. |
 | **Fertility** | Số token trung bình cho một âm tiết (hoặc một từ). Càng thấp càng tiết kiệm. | Qwen3 đã tốt với tiếng Việt, chỉ kém Llama-3 / Gemma-2 ~5%. |
-| **Mở rộng từ vựng** | Thêm token mới vào tokenizer cho ngôn ngữ đích, rồi phải dạy model các token đó. | **Không làm** (mục 16, K-10): lợi chủ yếu là tốc độ, rủi ro quên lớn. |
-| **Base model** | Model mới học đoán chữ tiếp theo trên văn bản thô, chưa được dạy làm theo yêu cầu. | Chỗ CPT chạm vào. |
-| **Instruct model** | Base đã được hãng dạy thêm để trả lời như trợ lý. | Khả năng của nó là thứ sợ làm mất. |
+| **Mở rộng từ vựng** | Thêm token mới vào tokenizer cho ngôn ngữ đích, rồi phải dạy model các token đó. | **Không làm** (mục 16, K-10): Lợi chủ yếu là tốc độ, rủi ro quên lớn. |
 | **Chế độ suy nghĩ (thinking)** | Model viết ra chuỗi suy luận trong thẻ `<think>` trước khi trả lời. Qwen3 có cả hai chế độ. | Mặc định không dùng (K-17). |
-| **Trọng số (weights)** | Các con số (hàng tỷ) tạo nên model; huấn luyện là chỉnh chúng. | |
-| **Bịa (hallucination)** | Model trả lời trôi chảy nhưng sai sự thật. | Rủi ro chính khi SFT dạy kiến thức mới. |
 | **Mở sách / đóng sách** | Mở sách: đưa tài liệu kèm câu hỏi. Đóng sách: chỉ hỏi, model phải tự nhớ. | `grounded_open` / `closed_book` ở mục 10. |
 
 ### 2.2. Các cách huấn luyện
 
 | Thuật ngữ | Nghĩa đơn giản | Trong dự án |
 |---|---|---|
-| **CPT (continued pretraining)** | Cho base đọc thêm văn bản thô, như tiền huấn luyện nhưng nhỏ hơn. | Trục chính để nạp kiến thức phổ biến. |
-| **SFT (supervised fine-tuning)** | Dạy model từ các mẫu "yêu cầu → câu trả lời mẫu". Chủ yếu dạy cách hành xử. | Sau CPT; dữ liệu ở mục 10. |
 | **Hybrid / midtraining** | Trộn dữ liệu chỉ thị (hỏi–đáp) vào chính lúc CPT, thường ở giai đoạn cuối. | Pha 2 của `cpt_mix` (mục 9.3). |
-| **Full fine-tune** | Chỉnh toàn bộ trọng số. | Mặc định cho CPT ở quy mô tỷ token. |
-| **LoRA** | Không sửa trọng số gốc, chỉ dạy một "miếng vá" nhỏ gắn thêm. Rẻ bộ nhớ. | Cho SFT model 8B khi thiếu bộ nhớ; **không** cho CPT tỷ token (kém xa full). |
-| **Epoch / số lần lặp** | Một lượt đọc hết dữ liệu. Lặp 2 lần = đọc 2 lần. | Web 1 lần; nguồn tốt 2 lần, trần 4 (mục 9.4). |
-| **Learning rate (LR)** | Mỗi bước chỉnh trọng số mạnh cỡ nào. Cao học nhanh nhưng dễ quên. | Phải quét (E-07), mục 15 có mâu thuẫn. |
 | **Lịch WSD** | Warmup – Stable – Decay: tăng LR ngắn, giữ phẳng lâu, rồi hạ dần ở 10–20% cuối. | Mặc định; dữ liệu tốt nhất đặt ở pha hạ LR. |
-| **Batch** | Số token xử lý trong một bước cập nhật. | 256–512K token khi < 2B token; ~1M khi 5–15B. |
-| **Checkpoint** | Bản lưu model giữa chừng. | Lưu trước khi hạ LR để nối tiếp khi có dữ liệu mới. |
 | **Replay (ôn lại)** | Trộn dữ liệu "cũ" (tiếng Anh, toán, code) để model không quên. | 25–30% điểm xuất phát (mục 9.3). |
 | **Catastrophic forgetting (quên)** | Học cái mới làm mất khả năng cũ. | Phải giữ: chỉ thị, toán, code (T-04). |
 | **Chat vector** | Lấy phần chênh `instruct − base` cộng vào model vừa CPT, để trả lại khả năng chat mà không phải dạy lại. | Bước sau CPT (mục 11). |
@@ -241,7 +228,7 @@ Phần lớn đã có và đang chạy (VJOL full, S-24). Việc thêm:
 
 ## 7. Eval và chống nhiễm benchmark (làm trước tiên)
 
-![Eval và chống nhiễm](diagrams/24_v2_eval.svg)
+(Sơ đồ ở mục 11: eval nằm ở đầu và ở cổng đo của luồng huấn luyện.)
 
 **Vì sao đứng trước:** bước quét nhiễm hiện có (`vi_corpus/pipeline/contamination.py`) đang chạy với **danh sách rỗng** (`configs/benchmarks/` trống, R-16), và có 5 điểm yếu: đếm theo tài liệu thay vì theo câu đề; một cụm 13 chữ trùng là đủ gắn cờ; đáp án bị tách nên không bao giờ khớp; đề không chuẩn hoá NFC; chỉ chạy trên mẫu. Trong khi đó VMLU lấy câu hỏi từ "giáo trình công khai, đề thi đại học trên mạng", đúng loại dữ liệu nằm trong `giao_trinh` và SEA-PILE.
 
@@ -286,7 +273,9 @@ Lý do cần H2 / H3: họ trùng chỉ gom bản gần giống chữ; cùng m�
 
 ## 8. Chọn dữ liệu theo chất lượng
 
-![Chọn dữ liệu theo chất lượng](diagrams/20_v2_chat_luong.svg)
+![Dữ liệu: chất lượng, CPT, SFT](diagrams/20_v2_du_lieu.svg)
+
+(Sơ đồ này dùng chung cho mục 8, 9, 10.)
 
 **Kế hoạch hiện có (Q6, R-11, R-12) đúng hướng** với các bài mạnh nhất 2024–2025 (FineWeb-Edu, Nemotron-CC, JQL): LLM chấm một mẫu → dạy bộ chấm nhỏ → chấm cả corpus. Đề xuất chỉnh:
 
@@ -306,7 +295,7 @@ Lý do cần H2 / H3: họ trùng chỉ gom bản gần giống chữ; cùng m�
 
 ## 9. Dữ liệu CPT: segment → trộn → đóng gói
 
-![Dữ liệu CPT](diagrams/21_v2_cpt.svg)
+(Sơ đồ ở mục 8, nhánh CPT.)
 
 ### 9.1. `cpt_segments.parquet` (đã code, T-07)
 
@@ -352,7 +341,7 @@ Thêm theo bằng chứng (đều là biến thí nghiệm, chưa mặc định)
 
 ## 10. Dữ liệu SFT
 
-![Dữ liệu SFT](diagrams/22_v2_sft.svg)
+(Sơ đồ ở mục 8, nhánh SFT.)
 
 ### 10.1. Đơn vị: một hội thoại nguyên vẹn (K-04, L-04)
 
@@ -434,7 +423,9 @@ Dedup theo **câu hỏi người dùng đầu tiên** đã chuẩn hoá (exact +
 
 ## 11. Huấn luyện thử và chống quên
 
-![Huấn luyện thử](diagrams/23_v2_huan_luyen.svg)
+![Huấn luyện thử và eval](diagrams/21_v2_huan_luyen_eval.svg)
+
+(Sơ đồ này dùng chung cho mục 7 và 11.)
 
 Phạm vi (R-23): đây là phần **chứng minh dữ liệu có ích** cho W6 (mini model), W7 (ablation quy mô), W8 (go / no-go), không phải huấn luyện sản phẩm.
 
@@ -477,8 +468,6 @@ Giữ (T-04). Gần như không tốn GPU vì corpus đã cắt đoạn, đã c�
 ---
 
 ## 12. Chuỗi thí nghiệm để chốt pipeline
-
-![Chuỗi thí nghiệm](diagrams/25_v2_thi_nghiem.svg)
 
 | Mã | Thí nghiệm | Trả lời câu hỏi | GPU-giờ (ước tính) |
 |---|---|---|---|
