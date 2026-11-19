@@ -77,6 +77,7 @@ uv run python scripts/run_pipeline.py --data-root <root> --total 10000 [--mix se
 uv run python scripts/dedup_global.py --data-root <root>               # dedup round 2 over state/dedup_index/ -> processed/dedup_global/verdict.parquet
 uv run python scripts/run_pipeline.py ... --global-verdict <root>/processed/dedup_global/verdict.parquet   # apply it before knowledge units
 uv run python scripts/make_judge_sample.py --run-dir <run> --n 50000 --out <root>/processed/judge/sample_50k.parquet  # stratified LLM-judge sample
+uv run --no-sync --with zstandard python scripts/source_probe/probe_hf.py --data-root <root> [--only a,b] [--n 300]  # NS-11: quick quality probe of candidate sources (docs/SOURCE_CANDIDATES.md) from remote samples, no full download -> <root>/processed/source_probe/summary.json
 # multi-GPU (NeMo Curator + Ray, `uv sync --group curator`): --executor xenna|ray_actor_pool|ray_data --num-gpus 4 [--ray-address auto] [--ocr-books N for parallel OCR]
 ```
 ```bash
