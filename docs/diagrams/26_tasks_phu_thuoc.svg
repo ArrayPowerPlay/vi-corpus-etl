@@ -23,7 +23,7 @@
 <rect x="690" y="136" width="260" height="69" rx="8" fill="#e3eefb" stroke="#2a78d6" stroke-width="1.5"/>
 <text x="820.0" y="158.0" text-anchor="middle" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">Code / làm</text>
 <text x="820.0" y="175.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">L-01 quét theo câu · L-02</text>
-<text x="820.0" y="190.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">holdout_group · L-10 harness so cặp</text>
+<text x="820.0" y="190.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">holdout_group · L-10 harness · L-11 benchmark</text>
 <rect x="980" y="136" width="90" height="69" rx="8" fill="#eef2f7" stroke="#7a8aa0" stroke-width="1.5"/>
 <text x="1025.0" y="158.0" text-anchor="middle" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">Mốc</text>
 <text x="1025.0" y="175.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">W3 · W6</text>
@@ -53,16 +53,16 @@
 <text x="205.0" y="396.0" text-anchor="middle" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">Cần chốt</text>
 <text x="205.0" y="413.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">K-11 replay + giấy phép · K-22 ngữ cảnh 32K ·</text>
 <text x="205.0" y="428.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">K-23 dùng text_md · K-24 định dạng chỉ thị ·</text>
-<text x="205.0" y="443.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">K-26 cách lặp</text>
+<text x="205.0" y="443.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">K-26 cách lặp · K-08 số W3 · K-09 KPI token · K-10 từ vựng</text>
 <rect x="400" y="374" width="260" height="84" rx="8" fill="#fbe9e7" stroke="#c4503f" stroke-width="1.5"/>
 <text x="530.0" y="396.0" text-anchor="middle" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">Cần đo</text>
 <text x="530.0" y="413.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">E-01 token theo nguồn · E-04 độ dài</text>
 <text x="530.0" y="428.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">segment · E-08 đóng gói · E-10 tỉ lệ</text>
-<text x="530.0" y="443.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">trộn</text>
+<text x="530.0" y="443.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">trộn · E-03 fertility</text>
 <rect x="690" y="374" width="260" height="69" rx="8" fill="#e3eefb" stroke="#2a78d6" stroke-width="1.5"/>
 <text x="820.0" y="396.0" text-anchor="middle" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">Code / làm</text>
 <text x="820.0" y="413.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">L-06 cpt_mix · L-07 adapter · L-13</text>
-<text x="820.0" y="428.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">text_md</text>
+<text x="820.0" y="428.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">text_md · L-12 report</text>
 <rect x="980" y="374" width="90" height="84" rx="8" fill="#eef2f7" stroke="#7a8aa0" stroke-width="1.5"/>
 <text x="1025.0" y="396.0" text-anchor="middle" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">Mốc</text>
 <text x="1025.0" y="413.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">W6 · W7</text>
@@ -73,7 +73,7 @@
 <rect x="40" y="508" width="330" height="69" rx="8" fill="#f1eafb" stroke="#7b4fc4" stroke-width="1.5"/>
 <text x="205.0" y="530.0" text-anchor="middle" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">Cần chốt</text>
 <text x="205.0" y="547.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">K-03 quyền · K-04 KU hội thoại · K-17 think ·</text>
-<text x="205.0" y="562.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">K-18 SFT tổng hợp · K-13 đọc tay</text>
+<text x="205.0" y="562.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">K-18 SFT tổng hợp · K-13 đọc tay · K-27 cách đếm</text>
 <rect x="400" y="508" width="260" height="69" rx="8" fill="#fbe9e7" stroke="#c4503f" stroke-width="1.5"/>
 <text x="530.0" y="530.0" text-anchor="middle" font-size="13" font-weight="700" fill="#1b2733" xml:space="preserve">Cần đo</text>
 <text x="530.0" y="547.0" text-anchor="middle" font-size="11" font-weight="400" fill="#1b2733" xml:space="preserve">E-02 đếm SEA-Instruct · E-12 tốc độ</text>

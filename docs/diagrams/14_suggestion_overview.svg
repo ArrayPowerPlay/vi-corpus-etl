@@ -16,7 +16,7 @@
 <text x="819" y="87" text-anchor="start" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">kiểm tra / cổng</text>
 <rect x="200" y="108" width="600" height="66" rx="8" fill="#eef2f7" stroke="#7a8aa0" stroke-width="1.5"/>
 <text x="500.0" y="130" text-anchor="middle" font-size="14" font-weight="700" fill="#1b2733" xml:space="preserve">Đã có: stage finalize của pipeline hiện tại</text>
-<text x="500.0" y="150" text-anchor="middle" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">clean.parquet · KU CPT · cpt_blocks.parquet (4.096 token) · KU SFT (SEA-Instruct)</text>
+<text x="500.0" y="150" text-anchor="middle" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">clean.parquet · KU CPT · cpt_segments.parquet (thay cpt_blocks, T-07) · KU SFT (SEA-Instruct)</text>
 <text x="500.0" y="167" text-anchor="middle" font-size="12" font-weight="400" fill="#1b2733" xml:space="preserve">mỗi bản ghi mang doc_id, chunk_index, dedup_family_id → giữ nguồn gốc (lineage)</text>
 <line x1="500" y1="174" x2="500" y2="206" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
 <rect x="200" y="208" width="600" height="86" rx="8" fill="#e3eefb" stroke="#2a78d6" stroke-width="1.5"/>

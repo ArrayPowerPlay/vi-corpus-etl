@@ -1,8 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 929" width="1000" height="929" font-family="DejaVu Sans, Arial, sans-serif">
-<title>Luồng con 11: OCR sách stbook</title>
+<title>Luồng con 11: OCR stbook bằng bộ cũ (Paddle + VietOCR, nay là tầng dự phòng)</title>
 <defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#455566"/></marker></defs>
 <rect width="1000" height="929" fill="#ffffff"/>
-<text x="500.0" y="34" text-anchor="middle" font-size="19" font-weight="700" fill="#1b2733">Luồng con 11: OCR sách stbook</text>
+<text x="500.0" y="34" text-anchor="middle" font-size="19" font-weight="700" fill="#1b2733">Luồng con 11: OCR stbook bằng bộ cũ (Paddle + VietOCR, nay là tầng dự phòng)</text>
 <text x="500.0" y="58" text-anchor="middle" font-size="12" fill="#52514e">vi_corpus/stbook/ocr_books.py · ocr_parallel.py · vi_corpus/common/ocr.py</text>
 <rect x="30" y="84" width="530" height="51" rx="8" fill="#eef2f7" stroke="#7a8aa0" stroke-width="1.5"/>
 <text x="42" y="106" font-size="14" font-weight="700" fill="#1b2733">raw/stbook/&lt;slug&gt;/{books.json, content/&lt;product_id&gt;.pdf}</text>

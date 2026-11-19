@@ -1,0 +1,89 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1045" width="1000" height="1045" font-family="DejaVu Sans, Arial, sans-serif">
+<title>Luồng con 22: VJOL và VISTA, từ PDF tới bản ghi</title>
+<defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#455566"/></marker></defs>
+<rect width="1000" height="1045" fill="#ffffff"/>
+<text x="500.0" y="30" text-anchor="middle" font-size="19" font-weight="700" fill="#1b2733">Luồng con 22: VJOL và VISTA, từ PDF tới bản ghi</text>
+<text x="500.0" y="50" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, monospace" font-size="11" fill="#6a7a8a">vi_corpus/vjol/ (extract, layout, cli, records, clean, reocr) · vi_corpus/vista/ · scripts/vjol/ · scripts/vista/</text>
+<rect x="30" y="70" width="640" height="73" rx="8" fill="#eef2f7" stroke="#7a8aa0" stroke-width="1.6"/>
+<text x="42" y="92" font-size="14" font-weight="700" fill="#1b2733">raw/vjol/&lt;năm&gt;/&lt;article_id&gt;_&lt;galley_id&gt;.pdf  ·  raw/vista/&lt;năm&gt;/&lt;publication_id&gt;.pdf (+ unknown/)</text>
+<text x="42" y="109.5" font-size="12" fill="#1b2733" xml:space="preserve">metadata: vjol/metadata/vjol_merged.jsonl; vista/metadata/vista_detail.jsonl (join theo</text>
+<text x="42" y="126.0" font-size="12" fill="#1b2733" xml:space="preserve">publication_id; 1 PDF có thể thuộc nhiều bài).</text>
+<rect x="30" y="170" width="640" height="90" rx="8" fill="#e9f5ee" stroke="#3f9b6b" stroke-width="1.6"/>
+<text x="42" y="192" font-size="14" font-weight="700" fill="#1b2733">① Trích lớp chữ, mọi trang (CPU, PyMuPDF)</text>
+<text x="42" y="209.5" font-size="12" fill="#1b2733" xml:space="preserve">method mỗi trang: text | tcvn3 (đổi font cũ → Unicode) | empty | needs_ocr (trang scan).</text>
+<text x="42" y="226.0" font-size="12" fill="#1b2733" xml:space="preserve">Chọn mẫu --sample-docs N chia đều theo năm, hoặc cả kho. Nhiều tiến trình chia PDF bằng</text>
+<text x="42" y="242.5" font-size="12" fill="#1b2733" xml:space="preserve">khoá flock; checkpoint theo sha256 PDF.</text>
+<rect x="30" y="290" width="640" height="106" rx="8" fill="#e9f5ee" stroke="#3f9b6b" stroke-width="1.6"/>
+<text x="42" y="312" font-size="14" font-weight="700" fill="#1b2733">② Dò trang hỏng (CPU)</text>
+<text x="42" y="329.5" font-size="12" fill="#1b2733" xml:space="preserve">chữ hỏng do font: 4 tín hiệu (≥ 2 dấu thanh, hoa-thường lẫn, ñ ö ï ø å, từ ngoài tập âm</text>
+<text x="42" y="346.0" font-size="12" fill="#1b2733" xml:space="preserve">tiết) → trang bị OCR lại cả trang. PDF do phần mềm OCR đời cũ tạo (producer) hoặc ≥ 30%</text>
+<text x="42" y="362.5" font-size="12" fill="#1b2733" xml:space="preserve">trang hỏng → OCR lại cả bài; lỗi tone_shift / dropped_letters (REOCR_SIGNALS) cũng đưa</text>
+<text x="42" y="379.0" font-size="12" fill="#1b2733" xml:space="preserve">bài đi OCR lại.</text>
+<rect x="30" y="440" width="640" height="73" rx="8" fill="#fff4dc" stroke="#d19a1f" stroke-width="1.6"/>
+<text x="42" y="462" font-size="14" font-weight="700" fill="#1b2733">Trang scan hoặc lỗi font?</text>
+<text x="42" y="479.5" font-size="12" fill="#1b2733" xml:space="preserve">--no-ocr: bỏ ③, trang scan giữ needs_ocr (bản thử CPU, PP-01); đếm số trang cần OCR bằng</text>
+<text x="42" y="496.0" font-size="12" fill="#1b2733" xml:space="preserve">make count-ocr.</text>
+<rect x="30" y="540" width="640" height="121" rx="8" fill="#e8e4fb" stroke="#6b4fd0" stroke-width="1.6"/>
+<text x="42" y="562" font-size="14" font-weight="700" fill="#1b2733">③ OCR chuỗi VLM (GPU, mỗi GPU một server vLLM + một tiến trình)</text>
+<text x="42" y="579.5" font-size="12" fill="#1b2733" xml:space="preserve">qwen3vl_8b_mt4k → rp110 nếu guard báo → Paddle + VietOCR → bỏ trang (ocr_vlm: tier,</text>
+<text x="42" y="596.0" font-size="12" fill="#1b2733" xml:space="preserve">status ok | blank | flagged, rejected_text). Trang vẽ lại cả trang; cache OCR theo trang</text>
+<text x="42" y="612.5" font-size="12" fill="#1b2733" xml:space="preserve">(interim/vjol_ocr_cache/); lưu text_md (T-06). ServerDown / EngineUnavailable dừng cả</text>
+<text x="42" y="629.0" font-size="12" fill="#1b2733" xml:space="preserve">lượt.</text>
+<text x="42" y="644.0" font-family="DejaVu Sans Mono, Menlo, monospace" font-size="11" fill="#455566" xml:space="preserve">scripts/vjol/run_extract_vlm.sh · scripts/vista/run_extract_vlm.sh</text>
+<rect x="30" y="700" width="640" height="73" rx="8" fill="#e3eefb" stroke="#2a78d6" stroke-width="1.6"/>
+<text x="42" y="722" font-size="14" font-weight="700" fill="#1b2733">Checkpoint interim/vjol_text | vista_text/&lt;sha256&gt;.json</text>
+<text x="42" y="739.5" font-size="12" fill="#1b2733" xml:space="preserve">pages[{text, method, tier, status}], extract_version (đổi → làm lại; VISTA thêm +op&lt;băm</text>
+<text x="42" y="756.0" font-size="12" fill="#1b2733" xml:space="preserve">danh sách producer&gt;), xuất Parquet cuối lượt.</text>
+<rect x="30" y="790" width="640" height="90" rx="8" fill="#e9f5ee" stroke="#3f9b6b" stroke-width="1.6"/>
+<text x="42" y="812" font-size="14" font-weight="700" fill="#1b2733">④ Sinh bản ghi (CPU, records.py + clean.py)</text>
+<text x="42" y="829.5" font-size="12" fill="#1b2733" xml:space="preserve">bỏ bìa, mục lục, tài liệu tham khảo, tiêu đề chạy ở đầu / giữa trang, dòng rác; khôi</text>
+<text x="42" y="846.0" font-size="12" fill="#1b2733" xml:space="preserve">phục &#x27;ư&#x27; (&#x27;ph-ơng&#x27;, tuỳ chọn hyphen-lm); che email và số điện thoại (J-63); nối</text>
+<text x="42" y="862.5" font-size="12" fill="#1b2733" xml:space="preserve">metadata. VISTA: một bản ghi / PDF, meta.publication_ids, meta.shared_pdf.</text>
+<rect x="30" y="925" width="640" height="56" rx="8" fill="#e3eefb" stroke="#2a78d6" stroke-width="1.6"/>
+<text x="42" y="947" font-size="14" font-weight="700" fill="#1b2733">→ stage ingest của run_pipeline.py</text>
+<text x="42" y="964.5" font-size="12" fill="#1b2733" xml:space="preserve">PROFILES[&#x27;vjol&#x27;] (vi + en, chunked); --shard I/N chia theo sha256; xem sơ đồ 02 và 23.</text>
+<polyline points="350.0,143.0 350.0,170.0" fill="none" stroke="#455566" stroke-width="1.6" marker-end="url(#ah)"/>
+<polyline points="350.0,259.5 350.0,290.0" fill="none" stroke="#455566" stroke-width="1.6" marker-end="url(#ah)"/>
+<polyline points="350.0,396.0 350.0,440.0" fill="none" stroke="#455566" stroke-width="1.6" marker-end="url(#ah)"/>
+<polyline points="350.0,513.0 350.0,540.0" fill="none" stroke="#455566" stroke-width="1.6" marker-end="url(#ah)"/>
+<rect x="354.0" y="515.5" width="18.8" height="15" fill="#ffffff" opacity="0.9"/>
+<text x="356.0" y="526.5" text-anchor="start" font-size="11.5" fill="#455566">có</text>
+<polyline points="350.0,661.0 350.0,700.0" fill="none" stroke="#455566" stroke-width="1.6" marker-end="url(#ah)"/>
+<polyline points="350.0,773.0 350.0,790.0" fill="none" stroke="#455566" stroke-width="1.6" marker-end="url(#ah)"/>
+<polyline points="350.0,879.5 350.0,925.0" fill="none" stroke="#455566" stroke-width="1.6" marker-end="url(#ah)"/>
+<polyline points="670.0,476.5 688.0,476.5 688.0,736.5 670.0,736.5" fill="none" stroke="#455566" stroke-width="1.6" marker-end="url(#ah)"/>
+<rect x="658.0" y="459.5" width="38.0" height="15" fill="#ffffff" opacity="0.9"/>
+<text x="679.0" y="470.5" text-anchor="middle" font-size="11.5" fill="#455566">không</text>
+<rect x="700" y="170" width="270" height="238" rx="8" fill="#eef2f7" stroke="#7a8aa0" stroke-width="1.6"/>
+<text x="712" y="192" font-size="14" font-weight="700" fill="#1b2733">Công cụ đo, chỉ CPU trừ khi ghi chú</text>
+<text x="712" y="209.5" font-size="12" fill="#1b2733" xml:space="preserve">make count-ocr: đếm trang cần OCR</text>
+<text x="712" y="226.0" font-size="12" fill="#1b2733" xml:space="preserve">(S-27).</text>
+<text x="712" y="242.5" font-size="12" fill="#1b2733" xml:space="preserve">check_garbled.py,</text>
+<text x="712" y="259.0" font-size="12" fill="#1b2733" xml:space="preserve">check_garbled_missed.py: đo chữ</text>
+<text x="712" y="275.5" font-size="12" fill="#1b2733" xml:space="preserve">hỏng.</text>
+<text x="712" y="292.0" font-size="12" fill="#1b2733" xml:space="preserve">audit_run.py, groundtruth.py,</text>
+<text x="712" y="308.5" font-size="12" fill="#1b2733" xml:space="preserve">compare_runs.py --paired: nhãn</text>
+<text x="712" y="325.0" font-size="12" fill="#1b2733" xml:space="preserve">chuẩn, so hai lần chạy.</text>
+<text x="712" y="341.5" font-size="12" fill="#1b2733" xml:space="preserve">plan_reocr.py: ước giờ OCR lại cả</text>
+<text x="712" y="358.0" font-size="12" fill="#1b2733" xml:space="preserve">bài.</text>
+<text x="712" y="374.5" font-size="12" fill="#1b2733" xml:space="preserve">font_canary.py (GPU): đo nhóm font</text>
+<text x="712" y="391.0" font-size="12" fill="#1b2733" xml:space="preserve">(mẫu 3 bài / nhóm).</text>
+<rect x="700" y="440" width="270" height="90" rx="8" fill="#f5f5f5" stroke="#9a9a9a" stroke-width="1.6" stroke-dasharray="6 4"/>
+<text x="712" y="462" font-size="14" font-weight="700" fill="#6a6a6a">OCR nội bộ VNPT (OI-01)</text>
+<text x="712" y="479.5" font-size="12" fill="#6a6a6a" xml:space="preserve">scripts/ocr_internal/: thử 30 + 30</text>
+<text x="712" y="496.0" font-size="12" fill="#6a6a6a" xml:space="preserve">PDF, dựng trang duyệt tay; code</text>
+<text x="712" y="512.5" font-size="12" fill="#6a6a6a" xml:space="preserve">xong, chưa chạy thật.</text>
+<rect x="700" y="540" width="270" height="122" rx="8" fill="#f5f5f5" stroke="#9a9a9a" stroke-width="1.6" stroke-dasharray="6 4"/>
+<text x="712" y="562" font-size="14" font-weight="700" fill="#6a6a6a">Chưa làm</text>
+<text x="712" y="579.5" font-size="12" fill="#6a6a6a" xml:space="preserve">cmap_healer (V-10), parser bố cục,</text>
+<text x="712" y="596.0" font-size="12" fill="#6a6a6a" xml:space="preserve">lọc trang baseline theo tỉ lệ âm</text>
+<text x="712" y="612.5" font-size="12" fill="#6a6a6a" xml:space="preserve">tiết (O-27 c), thay nhóm font xấu</text>
+<text x="712" y="629.0" font-size="12" fill="#6a6a6a" xml:space="preserve">theo bài (J-48 mục 3), bảng lệch</text>
+<text x="712" y="645.5" font-size="12" fill="#6a6a6a" xml:space="preserve">dấu riêng của VISTA.</text>
+<rect x="30" y="1009" width="18" height="14" rx="3" fill="#eef2f7" stroke="#7a8aa0"/><text x="54" y="1020" font-size="11.5" fill="#455566">đầu vào / dữ liệu</text>
+<rect x="187" y="1009" width="18" height="14" rx="3" fill="#e9f5ee" stroke="#3f9b6b"/><text x="211" y="1020" font-size="11.5" fill="#455566">bước xử lý (CPU)</text>
+<rect x="337" y="1009" width="18" height="14" rx="3" fill="#e8e4fb" stroke="#6b4fd0"/><text x="361" y="1020" font-size="11.5" fill="#455566">bước chạy trên GPU</text>
+<rect x="500" y="1009" width="18" height="14" rx="3" fill="#fff4dc" stroke="#d19a1f"/><text x="524" y="1020" font-size="11.5" fill="#455566">rẽ nhánh / điều kiện</text>
+<rect x="676" y="1009" width="18" height="14" rx="3" fill="#e3eefb" stroke="#2a78d6"/><text x="700" y="1020" font-size="11.5" fill="#455566">đầu ra</text>
+<rect x="763" y="1009" width="18" height="14" rx="3" fill="#f5f5f5" stroke="#9a9a9a" stroke-dasharray="4 3"/><text x="787" y="1020" font-size="11.5" fill="#455566">chưa có code</text>
+</svg>

@@ -1,0 +1,74 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 809" width="1000" height="809" font-family="DejaVu Sans, Arial, sans-serif">
+<title>Luồng con 23: pipeline cả kho VJOL + VISTA chia phần (shard)</title>
+<defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#455566"/></marker></defs>
+<rect width="1000" height="809" fill="#ffffff"/>
+<text x="500.0" y="30" text-anchor="middle" font-size="19" font-weight="700" fill="#1b2733">Luồng con 23: pipeline cả kho VJOL + VISTA chia phần (shard)</text>
+<text x="500.0" y="50" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, monospace" font-size="11" fill="#6a7a8a">make pipeline-cpu · scripts/run_pipeline_cpu.sh · scripts/vista/run_vista.sh · scripts/dedup_global.py · scripts/vista/summarize_runs.py</text>
+<rect x="30" y="70" width="640" height="73" rx="8" fill="#eef2f7" stroke="#7a8aa0" stroke-width="1.6"/>
+<text x="42" y="92" font-size="14" font-weight="700" fill="#1b2733">Checkpoint đã trích</text>
+<text x="42" y="109.5" font-size="12" fill="#1b2733" xml:space="preserve">interim/vjol_text, interim/vista_text (bản CPU thuần: trang needs_ocr bị bỏ qua; sau OCR</text>
+<text x="42" y="126.0" font-size="12" fill="#1b2733" xml:space="preserve">GPU: đủ chữ).</text>
+<rect x="30" y="160" width="640" height="121" rx="8" fill="#e9f5ee" stroke="#3f9b6b" stroke-width="1.6"/>
+<text x="42" y="182" font-size="14" font-weight="700" fill="#1b2733">1. shards: N phần chạy song song (JOBS tiến trình)</text>
+<text x="42" y="199.5" font-size="12" fill="#1b2733" xml:space="preserve">run_pipeline.py --mix &lt;nguồn&gt;=... --take-all --shard I/N --until dedup (ingest → prepare</text>
+<text x="42" y="216.0" font-size="12" fill="#1b2733" xml:space="preserve">→ language → quality → dedup vòng 1). Phần chia theo sha256 PDF; mỗi phần là một lần</text>
+<text x="42" y="232.5" font-size="12" fill="#1b2733" xml:space="preserve">chạy độc lập, có kho dấu vân tay riêng, RAM vừa; mỗi tiến trình 1 luồng; --embedder</text>
+<text x="42" y="249.0" font-size="12" fill="#1b2733" xml:space="preserve">none.</text>
+<text x="42" y="264.0" font-family="DejaVu Sans Mono, Menlo, monospace" font-size="11" fill="#455566" xml:space="preserve">make pipeline-cpu ROOT=&lt;data-root&gt; JOBS=128 SHARDS=128 STEP=shards</text>
+<rect x="30" y="320" width="640" height="104" rx="8" fill="#e9f5ee" stroke="#3f9b6b" stroke-width="1.6"/>
+<text x="42" y="342" font-size="14" font-weight="700" fill="#1b2733">2. dedup: dedup vòng 2 toàn cục</text>
+<text x="42" y="359.5" font-size="12" fill="#1b2733" xml:space="preserve">scripts/dedup_global.py gộp kho dấu vân tay của MỌI phần và mọi nguồn →</text>
+<text x="42" y="376.0" font-size="12" fill="#1b2733" xml:space="preserve">processed/dedup_global/verdict.parquet; bắt cả trùng giữa các phần và giữa VJOL với</text>
+<text x="42" y="392.5" font-size="12" fill="#1b2733" xml:space="preserve">VISTA.</text>
+<text x="42" y="407.5" font-family="DejaVu Sans Mono, Menlo, monospace" font-size="11" fill="#455566" xml:space="preserve">STEP=dedup</text>
+<rect x="30" y="440" width="640" height="88" rx="8" fill="#e9f5ee" stroke="#3f9b6b" stroke-width="1.6"/>
+<text x="42" y="462" font-size="14" font-weight="700" fill="#1b2733">3. finalize: N phần chạy lại với --global-verdict</text>
+<text x="42" y="479.5" font-size="12" fill="#1b2733" xml:space="preserve">tới hết finalize: clean, knowledge_units, cpt_segments, audit, report.html (không bản</text>
+<text x="42" y="496.0" font-size="12" fill="#1b2733" xml:space="preserve">đồ).</text>
+<text x="42" y="511.0" font-family="DejaVu Sans Mono, Menlo, monospace" font-size="11" fill="#455566" xml:space="preserve">STEP=finalize</text>
+<rect x="30" y="540" width="640" height="88" rx="8" fill="#e9f5ee" stroke="#3f9b6b" stroke-width="1.6"/>
+<text x="42" y="562" font-size="14" font-weight="700" fill="#1b2733">4. summary</text>
+<text x="42" y="579.5" font-size="12" fill="#1b2733" xml:space="preserve">summarize_runs.py: đoạn, token giữ, phễu, RAM đỉnh (peak_rss_mb), giây của từng phần →</text>
+<text x="42" y="596.0" font-size="12" fill="#1b2733" xml:space="preserve">processed/&lt;nguồn&gt;_full_summary.json; cảnh báo phần dang dở hoặc chưa áp verdict.</text>
+<text x="42" y="611.0" font-family="DejaVu Sans Mono, Menlo, monospace" font-size="11" fill="#455566" xml:space="preserve">STEP=summary</text>
+<rect x="30" y="650" width="640" height="73" rx="8" fill="#e3eefb" stroke="#2a78d6" stroke-width="1.6"/>
+<text x="42" y="672" font-size="14" font-weight="700" fill="#1b2733">Kết quả</text>
+<text x="42" y="689.5" font-size="12" fill="#1b2733" xml:space="preserve">các clean.parquet / cpt_segments.parquet của từng phần; ghép các phần thành một đầu vào</text>
+<text x="42" y="706.0" font-size="12" fill="#1b2733" xml:space="preserve">cho scripts/cpt_pack.py: chưa làm.</text>
+<polyline points="350.0,143.0 350.0,160.0" fill="none" stroke="#455566" stroke-width="1.6" marker-end="url(#ah)"/>
+<polyline points="350.0,281.0 350.0,320.0" fill="none" stroke="#455566" stroke-width="1.6" marker-end="url(#ah)"/>
+<polyline points="350.0,424.5 350.0,440.0" fill="none" stroke="#455566" stroke-width="1.6" marker-end="url(#ah)"/>
+<polyline points="350.0,528.0 350.0,540.0" fill="none" stroke="#455566" stroke-width="1.6" marker-end="url(#ah)"/>
+<polyline points="350.0,628.0 350.0,650.0" fill="none" stroke="#455566" stroke-width="1.6" marker-end="url(#ah)"/>
+<rect x="700" y="160" width="270" height="106" rx="8" fill="#fdecea" stroke="#c94a3f" stroke-width="1.6"/>
+<text x="712" y="182" font-size="14" font-weight="700" fill="#1b2733">Phần lỗi → dừng</text>
+<text x="712" y="199.5" font-size="12" fill="#1b2733" xml:space="preserve">ghi logs/pipe_failed_&lt;bước&gt;.txt,</text>
+<text x="712" y="216.0" font-size="12" fill="#1b2733" xml:space="preserve">không chạy bước sau. Chạy lại đúng</text>
+<text x="712" y="232.5" font-size="12" fill="#1b2733" xml:space="preserve">lệnh cũ = làm tiếp phần lỗi (vân</text>
+<text x="712" y="249.0" font-size="12" fill="#1b2733" xml:space="preserve">tay stage).</text>
+<polyline points="670.0,220.5 685.0,220.5 685.0,213.0 700.0,213.0" fill="none" stroke="#455566" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#ah)"/>
+<rect x="700" y="320" width="270" height="73" rx="8" fill="#eef2f7" stroke="#7a8aa0" stroke-width="1.6"/>
+<text x="712" y="342" font-size="14" font-weight="700" fill="#1b2733">make pipeline-progress</text>
+<text x="712" y="359.5" font-size="12" fill="#1b2733" xml:space="preserve">xem tiến độ + giờ dự kiến xong (chỉ</text>
+<text x="712" y="376.0" font-size="12" fill="#1b2733" xml:space="preserve">đọc file, chạy ở terminal khác).</text>
+<rect x="700" y="430" width="270" height="106" rx="8" fill="#eef2f7" stroke="#7a8aa0" stroke-width="1.6"/>
+<text x="712" y="452" font-size="14" font-weight="700" fill="#1b2733">VISTA: run_vista.sh</text>
+<text x="712" y="469.5" font-size="12" fill="#1b2733" xml:space="preserve">check → survey → sample-extract →</text>
+<text x="712" y="486.0" font-size="12" fill="#1b2733" xml:space="preserve">sample-pipeline → (duyệt mẫu) →</text>
+<text x="712" y="502.5" font-size="12" fill="#1b2733" xml:space="preserve">full-extract → full-pipeline</text>
+<text x="712" y="519.0" font-size="12" fill="#1b2733" xml:space="preserve">(SHARDS = 8) → dedup → summary.</text>
+<rect x="700" y="590" width="270" height="156" rx="8" fill="#f5f5f5" stroke="#9a9a9a" stroke-width="1.6" stroke-dasharray="6 4"/>
+<text x="712" y="612" font-size="14" font-weight="700" fill="#6a6a6a">Bản cuối (sau OCR GPU, PP-01)</text>
+<text x="712" y="629.5" font-size="12" fill="#6a6a6a" xml:space="preserve">chạy lại từ ingest với</text>
+<text x="712" y="646.0" font-size="12" fill="#6a6a6a" xml:space="preserve">--perplexity-model và</text>
+<text x="712" y="662.5" font-size="12" fill="#6a6a6a" xml:space="preserve">--hyphen-lm-model Qwen/Qwen3-0.6B</text>
+<text x="712" y="679.0" font-size="12" fill="#6a6a6a" xml:space="preserve">bật; PIPE_ARGS phải giống nhau giữa</text>
+<text x="712" y="695.5" font-size="12" fill="#6a6a6a" xml:space="preserve">các lần chạy. make pipeline-cpu mới</text>
+<text x="712" y="712.0" font-size="12" fill="#6a6a6a" xml:space="preserve">chạy thử với dữ liệu giả, chưa chạy</text>
+<text x="712" y="728.5" font-size="12" fill="#6a6a6a" xml:space="preserve">thật.</text>
+<rect x="30" y="773" width="18" height="14" rx="3" fill="#eef2f7" stroke="#7a8aa0"/><text x="54" y="784" font-size="11.5" fill="#455566">đầu vào / dữ liệu</text>
+<rect x="187" y="773" width="18" height="14" rx="3" fill="#e9f5ee" stroke="#3f9b6b"/><text x="211" y="784" font-size="11.5" fill="#455566">bước xử lý (CPU)</text>
+<rect x="337" y="773" width="18" height="14" rx="3" fill="#fdecea" stroke="#c94a3f"/><text x="361" y="784" font-size="11.5" fill="#455566">loại / dừng</text>
+<rect x="456" y="773" width="18" height="14" rx="3" fill="#e3eefb" stroke="#2a78d6"/><text x="480" y="784" font-size="11.5" fill="#455566">đầu ra</text>
+<rect x="543" y="773" width="18" height="14" rx="3" fill="#f5f5f5" stroke="#9a9a9a" stroke-dasharray="4 3"/><text x="567" y="784" font-size="11.5" fill="#455566">chưa có code</text>
+</svg>

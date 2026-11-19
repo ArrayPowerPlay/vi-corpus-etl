@@ -1,54 +1,71 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 877" width="1000" height="877" font-family="DejaVu Sans, Arial, sans-serif">
-<title>Luồng con 3: prepare (chuẩn hoá, cắt đoạn, đếm)</title>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1057" width="1000" height="1057" font-family="DejaVu Sans, Arial, sans-serif">
+<title>Luồng con 3: prepare (chuẩn hoá, xoá dòng lặp, cắt đoạn, đếm token)</title>
 <defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#455566"/></marker></defs>
-<rect width="1000" height="877" fill="#ffffff"/>
-<text x="500.0" y="34" text-anchor="middle" font-size="19" font-weight="700" fill="#1b2733">Luồng con 3: prepare (chuẩn hoá, cắt đoạn, đếm)</text>
-<text x="500.0" y="58" text-anchor="middle" font-size="12" fill="#52514e">vi_corpus/pipeline/normalize.py · chunk.py</text>
-<rect x="30" y="84" width="530" height="28" rx="8" fill="#eef2f7" stroke="#7a8aa0" stroke-width="1.5"/>
-<text x="42" y="106" font-size="14" font-weight="700" fill="#1b2733">01_ingest.parquet</text>
-<line x1="295.0" y1="112" x2="295.0" y2="150" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
-<rect x="30" y="152" width="530" height="119" rx="8" fill="#e9f5ee" stroke="#3f9b6b" stroke-width="1.5"/>
-<text x="42" y="174" font-size="14" font-weight="700" fill="#1b2733">normalize_text (NORMALIZER_VERSION = 2)</text>
-<text x="42" y="194" font-size="12" fill="#1b2733" xml:space="preserve">CRLF/CR → LF, Unicode NFC</text>
-<text x="42" y="211" font-size="12" fill="#1b2733" xml:space="preserve">bỏ ký tự điều khiển, vô hình (zero-width, BOM, soft hyphen)</text>
-<text x="42" y="228" font-size="12" fill="#1b2733" xml:space="preserve">mọi khoảng trắng Unicode → dấu cách; gộp dấu cách; ≥ 3 dòng trống → 1 dòng</text>
-<text x="42" y="245" font-size="12" fill="#1b2733" xml:space="preserve">  trống; văn bản có code (has_code) giữ thụt lề đầu dòng (C-09)</text>
-<text x="42" y="262" font-size="12" fill="#1b2733" xml:space="preserve">không sửa nội dung, giữ vị trí dấu thanh; source_sha256 vẫn là của text gốc</text>
-<line x1="295.0" y1="271" x2="295.0" y2="309" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
-<rect x="30" y="311" width="530" height="28" rx="8" fill="#fff4dc" stroke="#d19a1f" stroke-width="1.5"/>
-<text x="42" y="333" font-size="14" font-weight="700" fill="#1b2733">Nguồn chunked?</text>
-<rect x="680" y="311" width="290" height="28" rx="8" fill="#eef2f7" stroke="#7a8aa0" stroke-width="1.5"/>
-<text x="692" y="333" font-size="14" font-weight="700" fill="#1b2733">Đi thẳng tới bước đếm</text>
-<line x1="560" y1="331" x2="678" y2="331" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
-<text x="620.0" y="325" text-anchor="middle" font-size="11.5" fill="#455566">không</text>
-<line x1="295.0" y1="339" x2="295.0" y2="377" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
-<text x="303.0" y="363.0" font-size="11.5" fill="#455566">có</text>
-<rect x="30" y="379" width="530" height="136" rx="8" fill="#e9f5ee" stroke="#3f9b6b" stroke-width="1.5"/>
-<text x="42" y="401" font-size="14" font-weight="700" fill="#1b2733">chunk_text</text>
-<text x="42" y="421" font-size="12" fill="#1b2733" xml:space="preserve">tách đoạn văn theo dòng trống; đoạn &gt; 900 từ cắt theo câu, câu quá dài cắt</text>
-<text x="42" y="438" font-size="12" fill="#1b2733" xml:space="preserve">  cứng</text>
-<text x="42" y="455" font-size="12" fill="#1b2733" xml:space="preserve">gom đoạn văn tới ~600 từ (target), không vượt 900 (max)</text>
-<text x="42" y="472" font-size="12" fill="#1b2733" xml:space="preserve">đoạn cuối &lt; 80 từ gộp vào đoạn trước</text>
-<text x="42" y="489" font-size="12" fill="#1b2733" xml:space="preserve">doc_id = &lt;doc_id sách&gt;#c&lt;i&gt;, parent_doc_id, chunk_index; giữ source_path của</text>
-<text x="42" y="506" font-size="12" fill="#1b2733" xml:space="preserve">  sách</text>
-<line x1="295.0" y1="515" x2="295.0" y2="553" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
-<rect x="30" y="555" width="530" height="68" rx="8" fill="#e9f5ee" stroke="#3f9b6b" stroke-width="1.5"/>
-<text x="42" y="577" font-size="14" font-weight="700" fill="#1b2733">Lấy mẫu đoạn</text>
-<text x="42" y="597" font-size="12" fill="#1b2733" xml:space="preserve">random theo seed "{seed}:{key}:chunk" xuống cfg.mix[nguồn] đoạn</text>
-<text x="42" y="614" font-size="12" fill="#1b2733" xml:space="preserve">thống kê: số sách, số đoạn trước / sau khi lấy mẫu</text>
-<line x1="295.0" y1="623" x2="295.0" y2="661" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
-<rect x="30" y="663" width="530" height="68" rx="8" fill="#e9f5ee" stroke="#3f9b6b" stroke-width="1.5"/>
-<text x="42" y="685" font-size="14" font-weight="700" fill="#1b2733">set_counts (mọi bản ghi)</text>
-<text x="42" y="705" font-size="12" fill="#1b2733" xml:space="preserve">char_count, word_count = len(text.split())</text>
-<text x="42" y="722" font-size="12" fill="#1b2733" xml:space="preserve">token_count = số từ (mặc định) hoặc AutoTokenizer nếu có --tokenizer</text>
-<rect x="680" y="663" width="290" height="68" rx="8" fill="#f5f5f5" stroke="#9a9a9a" stroke-width="1.5" stroke-dasharray="6 4"/>
-<text x="692" y="685" font-size="14" font-weight="700" fill="#6a6a6a">Dự kiến (D-01)</text>
-<text x="692" y="705" font-size="12" fill="#6a6a6a" xml:space="preserve">tokenizer Qwen3 bằng thư viện</text>
-<text x="692" y="722" font-size="12" fill="#6a6a6a" xml:space="preserve">  tokenizers, đếm theo lô</text>
-<line x1="560" y1="683" x2="678" y2="683" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
-<text x="620.0" y="677" text-anchor="middle" font-size="11.5" fill="#455566">sẽ đổi</text>
-<line x1="295.0" y1="731" x2="295.0" y2="769" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
-<rect x="30" y="771" width="530" height="28" rx="8" fill="#e3eefb" stroke="#2a78d6" stroke-width="1.5"/>
-<text x="42" y="793" font-size="14" font-weight="700" fill="#1b2733">02_prepare.parquet</text>
-<rect x="30" y="843" width="18" height="14" rx="3" fill="#eef2f7" stroke="#7a8aa0"/><text x="54" y="854" font-size="11.5" fill="#455566">đầu vào / dữ liệu</text><rect x="185" y="843" width="18" height="14" rx="3" fill="#e9f5ee" stroke="#3f9b6b"/><text x="209" y="854" font-size="11.5" fill="#455566">bước xử lý</text><rect x="291" y="843" width="18" height="14" rx="3" fill="#fff4dc" stroke="#d19a1f"/><text x="315" y="854" font-size="11.5" fill="#455566">rẽ nhánh / điều kiện</text><rect x="467" y="843" width="18" height="14" rx="3" fill="#fdecea" stroke="#c94a3f"/><text x="491" y="854" font-size="11.5" fill="#455566">loại / dừng</text><rect x="580" y="843" width="18" height="14" rx="3" fill="#e3eefb" stroke="#2a78d6"/><text x="604" y="854" font-size="11.5" fill="#455566">đầu ra</text><rect x="658" y="843" width="18" height="14" rx="3" fill="#f5f5f5" stroke="#9a9a9a" stroke-dasharray="4 3"/><text x="682" y="854" font-size="11.5" fill="#455566">dự kiến, chưa có code</text>
+<rect width="1000" height="1057" fill="#ffffff"/>
+<text x="500.0" y="30" text-anchor="middle" font-size="19" font-weight="700" fill="#1b2733">Luồng con 3: prepare (chuẩn hoá, xoá dòng lặp, cắt đoạn, đếm token)</text>
+<text x="500.0" y="50" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, monospace" font-size="11" fill="#6a7a8a">vi_corpus/pipeline/normalize.py · lines.py · chunk.py · tokens.py</text>
+<rect x="30" y="70" width="620" height="30" rx="8" fill="#eef2f7" stroke="#7a8aa0" stroke-width="1.6"/>
+<text x="42" y="92" font-size="14" font-weight="700" fill="#1b2733">01_ingest.parquet</text>
+<rect x="30" y="130" width="620" height="139" rx="8" fill="#e9f5ee" stroke="#3f9b6b" stroke-width="1.6"/>
+<text x="42" y="152" font-size="14" font-weight="700" fill="#1b2733">normalize_text (NORMALIZER_VERSION 4)</text>
+<text x="42" y="169.5" font-size="12" fill="#1b2733" xml:space="preserve">CRLF → LF, Unicode NFC; bỏ ký tự điều khiển và vô hình (zero-width, BOM, soft</text>
+<text x="42" y="186.0" font-size="12" fill="#1b2733" xml:space="preserve">hyphen); mọi khoảng trắng Unicode → dấu cách; gộp dấu cách và dòng trống thừa.</text>
+<text x="42" y="202.5" font-size="12" fill="#1b2733" xml:space="preserve">&#x27;ƣ&#x27; → &#x27;ư&#x27; (phông Việt cũ); ký tự vùng riêng của font Symbol → Unicode. Văn bản có</text>
+<text x="42" y="219.0" font-size="12" fill="#1b2733" xml:space="preserve">code giữ thụt lề đầu dòng (C-09).</text>
+<text x="42" y="235.5" font-size="12" fill="#1b2733" xml:space="preserve">Không sửa nội dung (không paraphrase, không sửa số liệu / tên); source_sha256 vẫn là</text>
+<text x="42" y="252.0" font-size="12" fill="#1b2733" xml:space="preserve">của text gốc.</text>
+<rect x="30" y="290" width="620" height="122" rx="8" fill="#e9f5ee" stroke="#3f9b6b" stroke-width="1.6"/>
+<text x="42" y="312" font-size="14" font-weight="700" fill="#1b2733">lines.clean_rows: xoá dòng lặp (LINES_VERSION 6)</text>
+<text x="42" y="329.5" font-size="12" fill="#1b2733" xml:space="preserve">A. Trong văn bản: gộp dòng giống nhau liền nhau; dòng ngắn lặp ≥ 3 lần chỉ giữ lần</text>
+<text x="42" y="346.0" font-size="12" fill="#1b2733" xml:space="preserve">đầu; bỏ dòng số trang. Miễn cho văn bản có code / bảng và SEA-Instruct.</text>
+<text x="42" y="362.5" font-size="12" fill="#1b2733" xml:space="preserve">B. Tiêu đề / chân trang sách: đã làm lúc ingest (clean_pages).</text>
+<text x="42" y="379.0" font-size="12" fill="#1b2733" xml:space="preserve">C. Liên văn bản, chỉ nguồn web: xoá dòng có ở ≥ max(20; 0,01%) số văn bản của nguồn</text>
+<text x="42" y="395.5" font-size="12" fill="#1b2733" xml:space="preserve">(menu, chân trang).</text>
+<rect x="30" y="460" width="620" height="73" rx="8" fill="#fff4dc" stroke="#d19a1f" stroke-width="1.6"/>
+<text x="42" y="482" font-size="14" font-weight="700" fill="#1b2733">Cần cắt đoạn?</text>
+<text x="42" y="499.5" font-size="12" fill="#1b2733" xml:space="preserve">nguồn chunked (stbook, giáo trình, VJOL, VISTA): luôn cắt; bài web: chỉ khi &gt; 2.048</text>
+<text x="42" y="516.0" font-size="12" fill="#1b2733" xml:space="preserve">token; hội thoại SEA-Instruct: không cắt.</text>
+<rect x="30" y="550" width="620" height="156" rx="8" fill="#e9f5ee" stroke="#3f9b6b" stroke-width="1.6"/>
+<text x="42" y="572" font-size="14" font-weight="700" fill="#1b2733">chunk_rows (CHUNK_VERSION 5)</text>
+<text x="42" y="589.5" font-size="12" fill="#1b2733" xml:space="preserve">gắn doc_sha256 và doc_minhash của CẢ văn bản gốc (dedup chạy theo văn bản, R-19).</text>
+<text x="42" y="606.0" font-size="12" fill="#1b2733" xml:space="preserve">cắt theo token Qwen3: mục tiêu 1.024, tối đa 2.048; đoạn cuối &lt; 256 gộp vào trước,</text>
+<text x="42" y="622.5" font-size="12" fill="#1b2733" xml:space="preserve">không gộp được thì mượn các đoạn văn cuối của đoạn trước.</text>
+<text x="42" y="639.0" font-size="12" fill="#1b2733" xml:space="preserve">chỗ cắt ưu tiên: dòng tiêu đề (Chương, Bài, Mục...) → dòng trống → hết câu → cắt cứng</text>
+<text x="42" y="655.5" font-size="12" fill="#1b2733" xml:space="preserve">chia đều.</text>
+<text x="42" y="672.0" font-size="12" fill="#1b2733" xml:space="preserve">doc_id = &lt;doc&gt;#c&lt;i&gt;, parent_doc_id, chunk_index; mỗi đoạn giữ source_path /</text>
+<text x="42" y="688.5" font-size="12" fill="#1b2733" xml:space="preserve">source_sha256 của văn bản gốc.</text>
+<rect x="30" y="730" width="620" height="90" rx="8" fill="#fff4dc" stroke="#d19a1f" stroke-width="1.6"/>
+<text x="42" y="752" font-size="14" font-weight="700" fill="#1b2733">Nguồn chunked và không --take-all?</text>
+<text x="42" y="769.5" font-size="12" fill="#1b2733" xml:space="preserve">có: lấy mẫu đoạn theo băm (seed, nguồn, parent_doc_id, chunk_index) xuống</text>
+<text x="42" y="786.0" font-size="12" fill="#1b2733" xml:space="preserve">cfg.mix[nguồn], nên sửa một bài không đổi đoạn được chọn của bài khác. --take-all:</text>
+<text x="42" y="802.5" font-size="12" fill="#1b2733" xml:space="preserve">giữ hết.</text>
+<rect x="30" y="830" width="620" height="73" rx="8" fill="#e9f5ee" stroke="#3f9b6b" stroke-width="1.6"/>
+<text x="42" y="852" font-size="14" font-weight="700" fill="#1b2733">set_counts</text>
+<text x="42" y="869.5" font-size="12" fill="#1b2733" xml:space="preserve">char_count, word_count, token_count bằng tokenizer thật (mặc định hf:Qwen/Qwen3-0.6B,</text>
+<text x="42" y="886.0" font-size="12" fill="#1b2733" xml:space="preserve">đếm theo lô; --tokenizer words chỉ để thử, thấp hơn token thật ~1,37 lần).</text>
+<rect x="30" y="920" width="620" height="73" rx="8" fill="#e3eefb" stroke="#2a78d6" stroke-width="1.6"/>
+<text x="42" y="942" font-size="14" font-weight="700" fill="#1b2733">02_prepare.parquet</text>
+<text x="42" y="959.5" font-size="12" fill="#1b2733" xml:space="preserve">manifest: normalize, lines (kèm 30 dòng bị xoá nhiều nhất mỗi nguồn), chunk (số sách,</text>
+<text x="42" y="976.0" font-size="12" fill="#1b2733" xml:space="preserve">số đoạn trước / sau lấy mẫu).</text>
+<polyline points="340.0,100.0 340.0,130.0" fill="none" stroke="#455566" stroke-width="1.6" marker-end="url(#ah)"/>
+<polyline points="340.0,269.0 340.0,290.0" fill="none" stroke="#455566" stroke-width="1.6" marker-end="url(#ah)"/>
+<polyline points="340.0,412.5 340.0,460.0" fill="none" stroke="#455566" stroke-width="1.6" marker-end="url(#ah)"/>
+<polyline points="340.0,533.0 340.0,550.0" fill="none" stroke="#455566" stroke-width="1.6" marker-end="url(#ah)"/>
+<rect x="344.0" y="530.5" width="18.8" height="15" fill="#ffffff" opacity="0.9"/>
+<text x="346.0" y="541.5" text-anchor="start" font-size="11.5" fill="#455566">có</text>
+<polyline points="340.0,705.5 340.0,730.0" fill="none" stroke="#455566" stroke-width="1.6" marker-end="url(#ah)"/>
+<polyline points="340.0,819.5 340.0,830.0" fill="none" stroke="#455566" stroke-width="1.6" marker-end="url(#ah)"/>
+<polyline points="340.0,903.0 340.0,920.0" fill="none" stroke="#455566" stroke-width="1.6" marker-end="url(#ah)"/>
+<rect x="690" y="460" width="280" height="73" rx="8" fill="#eef2f7" stroke="#7a8aa0" stroke-width="1.6"/>
+<text x="702" y="482" font-size="14" font-weight="700" fill="#1b2733">Không cắt</text>
+<text x="702" y="499.5" font-size="12" fill="#1b2733" xml:space="preserve">bản ghi đi thẳng tới bước đếm (bài</text>
+<text x="702" y="516.0" font-size="12" fill="#1b2733" xml:space="preserve">web ngắn, hội thoại SFT).</text>
+<polyline points="650.0,496.5 690.0,496.5" fill="none" stroke="#455566" stroke-width="1.6" marker-end="url(#ah)"/>
+<rect x="649.0" y="479.5" width="38.0" height="15" fill="#ffffff" opacity="0.9"/>
+<text x="670.0" y="490.5" text-anchor="middle" font-size="11.5" fill="#455566">không</text>
+<polyline points="830.0,533.0 830.0,866.5 650.0,866.5" fill="none" stroke="#455566" stroke-width="1.6" marker-end="url(#ah)"/>
+<rect x="30" y="1021" width="18" height="14" rx="3" fill="#eef2f7" stroke="#7a8aa0"/><text x="54" y="1032" font-size="11.5" fill="#455566">đầu vào / dữ liệu</text>
+<rect x="187" y="1021" width="18" height="14" rx="3" fill="#e9f5ee" stroke="#3f9b6b"/><text x="211" y="1032" font-size="11.5" fill="#455566">bước xử lý (CPU)</text>
+<rect x="337" y="1021" width="18" height="14" rx="3" fill="#fff4dc" stroke="#d19a1f"/><text x="361" y="1032" font-size="11.5" fill="#455566">rẽ nhánh / điều kiện</text>
+<rect x="513" y="1021" width="18" height="14" rx="3" fill="#e3eefb" stroke="#2a78d6"/><text x="537" y="1032" font-size="11.5" fill="#455566">đầu ra</text>
 </svg>

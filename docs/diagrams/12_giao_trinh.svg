@@ -26,10 +26,10 @@
 <text x="42" y="379" font-size="14" font-weight="700" fill="#1b2733">extract_file theo đuôi file</text>
 <text x="42" y="399" font-size="12" fill="#1b2733" xml:space="preserve">pdf → extract_pdf;  pptx → extract_pptx (khung chữ, nhóm, bảng, ghi chú; 1</text>
 <text x="42" y="416" font-size="12" fill="#1b2733" xml:space="preserve">  slide = 1 trang)</text>
-<rect x="680" y="357" width="290" height="68" rx="8" fill="#fdecea" stroke="#c94a3f" stroke-width="1.5"/>
-<text x="692" y="379" font-size="14" font-weight="700" fill="#1b2733">skipped = unsupported_format</text>
-<text x="692" y="399" font-size="12" fill="#1b2733" xml:space="preserve">doc, ppt, docx, djvu, ...</text>
-<text x="692" y="416" font-size="12" fill="#1b2733" xml:space="preserve">(dự kiến D-05: thêm parser)</text>
+<rect x="680" y="357" width="290" height="68" rx="8" fill="#e9f5ee" stroke="#3f9b6b" stroke-width="1.5"/>
+<text x="692" y="379" font-size="14" font-weight="700" fill="#1b2733">Parser khác (D-05)</text>
+<text x="692" y="399" font-size="12" fill="#1b2733" xml:space="preserve">docx, doc, ppt, djvu, html, epub:</text>
+<text x="692" y="416" font-size="12" fill="#1b2733" xml:space="preserve">magic bytes; thiếu công cụ → skipped</text>
 <line x1="560" y1="377" x2="678" y2="377" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
 <text x="620.0" y="371" text-anchor="middle" font-size="11.5" fill="#455566">đuôi khác</text>
 <line x1="295.0" y1="425" x2="295.0" y2="463" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>

@@ -1,60 +1,79 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 855" width="1000" height="855" font-family="DejaVu Sans, Arial, sans-serif">
-<title>Luồng con 2: ingest (lấy mẫu từ raw/ về schema chung)</title>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 988" width="1000" height="988" font-family="DejaVu Sans, Arial, sans-serif">
+<title>Luồng con 2: ingest (từ raw / interim về schema chung)</title>
 <defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#455566"/></marker></defs>
-<rect width="1000" height="855" fill="#ffffff"/>
-<text x="500.0" y="34" text-anchor="middle" font-size="19" font-weight="700" fill="#1b2733">Luồng con 2: ingest (lấy mẫu từ raw/ về schema chung)</text>
-<text x="500.0" y="58" text-anchor="middle" font-size="12" fill="#52514e">vi_corpus/pipeline/ingest.py · vi_corpus/sea/reader.py · stbook/ocr_books.py · giao_trinh/records.py</text>
-<rect x="30" y="84" width="530" height="51" rx="8" fill="#eef2f7" stroke="#7a8aa0" stroke-width="1.5"/>
-<text x="42" y="106" font-size="14" font-weight="700" fill="#1b2733">cfg.mix: số mẫu cần lấy cho mỗi nguồn</text>
-<text x="42" y="126" font-size="12" fill="#1b2733" xml:space="preserve">registry SourceSpec (đường dẫn, định dạng, cột text, license, owner, domain)</text>
-<line x1="295.0" y1="135" x2="295.0" y2="173" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
-<rect x="30" y="175" width="530" height="51" rx="8" fill="#fff4dc" stroke="#d19a1f" stroke-width="1.5"/>
-<text x="42" y="197" font-size="14" font-weight="700" fill="#1b2733">Nguồn chunked? (SourceProfile.chunked)</text>
-<text x="42" y="217" font-size="12" fill="#1b2733" xml:space="preserve">chunked = stbook, giao_trinh (sách / tài liệu dài)</text>
-<rect x="680" y="175" width="290" height="153" rx="8" fill="#e9f5ee" stroke="#3f9b6b" stroke-width="1.5"/>
-<text x="692" y="197" font-size="14" font-weight="700" fill="#1b2733">iter_book_source: nguyên cuốn</text>
-<text x="692" y="217" font-size="12" fill="#1b2733" xml:space="preserve">stbook: interim/stbook_ocr/*.json</text>
-<text x="692" y="234" font-size="12" fill="#1b2733" xml:space="preserve">giao_trinh:</text>
-<text x="692" y="251" font-size="12" fill="#1b2733" xml:space="preserve">  interim/giao_trinh_text/*.json</text>
-<text x="692" y="268" font-size="12" fill="#1b2733" xml:space="preserve">→ clean_pages (bỏ header/footer chạy,</text>
-<text x="692" y="285" font-size="12" fill="#1b2733" xml:space="preserve">  số trang, ghép dòng)</text>
-<text x="692" y="302" font-size="12" fill="#1b2733" xml:space="preserve">mỗi cuốn 1 bản ghi; số mẫu cắt ở</text>
-<text x="692" y="319" font-size="12" fill="#1b2733" xml:space="preserve">  prepare</text>
-<line x1="560" y1="195" x2="678" y2="195" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
-<text x="620.0" y="189" text-anchor="middle" font-size="11.5" fill="#455566">có</text>
-<line x1="295.0" y1="226" x2="295.0" y2="366" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
-<text x="303.0" y="301.0" font-size="11.5" fill="#455566">không</text>
-<rect x="30" y="368" width="530" height="68" rx="8" fill="#e9f5ee" stroke="#3f9b6b" stroke-width="1.5"/>
-<text x="42" y="390" font-size="14" font-weight="700" fill="#1b2733">sample_text_source (nguồn SEA)</text>
-<text x="42" y="410" font-size="12" fill="#1b2733" xml:space="preserve">source_files(spec), xáo thứ tự theo seed "{seed}:{key}"</text>
-<text x="42" y="427" font-size="12" fill="#1b2733" xml:space="preserve">lần lượt từng file, lấy k = min(rows_per_file=250, còn thiếu) dòng</text>
-<line x1="295.0" y1="436" x2="295.0" y2="474" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
-<rect x="30" y="476" width="530" height="85" rx="8" fill="#fff4dc" stroke="#d19a1f" stroke-width="1.5"/>
-<text x="42" y="498" font-size="14" font-weight="700" fill="#1b2733">Định dạng file</text>
-<text x="42" y="518" font-size="12" fill="#1b2733" xml:space="preserve">parquet: chọn chỉ số dòng ngẫu nhiên từ metadata, iter_batches(1000) chỉ cột</text>
-<text x="42" y="535" font-size="12" fill="#1b2733" xml:space="preserve">  text,</text>
-<text x="42" y="552" font-size="12" fill="#1b2733" xml:space="preserve">  chỉ take() các dòng được chọn → RAM không phụ thuộc cỡ file</text>
-<rect x="680" y="476" width="290" height="68" rx="8" fill="#e9f5ee" stroke="#3f9b6b" stroke-width="1.5"/>
-<text x="692" y="498" font-size="14" font-weight="700" fill="#1b2733">jsonl.gz (SEA-PILE v1)</text>
-<text x="692" y="518" font-size="12" fill="#1b2733" xml:space="preserve">reservoir sampling một lượt</text>
-<text x="692" y="535" font-size="12" fill="#1b2733" xml:space="preserve">chỉ json.loads các dòng được giữ</text>
-<line x1="560" y1="496" x2="678" y2="496" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
-<text x="620.0" y="490" text-anchor="middle" font-size="11.5" fill="#455566">jsonl.gz</text>
-<line x1="295.0" y1="561" x2="295.0" y2="599" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
-<rect x="30" y="601" width="530" height="85" rx="8" fill="#e9f5ee" stroke="#3f9b6b" stroke-width="1.5"/>
-<text x="42" y="623" font-size="14" font-weight="700" fill="#1b2733">row_to_record</text>
-<text x="42" y="643" font-size="12" fill="#1b2733" xml:space="preserve">→ CORPUS_SCHEMA; source_path tương đối data_root; meta = lượt thoại SEA-</text>
-<text x="42" y="660" font-size="12" fill="#1b2733" xml:space="preserve">  Instruct</text>
-<text x="42" y="677" font-size="12" fill="#1b2733" xml:space="preserve">SEA-Instruct: conversations là chuỗi repr Python → ast.literal_eval</text>
-<rect x="680" y="601" width="290" height="68" rx="8" fill="#fdecea" stroke="#c94a3f" stroke-width="1.5"/>
-<text x="692" y="623" font-size="14" font-weight="700" fill="#1b2733">Cảnh báo, không dừng</text>
-<text x="692" y="643" font-size="12" fill="#1b2733" xml:space="preserve">nguồn không có file / lấy không đủ n</text>
-<text x="692" y="660" font-size="12" fill="#1b2733" xml:space="preserve">  mẫu</text>
-<line x1="560" y1="621" x2="678" y2="621" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
-<text x="620.0" y="615" text-anchor="middle" font-size="11.5" fill="#455566">thiếu</text>
-<line x1="295.0" y1="686" x2="295.0" y2="724" stroke="#455566" stroke-width="1.5" marker-end="url(#ah)"/>
-<rect x="30" y="726" width="530" height="51" rx="8" fill="#e3eefb" stroke="#2a78d6" stroke-width="1.5"/>
-<text x="42" y="748" font-size="14" font-weight="700" fill="#1b2733">01_ingest.parquet</text>
-<text x="42" y="768" font-size="12" fill="#1b2733" xml:space="preserve">manifest: số bản ghi theo nguồn</text>
-<rect x="30" y="821" width="18" height="14" rx="3" fill="#eef2f7" stroke="#7a8aa0"/><text x="54" y="832" font-size="11.5" fill="#455566">đầu vào / dữ liệu</text><rect x="185" y="821" width="18" height="14" rx="3" fill="#e9f5ee" stroke="#3f9b6b"/><text x="209" y="832" font-size="11.5" fill="#455566">bước xử lý</text><rect x="291" y="821" width="18" height="14" rx="3" fill="#fff4dc" stroke="#d19a1f"/><text x="315" y="832" font-size="11.5" fill="#455566">rẽ nhánh / điều kiện</text><rect x="467" y="821" width="18" height="14" rx="3" fill="#fdecea" stroke="#c94a3f"/><text x="491" y="832" font-size="11.5" fill="#455566">loại / dừng</text><rect x="580" y="821" width="18" height="14" rx="3" fill="#e3eefb" stroke="#2a78d6"/><text x="604" y="832" font-size="11.5" fill="#455566">đầu ra</text><rect x="658" y="821" width="18" height="14" rx="3" fill="#f5f5f5" stroke="#9a9a9a" stroke-dasharray="4 3"/><text x="682" y="832" font-size="11.5" fill="#455566">dự kiến, chưa có code</text>
+<rect width="1000" height="988" fill="#ffffff"/>
+<text x="500.0" y="30" text-anchor="middle" font-size="19" font-weight="700" fill="#1b2733">Luồng con 2: ingest (từ raw / interim về schema chung)</text>
+<text x="500.0" y="50" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, monospace" font-size="11" fill="#6a7a8a">vi_corpus/pipeline/ingest.py · sea/reader.py · stbook/ocr_books.py · giao_trinh/records.py · vjol/records.py · vista/records.py</text>
+<rect x="30" y="70" width="940" height="73" rx="8" fill="#eef2f7" stroke="#7a8aa0" stroke-width="1.6"/>
+<text x="42" y="92" font-size="14" font-weight="700" fill="#1b2733">cfg.mix và registry</text>
+<text x="42" y="109.5" font-size="12" fill="#1b2733" xml:space="preserve">cfg.mix = số mẫu mỗi nguồn (--take-all: lấy hết, không lấy mẫu); registry SourceSpec = đường dẫn, định dạng, cột text, license,</text>
+<text x="42" y="126.0" font-size="12" fill="#1b2733" xml:space="preserve">owner, domain.</text>
+<rect x="30" y="150" width="940" height="56" rx="8" fill="#fff4dc" stroke="#d19a1f" stroke-width="1.6"/>
+<text x="42" y="172" font-size="14" font-weight="700" fill="#1b2733">Nguồn chunked? (SourceProfile.chunked)</text>
+<text x="42" y="189.5" font-size="12" fill="#1b2733" xml:space="preserve">chunked = stbook, giao_trinh, vjol, vista (sách / bài dài, nguyên cuốn); còn lại là nguồn text (SEA).</text>
+<polyline points="500.0,143.0 500.0,150.0" fill="none" stroke="#455566" stroke-width="1.6" marker-end="url(#ah)"/>
+<rect x="30" y="250" width="450" height="73" rx="8" fill="#e9f5ee" stroke="#3f9b6b" stroke-width="1.6"/>
+<text x="42" y="272" font-size="14" font-weight="700" fill="#1b2733">sample_text_source (SEA)</text>
+<text x="42" y="289.5" font-size="12" fill="#1b2733" xml:space="preserve">xáo thứ tự file theo seed &#x27;{seed}:{khoá nguồn}&#x27;; lần lượt</text>
+<text x="42" y="306.0" font-size="12" fill="#1b2733" xml:space="preserve">từng file, lấy k = min(rows_per_file = 250, còn thiếu) dòng.</text>
+<rect x="30" y="360" width="450" height="106" rx="8" fill="#fff4dc" stroke="#d19a1f" stroke-width="1.6"/>
+<text x="42" y="382" font-size="14" font-weight="700" fill="#1b2733">Định dạng file</text>
+<text x="42" y="399.5" font-size="12" fill="#1b2733" xml:space="preserve">parquet: chọn chỉ số dòng ngẫu nhiên từ metadata,</text>
+<text x="42" y="416.0" font-size="12" fill="#1b2733" xml:space="preserve">iter_batches(1000) chỉ cột text, chỉ take() dòng được chọn.</text>
+<text x="42" y="432.5" font-size="12" fill="#1b2733" xml:space="preserve">jsonl.gz (SEA-PILE v1): reservoir sampling một lượt, chỉ</text>
+<text x="42" y="449.0" font-size="12" fill="#1b2733" xml:space="preserve">json.loads dòng được giữ.</text>
+<rect x="30" y="500" width="450" height="90" rx="8" fill="#e9f5ee" stroke="#3f9b6b" stroke-width="1.6"/>
+<text x="42" y="522" font-size="14" font-weight="700" fill="#1b2733">row_to_record</text>
+<text x="42" y="539.5" font-size="12" fill="#1b2733" xml:space="preserve">→ CORPUS_SCHEMA; source_path tương đối data-root;</text>
+<text x="42" y="556.0" font-size="12" fill="#1b2733" xml:space="preserve">SEA-Instruct: conversations là chuỗi repr Python →</text>
+<text x="42" y="572.5" font-size="12" fill="#1b2733" xml:space="preserve">ast.literal_eval, meta = các lượt thoại.</text>
+<rect x="510" y="250" width="460" height="73" rx="8" fill="#e9f5ee" stroke="#3f9b6b" stroke-width="1.6"/>
+<text x="522" y="272" font-size="14" font-weight="700" fill="#1b2733">iter_book_source (nguyên cuốn / bài)</text>
+<text x="522" y="289.5" font-size="12" fill="#1b2733" xml:space="preserve">mỗi cuốn hoặc bài một bản ghi; số mẫu cắt xuống ở stage</text>
+<text x="522" y="306.0" font-size="12" fill="#1b2733" xml:space="preserve">prepare (mẫu của nguồn này là một đoạn).</text>
+<polyline points="740.0,206.5 740.0,250.0" fill="none" stroke="#455566" stroke-width="1.6" marker-end="url(#ah)"/>
+<rect x="744.0" y="217.2" width="18.8" height="15" fill="#ffffff" opacity="0.9"/>
+<text x="746.0" y="228.2" text-anchor="start" font-size="11.5" fill="#455566">có</text>
+<rect x="510" y="343" width="460" height="73" rx="8" fill="#e9f5ee" stroke="#3f9b6b" stroke-width="1.6"/>
+<text x="522" y="365" font-size="14" font-weight="700" fill="#1b2733">stbook</text>
+<text x="522" y="382.5" font-size="12" fill="#1b2733" xml:space="preserve">interim/stbook_ocr/*.json → clean_pages (bỏ tiêu đề / chân</text>
+<text x="522" y="399.0" font-size="12" fill="#1b2733" xml:space="preserve">trang chạy, số trang, ghép dòng); trang flagged là chuỗi rỗng.</text>
+<rect x="510" y="436" width="460" height="73" rx="8" fill="#e9f5ee" stroke="#3f9b6b" stroke-width="1.6"/>
+<text x="522" y="458" font-size="14" font-weight="700" fill="#1b2733">giao_trinh</text>
+<text x="522" y="475.5" font-size="12" fill="#1b2733" xml:space="preserve">interim/giao_trinh_text/*.json → clean_pages (slides = True</text>
+<text x="522" y="492.0" font-size="12" fill="#1b2733" xml:space="preserve">cho pptx); giữ sách tiếng Anh.</text>
+<rect x="510" y="529" width="460" height="106" rx="8" fill="#e9f5ee" stroke="#3f9b6b" stroke-width="1.6"/>
+<text x="522" y="551" font-size="14" font-weight="700" fill="#1b2733">vjol, vista</text>
+<text x="522" y="568.5" font-size="12" fill="#1b2733" xml:space="preserve">interim/vjol_text | vista_text → bỏ bìa, mục lục, tài liệu</text>
+<text x="522" y="585.0" font-size="12" fill="#1b2733" xml:space="preserve">tham khảo, tiêu đề chạy, dòng rác; khôi phục &#x27;ư&#x27; (&#x27;ph-ơng&#x27;,</text>
+<text x="522" y="601.5" font-size="12" fill="#1b2733" xml:space="preserve">tuỳ chọn --hyphen-lm-model); che email / số điện thoại; nối</text>
+<text x="522" y="618.0" font-size="12" fill="#1b2733" xml:space="preserve">metadata (VISTA: 1 bản ghi / PDF, meta.publication_ids).</text>
+<rect x="510" y="655" width="460" height="73" rx="8" fill="#eef2f7" stroke="#7a8aa0" stroke-width="1.6"/>
+<text x="522" y="677" font-size="14" font-weight="700" fill="#1b2733">--shard I/N (chỉ vjol, vista)</text>
+<text x="522" y="694.5" font-size="12" fill="#1b2733" xml:space="preserve">chỉ đọc phần I trong N phần chia theo sha256 PDF; nguồn khác</text>
+<text x="522" y="711.0" font-size="12" fill="#1b2733" xml:space="preserve">dùng --shard thì báo lỗi.</text>
+<polyline points="740.0,323.0 740.0,343.0" fill="none" stroke="#455566" stroke-width="1.6" marker-end="url(#ah)"/>
+<polyline points="740.0,416.0 740.0,436.0" fill="none" stroke="#455566" stroke-width="1.6" marker-end="url(#ah)"/>
+<polyline points="740.0,509.0 740.0,529.0" fill="none" stroke="#455566" stroke-width="1.6" marker-end="url(#ah)"/>
+<polyline points="740.0,635.0 740.0,655.0" fill="none" stroke="#455566" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#ah)"/>
+<rect x="510" y="748" width="460" height="73" rx="8" fill="#fdecea" stroke="#c94a3f" stroke-width="1.6"/>
+<text x="522" y="770" font-size="14" font-weight="700" fill="#1b2733">Cảnh báo, không dừng</text>
+<text x="522" y="787.5" font-size="12" fill="#1b2733" xml:space="preserve">nguồn không có file, chưa có sách nào (chưa OCR / trích text),</text>
+<text x="522" y="804.0" font-size="12" fill="#1b2733" xml:space="preserve">hoặc lấy không đủ mẫu (cả hai nhánh).</text>
+<polyline points="255.0,323.0 255.0,360.0" fill="none" stroke="#455566" stroke-width="1.6" marker-end="url(#ah)"/>
+<polyline points="255.0,466.0 255.0,500.0" fill="none" stroke="#455566" stroke-width="1.6" marker-end="url(#ah)"/>
+<polyline points="255.0,206.5 255.0,250.0" fill="none" stroke="#455566" stroke-width="1.6" marker-end="url(#ah)"/>
+<rect x="259.0" y="217.2" width="38.0" height="15" fill="#ffffff" opacity="0.9"/>
+<text x="261.0" y="228.2" text-anchor="start" font-size="11.5" fill="#455566">không</text>
+<rect x="30" y="851" width="940" height="73" rx="8" fill="#e3eefb" stroke="#2a78d6" stroke-width="1.6"/>
+<text x="42" y="873" font-size="14" font-weight="700" fill="#1b2733">01_ingest.parquet</text>
+<text x="42" y="890.5" font-size="12" fill="#1b2733" xml:space="preserve">manifest: số bản ghi theo nguồn. Vân tay stage = INGEST_VERSION (nâng khi đổi iter_records / row_to_record / cột meta) + danh sách</text>
+<text x="42" y="907.0" font-size="12" fill="#1b2733" xml:space="preserve">file đầu vào và kích thước (kể cả metadata và tập âm tiết của VJOL / VISTA).</text>
+<polyline points="255.0,589.5 255.0,851.0" fill="none" stroke="#455566" stroke-width="1.6" marker-end="url(#ah)"/>
+<polyline points="740.0,821.0 740.0,836.0 735.0,836.0 735.0,851.0" fill="none" stroke="#455566" stroke-width="1.6" marker-end="url(#ah)"/>
+<rect x="30" y="952" width="18" height="14" rx="3" fill="#eef2f7" stroke="#7a8aa0"/><text x="54" y="963" font-size="11.5" fill="#455566">đầu vào / dữ liệu</text>
+<rect x="187" y="952" width="18" height="14" rx="3" fill="#e9f5ee" stroke="#3f9b6b"/><text x="211" y="963" font-size="11.5" fill="#455566">bước xử lý (CPU)</text>
+<rect x="337" y="952" width="18" height="14" rx="3" fill="#fff4dc" stroke="#d19a1f"/><text x="361" y="963" font-size="11.5" fill="#455566">rẽ nhánh / điều kiện</text>
+<rect x="513" y="952" width="18" height="14" rx="3" fill="#fdecea" stroke="#c94a3f"/><text x="537" y="963" font-size="11.5" fill="#455566">loại / dừng</text>
+<rect x="632" y="952" width="18" height="14" rx="3" fill="#e3eefb" stroke="#2a78d6"/><text x="656" y="963" font-size="11.5" fill="#455566">đầu ra</text>
 </svg>
