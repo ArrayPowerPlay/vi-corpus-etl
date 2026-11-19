@@ -1,7 +1,7 @@
 """
 Stage prepare, bước 1 (normalize) và đếm từ / token: chỉ chuẩn hóa Unicode và khoảng trắng, không sửa nội dung.
 
-Theo nguyên tắc "không sửa nội dung" của docs/PIPELINE.md: không paraphrase, không sửa số liệu / tên / chính tả.
+Theo nguyên tắc "không sửa nội dung" của docs/design/PIPELINE.md: không paraphrase, không sửa số liệu / tên / chính tả.
 Việc làm: NFC, bỏ ký tự điều khiển và ký tự vô hình (zero-width, BOM, soft hyphen), đổi mọi loại khoảng trắng Unicode
 về dấu cách, gộp dấu cách thừa, gộp dòng trống thừa. Vị trí dấu thanh (hòa / hoà) giữ nguyên.
 Chữ "ƣ" / "Ƣ" (U+01A3 / U+01A2, chữ OI của bảng chữ Latinh mở rộng) mà phông Việt cũ dùng thay cho "ư" / "Ư" ("đƣợc", "Hƣng Yên") đổi về "ư" / "Ư" (J-37 E1): chữ này không có trong tiếng Việt;

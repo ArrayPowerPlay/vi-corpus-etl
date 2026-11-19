@@ -1,6 +1,6 @@
 """
 Kiểm các sửa J-37 cho VJOL, rút ra từ kết quả chạy lại S-19 (vjol_10k_v7) và 400 nhãn chuẩn: mở rộng khôi phục "ư" (A1-A4), ghép lại "ư" bị tách rời (B), cắt tiêu đề tạp chí ở đầu bài (C),
-số đo / bộ dò mới của audit (D), chữ "ƣ" của phông Việt cũ (E1). Câu ví dụ lấy từ các dòng nhãn thật nêu trong docs/DECISION_LOG.md J-37. Không cần mạng, GPU hay mô hình.
+số đo / bộ dò mới của audit (D), chữ "ƣ" của phông Việt cũ (E1). Câu ví dụ lấy từ các dòng nhãn thật nêu trong docs/project/DECISION_LOG.md J-37. Không cần mạng, GPU hay mô hình.
 """
 
 import json

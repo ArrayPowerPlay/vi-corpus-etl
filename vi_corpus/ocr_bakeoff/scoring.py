@@ -1,5 +1,5 @@
 """
-Chấm điểm đợt so sánh engine OCR (F-11) và áp quy tắc chọn đã chốt trước khi chạy (docs/DECISION_LOG.md, F-11).
+Chấm điểm đợt so sánh engine OCR (F-11) và áp quy tắc chọn đã chốt trước khi chạy (docs/project/DECISION_LOG.md, F-11).
 
 Đầu vào: <bakeoff>/pages.jsonl, gt/, selection.json, runs/<engine>/outputs.jsonl (và ppl.jsonl nếu đã chạy perplexity).
 Đầu ra trong <bakeoff>/report/: summary.json (số đo gộp, cổng loại, kết luận, số giờ chạy), per_page.csv (mỗi trang x

@@ -5,7 +5,7 @@ Mỗi dòng của tệp là một ca: {"_vocab": "..."} (một dòng, các âm t
 - kind "bug":    {"id", "text", "detectors": [...]}: mọi bộ dò liệt kê PHẢI gắn cờ lên text (ca lỗi cần bắt);
 - kind "keep":   {"id", "text", "forbid": [...]}: không bộ dò nào trong `forbid` được gắn cờ (ca cấm đổi);
 - kind "repair": {"id", "src", "want"}: restore_u_in_text(src) phải ra đúng `want` (want == src nghĩa là phải giữ nguyên, kể cả ca mơ hồ).
-Tệp sinh ra từ nhãn chuẩn bằng scripts/vjol/make_golden.py (đoạn chỉ rút các câu cần thiết); tệp gốc trong repo là bộ hạt giống viết tay từ các ví dụ ở docs/DECISION_LOG.md. Test bỏ qua khi thiếu tệp.
+Tệp sinh ra từ nhãn chuẩn bằng scripts/vjol/make_golden.py (đoạn chỉ rút các câu cần thiết); tệp gốc trong repo là bộ hạt giống viết tay từ các ví dụ ở docs/project/DECISION_LOG.md. Test bỏ qua khi thiếu tệp.
 Ngoài kiểm từng ca còn có sàn precision / recall của từng bộ dò, để sửa đổi sau này không làm tụt các bộ dò. Không cần mạng, GPU hay mô hình.
 """
 

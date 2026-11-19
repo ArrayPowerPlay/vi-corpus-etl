@@ -1,7 +1,7 @@
 """
 Stage language: nhận diện ngôn ngữ THEO ĐOẠN VĂN bằng fastText lid.176 (D-02, R-20), gắn lang_mix.
 
-Cách tính (docs/DECISION_LOG.md, D-02):
+Cách tính (docs/project/DECISION_LOG.md, D-02):
 1. Tách văn bản thành các đoạn văn (theo dòng trống; văn bản chỉ có một đoạn thì theo dòng). Đoạn không có chữ cái bị
    bỏ; đoạn có < SEGMENT_MIN_LETTERS chữ cái ("A: [2, 4, 6]", "Đáp án: (A) 143 (B) 125") cũng bị bỏ, trừ khi mọi đoạn
    đều ngắn. Văn bản rất dài chỉ lấy tối đa cfg.lang_max_segments đoạn rải đều để giữ chi phí cố định.

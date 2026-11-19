@@ -8,7 +8,7 @@ nằm ở vi_corpus.common.batch_extract, dùng chung với VJOL):
     {"sha256", "size", "paths": [đường dẫn, cùng nội dung], "nganh", "mon", "format",
      "pages": [{"text", "method"}], "error", "skipped", "parser_version", "created_at"}
 
-Phần riêng của giáo trình ở file này (chiến lược ở docs/GIAO_TRINH.md, mục 2-3):
+Phần riêng của giáo trình ở file này (chiến lược ở docs/sources/GIAO_TRINH.md, mục 2-3):
 - extract_file: nhận định dạng theo nội dung đầu file và trích text bằng vi_corpus.common.parsers (D-05): PDF (trang
   scan thì OCR, mô hình nạp lười), docx, pptx, doc / ppt (LibreOffice), djvu (djvulibre), html, epub; định dạng khác
   ghi skipped="unsupported_format", thiếu công cụ ngoài ghi skipped="needs_..." (chạy lại với --retry-skipped).

@@ -1,5 +1,5 @@
 """
-Kiểm tra nhanh chất lượng các nguồn ứng viên (docs/SOURCE_CANDIDATES.md) trước khi chốt: lấy mẫu nhỏ từ xa (không tải cả bộ),
+Kiểm tra nhanh chất lượng các nguồn ứng viên (docs/sources/SOURCE_CANDIDATES.md) trước khi chốt: lấy mẫu nhỏ từ xa (không tải cả bộ),
 đo bằng chính các số đo của pipeline (language, quality) cộng vài số đo riêng cho dữ liệu dịch máy / có công thức.
 
 - specs.py:   danh sách nguồn cần thử và cách đọc từng nguồn.

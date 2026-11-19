@@ -1,5 +1,5 @@
 """
-Danh sách nguồn ứng viên cần kiểm chất lượng (docs/SOURCE_CANDIDATES.md) và cách đọc mẫu của từng nguồn.
+Danh sách nguồn ứng viên cần kiểm chất lượng (docs/sources/SOURCE_CANDIDATES.md) và cách đọc mẫu của từng nguồn.
 
 Mỗi ProbeSpec mô tả một nguồn: đọc ở đâu (kind + location), trường văn bản tiếng Việt, trường bản gốc tiếng Anh (nếu là dữ liệu
 dịch máy), các cột số đo sẵn có của bộ dữ liệu cần giữ lại để so sánh, và hồ sơ đo (web hay tài liệu).

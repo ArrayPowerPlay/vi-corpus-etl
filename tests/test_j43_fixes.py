@@ -1,6 +1,6 @@
 """
 Kiểm các việc đã chốt ở J-40 / J-42 cho VJOL (code ở J-43): mẫu chunk ổn định (1a), so ghép đôi (1b), bộ dò và số đo mới của audit (1c), nhãn chuẩn chia nhỏ (1d), sửa "ư" chỉ khi xác định + repairs (5),
-cắt mức dòng (6), OCR lại cả bài (3), phép thử nhóm font (4), kế hoạch OCR lại (2), mẫu thi cuối (7). Câu ví dụ lấy từ docs/DECISION_LOG.md J-41 / J-42. Không cần mạng, GPU hay mô hình.
+cắt mức dòng (6), OCR lại cả bài (3), phép thử nhóm font (4), kế hoạch OCR lại (2), mẫu thi cuối (7). Câu ví dụ lấy từ docs/project/DECISION_LOG.md J-41 / J-42. Không cần mạng, GPU hay mô hình.
 """
 
 import json

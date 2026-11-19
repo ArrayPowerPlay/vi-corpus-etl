@@ -1,5 +1,5 @@
 """
-So sánh engine OCR để chọn cơ chế OCR mới (docs/DECISION_LOG.md, F-11).
+So sánh engine OCR để chọn cơ chế OCR mới (docs/project/DECISION_LOG.md, F-11).
 
 Các bước (script ở scripts/ocr_bakeoff/, chạy trên server GPU):
     pages.py    : chọn trang. Bộ A = trang PDF giáo trình có lớp chữ hợp lệ, render thành ảnh cỡ trang stbook rồi làm

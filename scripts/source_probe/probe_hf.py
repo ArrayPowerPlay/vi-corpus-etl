@@ -1,5 +1,5 @@
 """
-Kiểm tra nhanh chất lượng các nguồn ứng viên (docs/SOURCE_CANDIDATES.md): lấy mẫu từ xa rồi đo bằng số đo của pipeline.
+Kiểm tra nhanh chất lượng các nguồn ứng viên (docs/sources/SOURCE_CANDIDATES.md): lấy mẫu từ xa rồi đo bằng số đo của pipeline.
 
 Kết quả ở <data-root>/processed/source_probe/:
 - <nguồn>/sample.jsonl: bản ghi mẫu thô (có cache: chạy lại không tải lại, trừ khi --resample);

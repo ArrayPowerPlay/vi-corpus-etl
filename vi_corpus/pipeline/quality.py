@@ -1,7 +1,7 @@
 """
 Stage quality: đo các chỉ số chất lượng văn bản, chấm điểm 0-100, xếp band A/B/C/D kèm reason code.
 
-Chất lượng kỹ thuật và quyền sử dụng là hai trục tách biệt (docs/PIPELINE.md): stage này chỉ quyết định chất lượng.
+Chất lượng kỹ thuật và quyền sử dụng là hai trục tách biệt (docs/design/PIPELINE.md): stage này chỉ quyết định chất lượng.
 - Lỗi cứng (hard): bản ghi tự động band D (too_short, too_long, empty, lang_not_allowed, low_alpha, replacement_chars,
   repeated_ngrams, duplicate_lines, garbled_font).
 - Lỗi mềm (soft): trừ điểm, band theo điểm: A >= 85, B >= 70, C >= 55, còn lại D.

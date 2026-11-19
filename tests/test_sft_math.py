@@ -1,5 +1,5 @@
 """
-Test các sửa đổi theo rà run 10.000 mẫu (docs/DECISION_LOG.md, F-01, F-03, F-04, F-07): xoá dòng lặp không đụng hội
+Test các sửa đổi theo rà run 10.000 mẫu (docs/project/DECISION_LOG.md, F-01, F-03, F-04, F-07): xoá dòng lặp không đụng hội
 thoại SFT và dòng dẫn ":", dup_line bỏ dòng không có chữ, số đo chất lượng trên văn xuôi (đã bỏ công thức / code), nhận
 diện ngôn ngữ SFT theo lượt người dùng, phiên bản code trong vân tay ingest. Không cần mạng.
 """

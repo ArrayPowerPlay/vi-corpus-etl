@@ -1,5 +1,5 @@
 """
-Schema chung của clean corpus (xem docs/PIPELINE.md, mục 3).
+Schema chung của clean corpus (xem docs/design/PIPELINE.md, mục 3).
 
 Mọi adapter nguồn đều chuyển bản ghi của mình về schema này để các stage sau
 (language, normalize, quality, dedup) không phải biết nguồn gốc.
