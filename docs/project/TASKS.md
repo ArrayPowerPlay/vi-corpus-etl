@@ -1,15 +1,17 @@
 # TASKS: các điều cần chốt để chạy và chốt pipeline v2
 
-> Đi kèm `docs/SUGGESTION_v2.md` (viết 2026-11-05). Ba loại việc:
+> Đi kèm `docs/training/SUGGESTION_v2.md` (viết 2026-11-05). Ba loại việc:
 > - **K-xx — cần chủ dự án chốt** (quyết định; không có thì không làm tiếp được).
 > - **E-xx — cần đo** (số đo hoặc thí nghiệm; có số thì mới chốt được chỗ đang là "điểm xuất phát").
 > - **L-xx — việc code** sau khi đã chốt.
 >
-> Mỗi dòng có: lựa chọn, **đề xuất của Claude** (chỉ là gợi ý), việc bị chặn, trạng thái (☐ chưa chốt / ☑ đã chốt). Khi chốt, ghi vào `docs/DECISION_LOG.md` rồi đổi ☐ thành ☑ kèm mã quyết định.
+> Mỗi dòng có: lựa chọn, **đề xuất của Claude** (chỉ là gợi ý), việc bị chặn, trạng thái (☐ chưa chốt / ☑ đã chốt). Khi chốt, ghi vào `docs/project/DECISION_LOG.md` rồi đổi ☐ thành ☑ kèm mã quyết định.
 >
 > **GPU-giờ là ước tính trên giấy, sai ±50%.**
+>
+> **Trạng thái 2026-11-19: chưa mục K / E / L nào được chốt, đo hay code** (cột TT còn ☐ hết). Từ 2026-11-05 chỉ có thay đổi liên quan gián tiếp: quyết định nguồn dữ liệu mới (NS-xx), chạy pipeline CPU cho VJOL + VISTA (PP-xx). Danh sách nguồn thay đổi nên E-01 (token sạch theo nguồn) sẽ phải gồm cả các nguồn mới khi chúng có adapter.
 
-![Phụ thuộc giữa K, E, L](diagrams/26_tasks_phu_thuoc.svg)
+![Phụ thuộc giữa K, E, L](../diagrams/26_tasks_phu_thuoc.svg)
 
 ## 0. Thứ tự đề xuất
 
@@ -85,7 +87,7 @@
 | E-02 | **Thống kê SEA-Instruct-2602 phần Việt**: số dòng / token, `source`, loại tác vụ, số lượt, tỉ lệ dịch, độ nhạy cảm | script đọc theo lô (đọc cả ~20 cột nhãn) | CPU, vài phút | K-27, phần chỉ thị của pha 2, K-18 | ☐ |
 | E-03 | **Fertility trên toàn văn** từng nguồn (âm tiết / token, byte / token) | tokenizer Qwen3 trên mẫu lớn mỗi nguồn | CPU | K-09, K-10 | ☐ |
 | E-04 | **Phân bố độ dài `cpt_segments`** (p50, p90, % > 4K / 8K / 32K) từ run không lấy mẫu | report | CPU | K-22, E-08 | ☐ |
-| E-05 | **Khiếm khuyết VJOL** (S-21 / S-22: `tone_shift`, `dropped_letters`, font group xấu) | lệnh trong `docs/SERVER_TASK.md` | CPU + ít GPU OCR lại | K-05 (band nào được lặp) | ☐ |
+| E-05 | **Khiếm khuyết VJOL** (S-21 / S-22: `tone_shift`, `dropped_letters`, font group xấu) | lệnh trong `docs/project/SERVER_TASK.md` | CPU + ít GPU OCR lại | K-05 (band nào được lặp) | ☐ |
 | E-06 | **P0–P2**: NVLink / PCIe, RAM; test adapter trên CPU; 50–100 bước mỗi cỡ ở 8K (tốc độ, bộ nhớ đỉnh, MFU) | script trên server | ~4 GPU-giờ | K-21, K-25, sửa bảng GPU-giờ | ☐ |
 | E-07 | **P3–P4 quét LR**: 0,6B 3 LR × 200M token; 1,7B LR tốt ±1 nấc | CPT ngắn + eval cloze | ~40 | LR (mâu thuẫn mục 15) | ☐ |
 | E-08 | **Đóng gói**: A nối-cắt 4K / B best-fit + che attention 4K / C ở 8K / D + tiền tố metadata | proxy 0,6B / 1,7B | ~10–15 | T-09 có bật tiền tố không, K-23 | ☐ |
@@ -123,4 +125,4 @@ Quy tắc chung cho E-07…E-11: thu nhỏ bằng lấy mẫu con mọi nguồn 
 ## D. Ghi chú
 
 - Các mã K / E / L ở đây là mã việc, không trùng hệ mã quyết định trong `DECISION_LOG.md` (T-xx, R-xx…). Khi chốt một K, ghi quyết định với mã mới trong DECISION_LOG và ghi mã đó vào cột TT.
-- Đã chốt trước, không cần chốt lại: T-01…T-10 (xem `docs/DECISION_LOG.md`, phiên 2026-11-03 và 2026-11-04).
+- Đã chốt trước, không cần chốt lại: T-01…T-10 (xem `docs/project/DECISION_LOG.md`, phiên 2026-11-03 và 2026-11-04).

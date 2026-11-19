@@ -2,7 +2,7 @@
 
 > Trạng thái: **bản nháp, CHƯA GỬI**. Chủ dự án duyệt nội dung trước khi gửi (quyết định 2026-11-10, NS-08).
 > Các chỗ `[...]` phải điền trước khi gửi. Địa chỉ email lấy từ trang chính thức ngày 2026-11-10; có địa chỉ có thể đã cũ.
-> Nguồn và lý do xin phép: `docs/SOURCE_CANDIDATES.md` nhóm C.
+> Nguồn và lý do xin phép: `docs/sources/SOURCE_CANDIDATES.md` nhóm C.
 
 ## Thông tin chung cần chủ dự án điền
 

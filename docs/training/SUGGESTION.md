@@ -1,6 +1,6 @@
 # SUGGESTION: pipeline đề xuất để đưa kiến thức tiếng Việt vào model mã nguồn mở
 
-> **Trạng thái: đề xuất, chưa phải quyết định.** Chưa có dòng nào trong `docs/DECISION_LOG.md` cho tài liệu này và chưa có code.
+> **Trạng thái (2026-11-19): bản đề xuất đầu tiên, chưa phải quyết định, chưa có code.** Bản hiện hành là [`SUGGESTION_v2.md`](SUGGESTION_v2.md) (T-11), thay bản này ở mọi chỗ mâu thuẫn; file này còn giá trị chủ yếu ở mục 2 (thuật ngữ) và mục 4 (vì sao chọn cách này, kèm bằng chứng). Mọi con số ở đây tính trên corpus ~300M token, đã lỗi thời so với quy mô hàng tỷ token (T-10).
 > Nguồn: báo cáo khảo sát `reports/Knowledge injection cho SFT tiếng Việt.md` và 5 ghi chú trong `research_notes/Knowledge injection cho SFT tiếng Việt/`.
 > Những chỗ là **suy luận / con số của tôi** (không phải kết quả bài báo) được ghi rõ là "đề xuất" hoặc "ước tính".
 > **Gặp từ lạ (RAFT, Active Reading, delta merge, LoRA, replay...) thì xem mục 2 "Thuật ngữ".** Các ví dụ tiếng Việt trong tài liệu này (Chùa Một Cột...) chỉ là ví dụ minh hoạ, không phải dữ liệu thật của corpus.
@@ -23,7 +23,7 @@ Công ty muốn củng cố kiến thức và bối cảnh văn hoá Việt cho 
 
 Thứ tự công việc tóm gọn: **Bước 0** (đo, chọn base) → **Tầng 0** (làm dữ liệu) → **Tầng 1** (RAG) → **Tầng 2** (SFT bằng LoRA) → **Tầng 3** (CPT nhẹ + merge, chỉ khi cần).
 
-![Tổng quan pipeline đề xuất](diagrams/14_suggestion_overview.svg)
+![Tổng quan pipeline đề xuất](../diagrams/14_suggestion_overview.svg)
 
 ## 2. Thuật ngữ
 
@@ -248,7 +248,7 @@ Chuỗi suy luận tóm gọn:
 - Cần cả cấp tài liệu (Active Reading) cho kiến thức rộng và cấp sự kiện cho kiến thức cụ thể.
 - Cần một số câu hỏi *đảo chiều* ("công trình nào được xây năm 1049?") để tránh reversal curse.
 
-![Vì sao phải đa dạng hoá](diagrams/18_suggestion_why_diversity.svg)
+![Vì sao phải đa dạng hoá](../diagrams/18_suggestion_why_diversity.svg)
 
 **Chỗ chưa chắc.** Mọi số liệu ở trên đều bằng tiếng Anh. Chưa có so sánh trực tiếp giữa EntiGraph, Active Reading và Knowledge-Instruct trên cùng dữ liệu và model. Một nhận xét thứ cấp (chưa đọc bản gốc) cho rằng một phần lợi ích của đa dạng hoá có thể là *đánh thức lại* kiến thức model đã có chứ không phải học mới. Với dự án này điều đó chấp nhận được: mục tiêu của ta vốn là củng cố kiến thức model đã biết mờ (mục 1).
 
@@ -368,7 +368,7 @@ Bằng chứng nghiêng về Gemma (SEA-HELM tiếng Việt cao hơn Qwen2.5 và
 
 Đơn vị làm việc là **sự kiện nguyên tử** (một câu đầy đủ, một thực thể chính, có nguồn). Hiện `knowledge.py` chỉ có đơn vị "cả đoạn văn" (CPT) và "cặp hỏi–đáp" (SFT, chỉ từ SEA-Instruct), nên đây là một tầng mới đặt sau `finalize`.
 
-![Tầng 0](diagrams/15_suggestion_data_synthesis.svg)
+![Tầng 0](../diagrams/15_suggestion_data_synthesis.svg)
 
 *Đối chiếu tên bước giữa chữ và sơ đồ:* B1 = 0a (sự kiện), B3a = 0b (biến thể), B3b = 0c (viết lại), B3c = 0d (RAFT), 0e = bộ eval (bước 7). B2 (lọc) và B4 (chia) là bước phụ trợ nằm giữa các ô đó.
 
@@ -456,7 +456,7 @@ Dữ liệu SFT tiếng Việt chung (replay chỉ thị) có sẵn: partition t
 
 ### Tầng 2. SFT một giai đoạn bằng LoRA
 
-![Tầng 2](diagrams/16_suggestion_sft_mix.svg)
+![Tầng 2](../diagrams/16_suggestion_sft_mix.svg)
 
 **Hỗn hợp dữ liệu khởi điểm** (đề xuất của tôi, không bài nào chứng minh). "Một giai đoạn" nghĩa là trộn tất cả vào một lần train thay vì train kiến thức trước, chỉ thị sau.
 
@@ -515,7 +515,7 @@ Nhóm benchmark giữ năng lực (IFEval, MMLU, GSM8K, VMLU, SEA-IFEval) là b�
 
 Vì base đã biết tiếng Việt, **không làm Tầng 3 để dạy ngôn ngữ**. Điều kiện kích hoạt hẹp hơn: sau Tầng 2, thuật ngữ của một miền cụ thể (luật, y, kinh tế...) vẫn sai **dù** Eval A tốt và RAG lấy đúng tài liệu. Lưu ý: CPT thô không nạp sự kiện (xem mục 4, lý do 2), nên nếu có làm thì chỉ để làm quen với văn phong và thuật ngữ miền, không phải để nhớ sự kiện.
 
-1. **CPT nhẹ trên base** (không phải instruct), dữ liệu là văn bản thật (`cpt_blocks.parquet`, khối 4.096 token đã có) trộn 10–30% replay tiếng Anh cộng một phần chỉ thị. Learning rate thấp (khoảng 1e-5 như SEA-LION v3), hoặc LoRA rank 256. *Vì sao trên base:* base quên ít khi CPT (Jindal), còn instruct tụt khả năng làm theo chỉ thị.
+1. **CPT nhẹ trên base** (không phải instruct), dữ liệu là văn bản thật (bản gốc ghi `cpt_blocks.parquet`, khối 4.096 token; từ T-07 đã thay bằng `cpt_segments.parquet` + `scripts/cpt_pack.py`) trộn 10–30% replay tiếng Anh cộng một phần chỉ thị. Learning rate thấp (khoảng 1e-5 như SEA-LION v3), hoặc LoRA rank 256. *Vì sao trên base:* base quên ít khi CPT (Jindal), còn instruct tụt khả năng làm theo chỉ thị.
 2. **Merge** delta của bản instruct chính thức vào model đã CPT (delta merge, mục 2.7) bằng Task Arithmetic hoặc Linear (hai nghiên cứu độc lập cho là an toàn nhất). Quét hệ số 0,5–1,0 vì không có lý thuyết đặt hệ số. *Vì sao merge:* khỏi phải tự làm bộ dữ liệu chỉ thị lớn như hãng.
 3. **SFT ngắn tiếng Việt** để sửa chỉ thị (vì merge thường không cải thiện, có khi còn làm tụt khả năng làm theo chỉ thị bằng tiếng Việt) rồi đo lại IFEval và SEA-IFEval.
 4. **Phương án khác để không phải merge:** Source-Shielded Updates (đóng băng các cột quan trọng cho năng lực nguồn). Bài gốc dùng quy mô 200M token, gần với corpus này.
@@ -539,7 +539,7 @@ Lưu ý GPU: sinh dữ liệu và OCR cùng tranh 4 A100. Ước tính thô: 1B 
 
 ## 7. Chẩn đoán: thấy gì thì xử lý gì
 
-![Bảng chẩn đoán](diagrams/17_suggestion_diagnosis.svg)
+![Bảng chẩn đoán](../diagrams/17_suggestion_diagnosis.svg)
 
 Cùng nội dung bảng trên, viết thành chữ và kèm lý do. Thử các cách theo thứ tự từ trên xuống.
 

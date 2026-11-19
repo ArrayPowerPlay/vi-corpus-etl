@@ -1,6 +1,6 @@
 # VISTA: khảo sát dữ liệu và kế hoạch xử lý
 
-> Lập 2026-11-05 (VS-01 trong `docs/DECISION_LOG.md`); chủ dự án đã trả lời đủ 6 câu hỏi (VS-02, VS-03, mục 5). **Trạng thái 2026-11-06: V1 (code) xong, V0 (chép về server, `docs/SERVER_TASK.md` S-25) chờ chạy, GPU chờ lượt full VJOL.**
+> Lập 2026-11-05 (VS-01 trong `docs/project/DECISION_LOG.md`); chủ dự án đã trả lời đủ 6 câu hỏi (VS-02, VS-03, mục 5). **Trạng thái 2026-11-19: V0 xong (đã chép về server, VS-05), V1 (code) và chạy cả kho (VS-04, VS-06) xong; lớp chữ (`--no-ocr`) và pipeline CPU chia phần chạy bằng `make count-ocr` / `make pipeline-cpu` (PP-01, PP-03, `docs/project/SERVER_TASK.md` S-27, S-28); OCR GPU chờ (PP-04); V2 (đo CPU producer cũ, độ trùng tóm tắt với trang đầu) và bảng font / lệch dấu riêng của VISTA chưa làm.** Kết quả chạy thật chưa được ghi vào tài liệu.
 > Nguyên tắc: xử lý VISTA **giống hệt VJOL** (trích text 2 lượt PyMuPDF -> chuỗi VLM, bộ dò chữ hỏng, làm sạch lúc sinh bản ghi, nối metadata, pipeline dùng chung), chỉ viết phần khác nhau.
 
 ## 1. Dữ liệu trên MinIO (đã xem 2026-11-05)
@@ -95,7 +95,7 @@ test VJOL cũ + golden `tests/data/vjol_golden.jsonl` vẫn qua. Cách B (chép 
 | **V4** | Trích text cả kho (~273.000 PDF), theo dõi 1–2 giờ đầu như J-60 | server, 4 GPU | ~2 ngày (ước, đo ở V3) |
 | **V5** | Pipeline cả kho + dedup vòng 2 chung với VJOL (`dedup_global.py`), báo cáo phần trùng VJOL | server | tuỳ F-04 / F-05 (RAM) |
 
-Mỗi bước sẽ có mục `S-xx` trong `docs/SERVER_TASK.md` kèm lệnh chính xác khi code xong.
+Mỗi bước sẽ có mục `S-xx` trong `docs/project/SERVER_TASK.md` kèm lệnh chính xác khi code xong.
 
 ## 4. Rủi ro
 
@@ -134,7 +134,7 @@ Chưa làm (đợi V3): nhóm font xấu và bảng lệch dấu riêng của VI
 
 ## 7. Chạy toàn bộ pipeline (VS-06, 2026-11-09)
 
-Một script cho cả đường đi: `scripts/vista/run_vista.sh <bước>` (hướng dẫn đầy đủ ở `docs/SERVER_TASK.md` S-26).
+Một script cho cả đường đi: `scripts/vista/run_vista.sh <bước>` (hướng dẫn đầy đủ ở `docs/project/SERVER_TASK.md` S-26).
 
 | Bước | Việc | Máy |
 |---|---|---|

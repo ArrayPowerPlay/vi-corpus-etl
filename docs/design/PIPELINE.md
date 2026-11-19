@@ -1,7 +1,6 @@
 # Chiến lược xử lý dữ liệu (vi-corpus-etl)
 
-> Trạng thái: **đã có code bản đầu** ở `vi_corpus/pipeline/` (ingest, normalize, chunk, language, quality, dedup, knowledge unit, audit, report) chạy bằng `scripts/run_pipeline.py`; ngưỡng chất lượng và language id (heuristic) là điểm khởi đầu, cần chỉnh sau khi xem `report.html` trên dữ liệu thật. Đã có adapter NeMo Curator + Ray (`vi_corpus/pipeline/curator.py`) chạy song song language/quality/embed/OCR trên nhiều CPU/GPU, và bản đồ embedding plotly (stage embed/reduce, `viz.py`); hướng dẫn chạy ở README Phần D. Chưa có: VISTA/VJOL, quét rò rỉ benchmark, adapter Curator cho fuzzy dedup. Tham khảo `paper-data-etl` và `ViLA`,
-> đã rà soát và điều chỉnh (xem mục 5). Lộ trình theo tuần xem `docs/ROADMAP.md`.
+> Trạng thái (2026-11-19): **đã có code** ở `vi_corpus/pipeline/` (ingest, prepare [normalize, xoá dòng lặp, cắt đoạn theo token], language, quality, dedup 2 vòng, embed, reduce, finalize [knowledge unit, segment CPT, quét nhiễm, audit, report]) chạy bằng `scripts/run_pipeline.py`; `scripts/cpt_pack.py` đóng gói segment thành chuỗi 8.192 token. Nguồn đã có adapter ingest: SEA (3 bộ), stbook, giáo trình, VJOL, VISTA. Chạy được trên mẫu N bản ghi và, cho VJOL / VISTA, trên cả kho theo từng phần (`--take-all --shard I/N`, `make pipeline-cpu`). Ngưỡng chất lượng vẫn là điểm khởi đầu, cần chỉnh sau khi xem `report.html` trên dữ liệu thật. Chưa có: adapter ingest cho các nguồn mới chọn (`phap_luat`, `anle`, `fineweb2_vi`...), bộ chấm chất lượng bằng mô hình, semantic dedup, `cpt_mix`, benchmark để quét nhiễm, adapter Curator cho fuzzy dedup (danh sách việc: `docs/project/TASKS.md`). Tham khảo `paper-data-etl` và `ViLA`, đã rà soát và điều chỉnh (xem mục 5). Lộ trình theo tuần: `docs/project/ROADMAP.md`; tiến độ: `docs/project/PROGRESS.md`.
 
 ## 1. Nguyên tắc
 - **Disk-chained**: mỗi stage đọc Parquet của stage trước, ghi Parquet + manifest mới; chạy lại từng stage độc lập, có checkpoint theo file (dùng lại cơ chế `vi_corpus/sea/checkpoint.py` và `vi_corpus/common/state.py`).
@@ -12,42 +11,48 @@
 - **Không chia train/val/test ở tầng corpus**; việc chia (CPT/SFT/Hybrid) làm ở tầng knowledge unit, luôn chia theo `dedup_family_id`.
 
 ## 2. Luồng xử lý
-Sơ đồ theo code hiện tại (nguồn SVG: [diagrams/00_pipeline.svg](diagrams/00_pipeline.svg), bản PNG: [diagrams/00_pipeline.png](diagrams/00_pipeline.png)):
+Sơ đồ theo code hiện tại (nguồn SVG: [diagrams/00_pipeline.svg](../diagrams/00_pipeline.svg), bản PNG: [diagrams/00_pipeline.png](../diagrams/00_pipeline.png)):
 
-![Luồng xử lý vi-corpus-etl](diagrams/00_pipeline.svg)
+![Luồng xử lý vi-corpus-etl](../diagrams/00_pipeline.svg)
 
-Luồng con của từng module (cùng thư mục `docs/diagrams/`, vẽ theo code ở commit `0db0fc9`; khung nét đứt là phần đã chốt trong `DECISION_LOG.md` nhưng chưa code). **Lưu ý 2026-10-08**: đợt code các quyết định G-01…G-06 (mục 6 bên dưới) đã đổi 01, 03, 04, 06, 08; các sơ đồ đó chưa vẽ lại (chỉ 07 đã sửa dòng HDBSCAN), đọc mục 6 khi thấy lệch.
+Luồng con của từng module (cùng thư mục `docs/diagrams/`). **Các sơ đồ 00–08, 22, 23 được vẽ lại ngày 2026-11-19 theo code hiện tại bằng `scripts/draw_diagrams.py`** (sửa nội dung trong file đó rồi chạy lại, không sửa SVG bằng tay); khung nét đứt là phần chưa có code. Sơ đồ 09–13 vẽ tay, vẫn khớp code.
 
 | Sơ đồ | Module | Nội dung |
 |---|---|---|
-| [01_runner](diagrams/01_runner.svg) | `pipeline/runner.py` | checkpoint theo stage, `--force-from`, `--until`, manifest |
-| [02_ingest](diagrams/02_ingest.svg) | `pipeline/ingest.py` | lấy mẫu parquet / jsonl.gz, nguồn sách nguyên cuốn |
-| [03_prepare](diagrams/03_prepare.svg) | `pipeline/normalize.py`, `lines.py`, `chunk.py`, `tokens.py` | chuẩn hoá Unicode, xoá dòng lặp, cắt đoạn theo token, lấy mẫu đoạn, đếm token |
-| [04_language](diagrams/04_language.svg) | `pipeline/language.py` | fastText `lid.176` theo đoạn văn, `lang_mix` (heuristic cũ vẫn chọn được) |
-| [05_quality](diagrams/05_quality.svg) | `pipeline/quality.py` | số đo, lỗi cứng / mềm, band |
-| [06_dedup](diagrams/06_dedup.svg) | `pipeline/dedup.py`, `dedup_global.py` | cổng quyền, exact / MinHash-LSH theo văn bản, L1 bao hàm, exact theo đoạn, họ trùng, kho dấu vân tay + vòng 2 |
-| [07_embed_reduce](diagrams/07_embed_reduce.svg) | `pipeline/embed.py`, `reduce.py`, `viz.py` | embedding, PCA / UMAP / HDBSCAN, bản đồ |
-| [08_finalize](diagrams/08_finalize.svg) | `pipeline/knowledge.py`, `contamination.py`, `audit.py`, `report.py` | verdict vòng 2, clean, knowledge unit, segment CPT, quét nhiễm benchmark, audit, report |
-| [09_curator](diagrams/09_curator.svg) | `pipeline/curator.py` | chạy song song NeMo Curator + Ray |
-| [10_sea_download](diagrams/10_sea_download.svg) | `vi_corpus/sea/` | tải SEA có khoá, checkpoint từng file |
-| [11_stbook_ocr](diagrams/11_stbook_ocr.svg) | `vi_corpus/stbook/`, `common/ocr.py` | OCR sách, `clean_pages` |
-| [12_giao_trinh](diagrams/12_giao_trinh.svg) | `vi_corpus/giao_trinh/`, `common/batch_extract.py`, `pdf_text.py` | kiểm kê, trích text theo trang |
-| [13_stbook_ocr_vlm](diagrams/13_stbook_ocr_vlm.svg) | `vi_corpus/stbook/ocr_vlm.py`, `ocr_bakeoff/cascade.py`, `guard.py` | OCR sách bằng chuỗi VLM (O-20): kiểm từng trang, chạy lại, dự phòng |
+| [01_runner](../diagrams/01_runner.svg) | `pipeline/runner.py` | checkpoint theo stage, `--force-from`, `--until`, manifest |
+| [02_ingest](../diagrams/02_ingest.svg) | `pipeline/ingest.py` | lấy mẫu parquet / jsonl.gz, nguồn sách nguyên cuốn |
+| [03_prepare](../diagrams/03_prepare.svg) | `pipeline/normalize.py`, `lines.py`, `chunk.py`, `tokens.py` | chuẩn hoá Unicode, xoá dòng lặp, cắt đoạn theo token, lấy mẫu đoạn, đếm token |
+| [04_language](../diagrams/04_language.svg) | `pipeline/language.py` | fastText `lid.176` theo đoạn văn, `lang_mix` (heuristic cũ vẫn chọn được) |
+| [05_quality](../diagrams/05_quality.svg) | `pipeline/quality.py` | số đo, lỗi cứng / mềm, band |
+| [06_dedup](../diagrams/06_dedup.svg) | `pipeline/dedup.py`, `dedup_global.py` | cổng quyền, exact / MinHash-LSH theo văn bản, L1 bao hàm, exact theo đoạn, họ trùng, kho dấu vân tay + vòng 2 |
+| [07_embed_reduce](../diagrams/07_embed_reduce.svg) | `pipeline/embed.py`, `reduce.py`, `viz.py` | embedding, PCA / UMAP / HDBSCAN, bản đồ |
+| [08_finalize](../diagrams/08_finalize.svg) | `pipeline/knowledge.py`, `contamination.py`, `audit.py`, `report.py` | verdict vòng 2, clean, knowledge unit, segment CPT, quét nhiễm benchmark, audit, report |
+| [09_curator](../diagrams/09_curator.svg) | `pipeline/curator.py` | chạy song song NeMo Curator + Ray |
+| [10_sea_download](../diagrams/10_sea_download.svg) | `vi_corpus/sea/` | tải SEA có khoá, checkpoint từng file |
+| [11_stbook_ocr](../diagrams/11_stbook_ocr.svg) | `vi_corpus/stbook/`, `common/ocr.py` | OCR sách bằng bộ cũ Paddle + VietOCR (nay là tầng dự phòng của chuỗi VLM), `clean_pages` |
+| [12_giao_trinh](../diagrams/12_giao_trinh.svg) | `vi_corpus/giao_trinh/`, `common/batch_extract.py`, `pdf_text.py` | kiểm kê, trích text theo trang |
+| [13_stbook_ocr_vlm](../diagrams/13_stbook_ocr_vlm.svg) | `vi_corpus/stbook/ocr_vlm.py`, `ocr_bakeoff/cascade.py`, `guard.py` | OCR sách bằng chuỗi VLM (O-20): kiểm từng trang, chạy lại, dự phòng |
+| [22_vjol_vista](../diagrams/22_vjol_vista.svg) | `vi_corpus/vjol/`, `vi_corpus/vista/` | VJOL / VISTA từ PDF tới bản ghi: lớp chữ, dò trang hỏng, OCR VLM, sinh bản ghi |
+| [23_shard_run](../diagrams/23_shard_run.svg) | `scripts/run_pipeline_cpu.sh`, `dedup_global.py`, `summarize_runs.py` | chạy cả kho VJOL / VISTA chia phần (shard) rồi dedup toàn cục |
 
-Thiết kế đầy đủ, gồm cả phần chưa code (triage + parse PDF cho VISTA/VJOL, exact và fuzzy dedup tách bước):
+Luồng tổng quát bằng chữ (phần nét đứt là thiết kế chưa code):
 ```mermaid
 flowchart TD
-    R["Source registry\n(owner, license, domain, path, format)"] --> I["1. ingest\nadapter theo nguồn -> schema chung"]
-    I -->|"nguồn PDF (VISTA/VJOL, stbook, giáo trình)"| T["2. triage + parse\nPyMuPDF -> Docling/Marker -> OCR"]
-    I -->|"nguồn đã là text (SEA)"| L
-    T --> L["3. language id"]
-    L --> N["4. normalize\nNFC, header/footer, boilerplate"]
-    N --> Q["5. quality score\nband A/B/C/D + reason code + quarantine"]
-    Q --> D1["6a. exact dedup\nsha256 file/text"]
-    D1 --> D2["6b. fuzzy dedup\nMinHash (CPU) hoặc NeMo (GPU)"]
-    D2 --> C["Clean corpus (Parquet)\nprovenance + rights + domain"]
-    C --> K["7. knowledge unit\nCPT / SFT / Hybrid"]
-    C --> A["8. audit\ncontamination, token accounting, dashboard"]
+    R["Source registry\n(owner, license, domain, path, format)"] --> X["Trích text theo nguồn\nSEA: đọc thẳng · stbook: OCR VLM · giáo trình: PyMuPDF / parser / OCR\nVJOL, VISTA: lớp chữ + OCR VLM (sơ đồ 22)"]
+    X --> I["1. ingest\nschema chung, giữ source_path + sha256"]
+    I --> P["2. prepare\nNFC, xoá dòng lặp, cắt đoạn theo token Qwen3"]
+    P --> L["3. language\nfastText lid.176 theo đoạn"]
+    L --> Q["4. quality\nđiểm, band A/B/C/D, reason code"]
+    Q --> D1["5. dedup vòng 1\nexact + MinHash cả văn bản + L1 bao hàm"]
+    D1 --> E["6-7. embed + reduce (tuỳ chọn)"]
+    D1 --> D2["dedup vòng 2 toàn cục\nscripts/dedup_global.py"]
+    D2 --> F["8. finalize\nclean, knowledge unit, cpt_segments, audit, report"]
+    E --> F
+    F --> K["scripts/cpt_pack.py\nchuỗi 8.192 token"]
+    Q -.-> QM["quality_model (L-05)"]:::todo
+    D1 -.-> SD["semantic dedup (L3)"]:::todo
+    F -.-> MIX["cpt_mix (L-06)"]:::todo
+    classDef todo stroke-dasharray: 5 5,fill:#f5f5f5
 ```
 
 ## 3. Schema chung của clean corpus
@@ -60,8 +65,8 @@ KPI "≥95% truy vết nguồn" = tỷ lệ bản ghi có đủ `source_key`, `s
 |---|---|
 | SEA | Đã là text nên bỏ bước parse. `conversations` của SEA-Instruct-2602 là chuỗi Python-repr → `ast.literal_eval`, không dùng `json.loads`. |
 | stbook | PDF toàn ảnh (mỗi trang 1 JPEG) nên bỏ triage, OCR thẳng: PaddleOCR detect + VietOCR nhận dạng (`vi_corpus/common/ocr.py`), kết quả ở `interim/stbook_ocr/`. Mỗi cuốn một bản ghi; text là OCR thô (còn số trang, chú thích) → normalize xử lý. |
-| Giáo trình (Drive) | PDF/pptx, phần lớn có lớp chữ; trích bằng `vi_corpus/common/pdf_text.py`, làm sạch theo trang (header/footer, ghép dòng) trước khi ghép văn bản. Giữ sách tiếng Anh. Chi tiết: `docs/GIAO_TRINH.md`. |
-| VISTA / VJOL | Chỉ **xử lý**, không crawl. PDF đã đặt tên theo sha256 (dùng làm khóa exact dedup); riêng VJOL tên file là `<article_id>_<galley_id>.pdf` trong thư mục năm, checkpoint theo sha256 nội dung (đã code bản đầu, xem `docs/README.md` Phần G). Cần triage (`text_native`, `mixed`, `image_only`, `corrupt`, `protected`, `non_article`) rồi parse "rẻ trước, đắt sau". Bài ở VJOL/VISTA chưa rõ quyền → `rights_quarantine`. |
+| Giáo trình (Drive) | PDF/pptx, phần lớn có lớp chữ; trích bằng `vi_corpus/common/pdf_text.py`, làm sạch theo trang (header/footer, ghép dòng) trước khi ghép văn bản. Giữ sách tiếng Anh. Chi tiết: `docs/sources/GIAO_TRINH.md`. |
+| VISTA / VJOL | Chỉ **xử lý**, không crawl; dùng chung một bộ xử lý bài báo PDF (`vi_corpus/vjol/`, VISTA chỉ thêm bố cục / nối metadata riêng). Trích lớp chữ bằng PyMuPDF cho mọi trang, trang scan và trang lỗi font OCR bằng chuỗi VLM, làm sạch lúc sinh bản ghi (bỏ bìa, mục lục, tài liệu tham khảo, tiêu đề chạy; khôi phục chữ ư / ơ; che email, số điện thoại), checkpoint theo sha256 nội dung. Stage quality có các mã chữ hỏng riêng. Sơ đồ 22; chi tiết `docs/README.md` Phần G, `docs/sources/VISTA.md`. Quyền chưa rõ → `rights_quarantine` (chỉ gắn nhãn). |
 
 ## 5. Điểm đã điều chỉnh so với repo tham khảo
 1. Split train/val/test chuyển xuống tầng knowledge unit (ảnh yêu cầu ma trận CPT/SFT/Hybrid).
@@ -72,7 +77,7 @@ KPI "≥95% truy vết nguồn" = tỷ lệ bản ghi có đủ `source_key`, `s
 6. Chỉ dùng uv + `pyproject.toml` (không còn `requirements.txt`).
 
 ## 6. Đợt code 2026-10-08 (các quyết định không cần chạy server)
-Theo `docs/DECISION_LOG.md` (mục "Phiên 2026-10-08 (code)"). Mọi số ngưỡng dưới đây là giá trị khởi điểm đã chốt, **chưa hiệu chỉnh** trên dữ liệu thật.
+Theo `docs/project/DECISION_LOG.md` (mục "Phiên 2026-10-08 (code)"). Mọi số ngưỡng dưới đây là giá trị khởi điểm đã chốt, **chưa hiệu chỉnh** trên dữ liệu thật.
 
 | Stage | Thay đổi | Quyết định |
 |---|---|---|
@@ -95,7 +100,7 @@ Theo `docs/DECISION_LOG.md` (mục "Phiên 2026-10-08 (code)"). Mọi số ngư�
 **Giới hạn đã biết**: MinHash cả văn bản làm đổi chữ ký của sách dài > 20.000 từ so với run cũ (`MINHASH_VERSION` 2, vân tay tự chạy lại từ prepare). File kho của run cũ (trước bia mộ) không có `written_at` nên luôn thua dòng mới. L1 bao hàm chỉ trong phạm vi một lần chạy (kho vòng 2 chưa có hash đoạn văn). Recall MinHash cấu hình A đo bằng bản cấy (`tests/test_dedup_recall.py`): sửa 1% → 1,0; 2% → 0,875; 5% → 0; cắt 10% hai đầu → 0,5. Tokenizer Qwen3 thật và fastText thật chưa chạy trong test tự động (không mạng); test fastText tự bật khi có `lid.176.bin`.
 
 ## 7. Đợt code 2026-10-09 (F-01, F-03, F-04, F-07)
-Theo `docs/DECISION_LOG.md` (mục "Phiên 2026-10-09 (rà run 10.000 mẫu…)" và O-01 của phiên code cùng ngày). Ngưỡng là khởi điểm, chưa chạy lại run 10.000 mẫu để so.
+Theo `docs/project/DECISION_LOG.md` (mục "Phiên 2026-10-09 (rà run 10.000 mẫu…)" và O-01 của phiên code cùng ngày). Ngưỡng là khởi điểm, chưa chạy lại run 10.000 mẫu để so.
 
 | Stage | Thay đổi | Quyết định |
 |---|---|---|
@@ -113,3 +118,18 @@ Theo `docs/DECISION_LOG.md` (mục "Phiên 2026-10-09 (rà run 10.000 mẫu…)"
 | report | Biểu đồ số token: ghi cận dưới dưới từng cột, cột cuối "≥4096", bỏ chữ "thang log" (các khoảng rộng không đều nhưng vẽ đều). | I-04 |
 
 **Chưa code**: F-02 (thứ tự đọc OCR nhiều cột) tạm dừng chờ kết quả so sánh engine OCR (F-11, công cụ ở `scripts/ocr_bakeoff/`, README Phần F).
+
+## 9. Đợt thay đổi 10-11/2026 (VJOL / VISTA, chạy cả kho, đóng gói CPT)
+
+Chi tiết quyết định ở `docs/project/DECISION_LOG.md` (mã J-xx, VS-xx, T-xx, PP-xx); sơ đồ 22 và 23.
+
+| Phần | Thay đổi | Quyết định |
+|---|---|---|
+| ingest, quality | Nguồn VJOL (từ 10/2026) và VISTA (11/2026): `PROFILES["vjol"]` (chunked, vi + en), `PROFILES["vista"]` dùng lại hồ sơ VJOL; stage quality thêm mã cứng `garbled_font`, `private_use_chars`, `math_font_junk`, `lost_diacritics`, `reversed_text`, `lost_letters`, `odd_words`, số đo `tone_shift` / `dropped_letters` / `gibberish` / `joined_words` (chỉ đo, chưa loại); perplexity Qwen3-0.6B tuỳ chọn (`--perplexity-model`); sửa "ph-ơng / l-ơng" bằng mô hình ngôn ngữ nhỏ (`--hyphen-lm-model`). | J-xx, VS-04, PP-01 |
+| ingest, runner | `--take-all` (giữ mọi đoạn của nguồn sách, không lấy mẫu) và `--shard I/N` (chỉ vjol / vista; PDF chia theo sha256 thành N lần chạy độc lập vừa RAM); manifest ghi `peak_rss_mb`. | VS-06 |
+| ngoài pipeline | `scripts/dedup_global.py` gộp kho dấu vân tay của mọi phần; `make pipeline-cpu` (shards → dedup → finalize → summary, 128 phần song song), `make pipeline-progress`, `scripts/vista/summarize_runs.py`, `scripts/vista/run_vista.sh`. | PP-03, VS-06 |
+| finalize | `cpt_segments.parquet` thay `cpt_blocks` (nối mọi đoạn liền nhau, không giới hạn độ dài); `scripts/cpt_pack.py` cắt theo 8.192 token, best-fit, EOS chỉ ở cuối văn bản thật, tiền tố metadata tắt mặc định. | T-07..T-09 |
+| OCR | Lưu `text_md` (markdown gốc của OCR VLM) cạnh `text`; pipeline chưa đọc (`text_format` luôn "plain"). | T-06 |
+| ngoài pipeline | `vi_corpus/source_probe/` + `scripts/source_probe/probe_hf.py`: kiểm nhanh chất lượng nguồn ứng viên từ mẫu từ xa bằng stage language + quality. | NS-11 |
+
+**Giới hạn đã biết**: mọi stage vẫn giữ cả lần chạy trong RAM (chưa có shard / Arrow theo D-06 cho SEA); `make pipeline-cpu` mới thử với `uv` giả, chưa chạy trên dữ liệu thật; embedder mặc định vẫn là `multilingual-e5-base`, chưa chuyển sang Qwen3-Embedding (K-07).

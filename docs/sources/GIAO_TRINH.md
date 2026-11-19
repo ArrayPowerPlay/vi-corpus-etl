@@ -109,4 +109,4 @@ Không dùng `get_text(sort=True)`: một số PDF là 2 trang sách trên 1 tra
 3. (Xong) Viết `vi_corpus/giao_trinh/` (inventory + extract có checkpoint + `iter_records`) và `scripts/giao_trinh/extract.py`;
    bước clean trang đặt trong `vi_corpus/common/pdf_text.py` để VISTA/VJOL dùng lại.
 4. (Xong) Thêm `giao_trinh` vào `vi_corpus/common/registry.py`.
-5. Để sau: ppt/docx qua LibreOffice; công thức toán (Nougat/Marker trên GPU) cho nhóm Toán nếu cần chất lượng cao.
+5. (Xong, D-05) ppt/docx qua LibreOffice, djvu, html, epub. Để sau: OCR giáo trình bằng chuỗi VLM (hiện dùng bộ OCR cũ); công thức toán (Nougat/Marker trên GPU) cho nhóm Toán nếu cần chất lượng cao.

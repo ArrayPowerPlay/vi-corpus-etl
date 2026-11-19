@@ -1,8 +1,8 @@
 # SUGGESTION v2: Pipeline dữ liệu CPT + SFT đầy đủ cho corpus tiếng Việt hàng tỷ token
 
-> **Trạng thái: đề xuất, chưa phải quyết định.** Viết ngày 2026-11-05 theo yêu cầu của chủ dự án. Tổng hợp mọi đợt nghiên cứu: `docs/SUGGESTION.md` (bản đầu), `docs/SUGGESTION_V2_300M.md` (bản viết khi còn tưởng corpus ~300M token, đổi tên từ `SUGGESTION_V2.md`), `reports/Knowledge injection cho SFT tiếng Việt.md`, và 10 ghi chú đợt 2 trong `research_notes/*_v2.md`. Tài liệu này **thay** hai bản SUGGESTION trước ở mọi chỗ mâu thuẫn.
+> **Trạng thái: đề xuất, chưa phải quyết định.** Viết ngày 2026-11-05 theo yêu cầu của chủ dự án. Tổng hợp mọi đợt nghiên cứu: `docs/training/SUGGESTION.md` (bản đầu), bản `SUGGESTION_V2_300M.md` (viết khi còn tưởng corpus ~300M token; **đã xoá 2026-11-19, T-13**, xem lịch sử git nếu cần), `reports/Knowledge injection cho SFT tiếng Việt.md`, và 10 ghi chú đợt 2 trong `research_notes/*_v2.md`. Tài liệu này **thay** hai bản SUGGESTION trước ở mọi chỗ mâu thuẫn.
 >
-> **Các việc cần chủ dự án chốt** để chạy được hoặc chốt được pipeline này nằm ở `docs/TASKS.md`, đánh mã `K-xx` (quyết định), `E-xx` (việc đo / thí nghiệm), `L-xx` (việc code). Tài liệu này dẫn tới các mã đó.
+> **Các việc cần chủ dự án chốt** để chạy được hoặc chốt được pipeline này nằm ở `docs/project/TASKS.md`, đánh mã `K-xx` (quyết định), `E-xx` (việc đo / thí nghiệm), `L-xx` (việc code). Tài liệu này dẫn tới các mã đó.
 >
 > **Độ tin cậy của con số.** Mọi số GPU-giờ là **ước tính trên giấy** (công thức FLOPs + giả định MFU 25–35%), sai khoảng ±50%, chưa đo trên server. Số từ bài báo là tiếng Anh / Trung / ngôn ngữ khác; **chưa có số tiếng Việt** cho hầu hết phương pháp ở đây. Chỗ nào là suy luận của Claude thì ghi rõ.
 
@@ -199,7 +199,7 @@ Giải thích bằng lời đơn giản. Cột "Trong dự án" cho biết nó n
 
 ## 5. Kiến trúc tổng thể
 
-![Tổng quan pipeline v2](diagrams/19_v2_tong_quan.svg)
+![Tổng quan pipeline v2](../diagrams/19_v2_tong_quan.svg)
 
 | Tầng | Đầu vào | Đầu ra chính | Phụ thuộc model? |
 |---|---|---|---|
@@ -273,7 +273,7 @@ Lý do cần H2 / H3: họ trùng chỉ gom bản gần giống chữ; cùng m�
 
 ## 8. Chọn dữ liệu theo chất lượng
 
-![Dữ liệu: chất lượng, CPT, SFT](diagrams/20_v2_du_lieu.svg)
+![Dữ liệu: chất lượng, CPT, SFT](../diagrams/20_v2_du_lieu.svg)
 
 (Sơ đồ này dùng chung cho mục 8, 9, 10.)
 
@@ -423,7 +423,7 @@ Dedup theo **câu hỏi người dùng đầu tiên** đã chuẩn hoá (exact +
 
 ## 11. Huấn luyện thử và chống quên
 
-![Huấn luyện thử và eval](diagrams/21_v2_huan_luyen_eval.svg)
+![Huấn luyện thử và eval](../diagrams/21_v2_huan_luyen_eval.svg)
 
 (Sơ đồ này dùng chung cho mục 7 và 11.)
 
@@ -571,7 +571,7 @@ Cộng SFT tổng hợp đủ W5 thì thêm ~520–830 GPU-giờ (~5,5–8,5 ng�
 
 ## 17. So với các bản trước
 
-| | `SUGGESTION.md` (bản đầu) | `SUGGESTION_V2_300M.md` | Bản này |
+| | `SUGGESTION.md` (bản đầu) | `SUGGESTION_V2_300M.md` (đã xoá, T-13) | Bản này |
 |---|---|---|---|
 | Quy mô giả định | ~300M | ~300M | hàng tỷ token (W7 ≥10B) |
 | Trục nạp kiến thức | SFT LoRA trên dữ liệu tổng hợp | CPT trên base + trộn chỉ thị | CPT 2 pha, chọn dữ liệu theo tầng |
@@ -602,6 +602,6 @@ Chi tiết, số liệu và đường dẫn từng bài nằm trong các ghi ch�
 | SFT tổng hợp có căn cứ | `research_notes/sft_synthesis_grounded_v2.md` |
 | Công thức huấn luyện, GPU-giờ | `research_notes/training_recipe_compute_v2.md` |
 | Nguồn và định dạng SFT | `research_notes/sft_nguon_dinh_dang_v2.md` |
-| Đợt 1 (Knowledge-Instruct, Gekhman, RAFT, merge…) | `reports/Knowledge injection cho SFT tiếng Việt.md`, `docs/SUGGESTION.md`, `docs/SUGGESTION_V2_300M.md` |
+| Đợt 1 (Knowledge-Instruct, Gekhman, RAFT, merge…) | `reports/Knowledge injection cho SFT tiếng Việt.md`, `docs/training/SUGGESTION.md`, `SUGGESTION_V2_300M.md` (đã xoá, T-13; xem lịch sử git) |
 
 Các bài chính được dẫn trong tài liệu này: Ding et al. 2024 (Fewer Truncations, best-fit packing); Zhao et al. 2024 (intra-document masking); MeCo (ICML 2025); Allen-Zhu & Li, Physics of LMs 3.3; Parmar et al. 2024 (Reuse, Don't Retrain); Muennighoff et al. 2023 (data-constrained scaling); Bethune et al. 2025 (Apple, replay); Ibrahim et al. 2024 (continual pretraining); MiniCPM; OLMo 2 (Dolmino); Apertus 1.5; Instruction Pre-Training (EMNLP 2024); AdaptLLM (ICLR 2024); Mix-CPT; FinDAP (EMNLP 2025); Chat Vector (ACL 2024); Source-Shielded Updates (ACL 2026); Latxa-Instruct (EMNLP 2025); FineWeb-Edu; FineWeb2 / FineWeb2-HQ; JQL; Nemotron-CC; DataDecide; Tulu 3; Genie (ICLR 2024); Persona Hub; MiniCheck; ViHallu; Gekhman et al. 2024; KnownPatch (2511.02626); VMLU (ACL 2025); ViAdminShift (2611.03171); Yao et al. EMNLP 2024 (nhiễm qua bản dịch); Tejaswi et al. EMNLP 2024; Sailor / Sailor2; Biderman et al. 2024 (LoRA learns less, forgets less); Zheng et al. (CPT scaling); SmolLM3.

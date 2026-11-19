@@ -1,10 +1,10 @@
 # Ứng viên nguồn dữ liệu mới (ưu tiên STEM, kiến thức dày)
 
-> Trạng thái: **khảo sát xong; chủ dự án đã trả lời 5 câu (NS-06..NS-10), chốt sau khi xem kết quả kiểm chất lượng ở mục 6**. Chưa ghi vào `docs/SOURCES.md`.
+> Trạng thái (2026-11-19): **khảo sát xong và đã chốt** (NS-06..NS-22 trong `docs/project/DECISION_LOG.md`): các nguồn được chọn đã ghi vào `docs/sources/SOURCES.md`; mục 5 bên dưới ghi kết quả từng câu hỏi. Chưa nguồn nào trong file này được tải về hay có adapter ingest.
 > Khảo sát ngày 2026-11-10 bằng 6 agent song song (web corpus đã lọc, toán, SGK/OER, học thuật, dữ liệu dịch/tổng hợp, bách khoa/tra cứu).
 > Chỉ dùng request nhẹ (API Hugging Face, robots.txt, OAI-PMH Identify/đếm, vài trang). Không tải file dữ liệu.
 > Cột "Kiểm chứng": **đo** = đọc được số từ API/README; **một phần** = thấy nguồn tồn tại, số liệu từ tin tức/tìm kiếm; **chưa** = chưa kiểm chứng.
-> Không xét lại các nguồn đã có trong `docs/SOURCES.md` và `docs/LUAN_AN.md`.
+> Không xét lại các nguồn đã có trong `docs/sources/SOURCES.md` và `docs/sources/LUAN_AN.md`.
 
 ## 1. Kết luận ngắn
 
@@ -23,7 +23,7 @@
 | `finepdfs_vi` | HF `HuggingFaceFW/finepdfs` (`vie_Latn`) | 1,23 triệu văn bản, 7,72 tỷ token | ODC-By | 4 | thấp | Tập cha của dòng trên; lấy cả hai thì dedup theo id | đo |
 | (nhãn lọc) | HF `epfml/FineWeb2-HQ` (`vie_Latn`) | 4,0 triệu văn bản, 63 GB | ODC-By | 3–4 | thấp | Là top 10% của FineWeb-2 (đã chọn) theo classifier "giàu kiến thức". Chỉ cần lấy danh sách id làm cờ chất lượng / trọng số, không cần text mới | đo |
 | `wikimedia_vi_misc` | dump Wikibooks (8,7 MB bz2), Wiktionary (63 MB), Wikivoyage (4,6 MB) tiếng Việt | nhỏ | CC BY-SA 4.0 | 2–3 | rất thấp, dùng chung parser với `wikisource_vi` | Wiktionary phần lớn là định nghĩa ngắn, nhiều từ tiếng Anh. Wikiquote, Wikinews không đáng | đo |
-| `hust_dspace` | dlib.hust.edu.vn (DSpace 7.4, như kho ĐHQGHN) | 33.202 mục, 31.335 có file (luận văn 13.435, đồ án 2.898, khóa luận 1.822, bài báo ~2.100) | chưa rõ → quarantine | 4–5 (kỹ thuật) | trung bình, dùng lại kế hoạch kho ĐHQGHN (`docs/LUAN_AN.md` mục 2) | REST tìm kiếm + OAI-PMH ẩn danh; `core/items` trả 401, tỉ lệ file tải ẩn danh chưa đo. Có thể trùng luận án NLV | đo |
+| `hust_dspace` | dlib.hust.edu.vn (DSpace 7.4, như kho ĐHQGHN) | 33.202 mục, 31.335 có file (luận văn 13.435, đồ án 2.898, khóa luận 1.822, bài báo ~2.100) | chưa rõ → quarantine | 4–5 (kỹ thuật) | trung bình, dùng lại kế hoạch kho ĐHQGHN (`docs/sources/LUAN_AN.md` mục 2) | REST tìm kiếm + OAI-PMH ẩn danh; `core/items` trả 401, tỉ lệ file tải ẩn danh chưa đo. Có thể trùng luận án NLV | đo |
 
 ### Nhóm B: dùng được nhưng có điều kiện
 
@@ -79,14 +79,14 @@ VMLU (`ZaloAI/VMLU`, 10.880 câu, 58 môn), ViExam, VNHSGE (THPT QG), `Intellige
 | `vilm/tinystories-envi`, `bkai-foundation-models/vi-alpaca` | Không có giá trị STEM |
 | Các repo không tồn tại / private: `vilm/CulturaX-vi`, `5CD-AI/Viet-fineweb-edu`, `HuggingFaceFW/fineweb-2-edu`, `binhvq/news-corpus`, `vinai/PhoGPT-pretrain` | API trả lỗi, không có |
 
-## 5. Việc cần chủ dự án quyết
+## 5. Việc cần chủ dự án quyết (đã trả lời)
 
-1. Lấy **FinePDFs-Edu vi** (đề xuất: có), và có lấy cả **FinePDFs vi** đầy đủ không. Khi trùng với PDF tự trích (VJOL/VISTA/giáo trình), giữ bản nào (đề xuất: bản tự trích, vì có metadata và OCR cascade; FinePDFs xếp sau trong ưu tiên Q4).
-2. Dùng **FineWeb2-HQ** làm cờ chất lượng cho FineWeb-2 không (đề xuất: có, không tải text).
-3. Có nhận **dữ liệu dịch máy / tổng hợp** vào CPT không (`cosmopedia_vi`, `vi_pubmed`), và nếu có thì trần tỉ lệ bao nhiêu.
-4. Có gửi email xin phép VOER, Tia Sáng, NXB Giáo dục, Bách khoa toàn thư không.
-5. Có mở dự án **tự dịch OpenWebMath/FineMath** không (cần ngân sách GPU riêng).
-6. Thêm **HUST DSpace** vào kế hoạch crawl chung với kho ĐHQGHN không.
+1. **FinePDFs-Edu vi**: chốt lấy (NS-13). **FinePDFs vi đầy đủ**: chỉ lấy nhóm giáo dục + nghiên cứu, qua bước lọc chủ đề chạy trước pipeline (NS-18, NS-20, NS-21; chưa code). Khi trùng PDF tự trích (VJOL / VISTA / giáo trình / luận văn) giữ bản tự trích (NS-06).
+2. **FineWeb2-HQ làm cờ chất lượng cho FineWeb-2**: không dùng (NS-17).
+3. **Nhận dữ liệu dịch máy / tổng hợp vào CPT**: nhận về nguyên tắc, chưa đặt trần tỉ lệ (NS-07), nhưng chưa còn nguồn nào được chọn: vi_pubmed (NS-14), MetaMathQA / Orca-Math (NS-15), Cosmopedia (NS-19) đều bỏ.
+4. **Gửi email xin phép VOER, Tia Sáng, NXB Giáo dục, Bách khoa toàn thư**: được phép, nhưng phải duyệt nội dung trước (NS-08); bản nháp ở `docs/sources/PERMISSION_EMAILS.md`, chưa gửi.
+5. **Tự dịch OpenWebMath / FineMath**: để sau (NS-09).
+6. **HUST DSpace**: đưa vào kế hoạch crawl chung với kho ĐHQGHN (NS-10); chưa crawl, ngày 2026-11-10 máy local bị chặn 403.
 
 ## 6. Kết quả kiểm chất lượng trên mẫu (2026-11-10)
 

@@ -1,6 +1,6 @@
 # Kế hoạch crawl luận án / luận văn (Thư viện Quốc gia, ĐHQGHN)
 
-> Trạng thái: **kế hoạch, chưa chọn, chưa tải gì**. Chưa ghi vào `docs/SOURCES.md` (theo yêu cầu ngày 2026-11-10).
+> Trạng thái (cập nhật 2026-11-19): kế hoạch viết ngày 2026-11-10. Sau đó chủ dự án **chốt lấy phần mở ẩn danh (~31%) của kho ĐHQGHN** (NS-12, đã ghi vào `docs/sources/SOURCES.md`, key `luanvan_vnu`, chưa tải); **luận án Thư viện Quốc gia chưa chọn** (chỉ có tóm tắt, ảnh trang bị robots.txt cấm). Chưa có code crawl cho cả hai. Số đo thực nghiệm: `experiments/luan_an_vnu/KET_QUA.md`, `experiments/luan_an_nlv/KET_QUA.md` (thư mục không nằm trong git).
 > Số liệu đo ngày 2026-11-10 bằng vài chục request nhẹ (sitemap, trang metadata, API đếm). Không tải ảnh trang, không tải hàng loạt file.
 > Chỗ nào là ước tính chứ chưa đo thì ghi rõ "ước tính".
 
@@ -70,7 +70,7 @@ Có thể cắt số request bằng cách lấy bundles kèm bitstreams trong m�
 1. Thư viện Quốc gia: chọn hướng A (chỉ tóm tắt) hay B (toàn văn, cần xin phép trước vì robots.txt cấm ảnh trang).
 2. Có gửi email xin phép Thư viện Quốc gia và ĐHQGHN không (đề xuất: có, cả hai).
 3. ĐHQGHN: chỉ lấy file tải được ẩn danh (đề xuất), hay xin tài khoản/dữ liệu thẳng từ thư viện.
-4. Có lấy luận án ngoại ngữ không (tiếng Pháp, Anh...). Giáo trình tiếng Anh đã được giữ (xem `docs/DECISION_LOG.md`), nên đề xuất giữ.
+4. Có lấy luận án ngoại ngữ không (tiếng Pháp, Anh...). Giáo trình tiếng Anh đã được giữ (xem `docs/project/DECISION_LOG.md`), nên đề xuất giữ.
 
 ## 4. Chưa có code
 

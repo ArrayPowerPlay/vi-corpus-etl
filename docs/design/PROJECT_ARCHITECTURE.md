@@ -1,6 +1,6 @@
 # Kiến trúc dự án vi-corpus-etl
 
-Tài liệu mô tả **cấu trúc repo và cấu trúc dữ liệu**. Thiết kế các bước xử lý (parse → language → normalize → quality → dedup → knowledge unit) nằm ở [`docs/PIPELINE.md`](PIPELINE.md); danh mục nguồn ở [`docs/SOURCES.md`](SOURCES.md); chiến lược giáo trình ở [`docs/GIAO_TRINH.md`](GIAO_TRINH.md); các quyết định đã chốt ở [`docs/DECISION_LOG.md`](DECISION_LOG.md).
+Tài liệu mô tả **cấu trúc repo và cấu trúc dữ liệu**. Thiết kế các bước xử lý (parse → language → normalize → quality → dedup → knowledge unit) nằm ở [`docs/design/PIPELINE.md`](PIPELINE.md); danh mục nguồn ở [`docs/sources/SOURCES.md`](../sources/SOURCES.md); chiến lược giáo trình ở [`docs/sources/GIAO_TRINH.md`](../sources/GIAO_TRINH.md); các quyết định đã chốt ở [`docs/project/DECISION_LOG.md`](../project/DECISION_LOG.md).
 
 Nguyên tắc chung:
 - **Mỗi nguồn dữ liệu có gói code riêng (`vi_corpus/<nguồn>/`) và thư mục script riêng (`scripts/<nguồn>/`)**; phần dùng chung nằm ở `vi_corpus/common/`.
@@ -13,43 +13,61 @@ Nguyên tắc chung:
 ```
 vi-corpus-etl/
 ├── CLAUDE.md                        # file .md duy nhất ở gốc repo; mọi tài liệu khác nằm trong docs/
-├── pyproject.toml, uv.lock          # thư viện quản lý bằng uv (nhóm ocr: uv sync --group ocr)
-├── .env                             # HF_TOKEN (không đưa lên git)
-├── docs/                            # README, PROJECT_ARCHITECTURE, PIPELINE, SOURCES, ROADMAP, PROGRESS, GIAO_TRINH, DECISION_LOG
-│   └── diagrams/                    # 00_pipeline.svg/png (luồng chính) + 01..13_*.svg (luồng con từng module) + 19..21 (SUGGESTION_v2: tổng quan, dữ liệu, huấn luyện + eval) + 26 (phụ thuộc task)
-├── configs/ocr_bakeoff/engines.json # cấu hình engine OCR cho đợt so sánh (lệnh dựng server, lời nhắc, giấy phép)
+├── Makefile                         # make count-ocr, make pipeline-cpu, make pipeline-progress (VJOL + VISTA, chỉ CPU)
+├── pyproject.toml, uv.lock          # thư viện quản lý bằng uv (nhóm ocr: uv sync --group ocr; curator, viz)
+├── .env                             # HF_TOKEN, khoá OCR nội bộ (không đưa lên git)
+├── docs/
+│   ├── README.md                    # hướng dẫn sử dụng từng phần + mục lục toàn bộ tài liệu
+│   ├── project/                     # quản lý dự án: DECISION_LOG, PROGRESS, ROADMAP, TASKS, SERVER_TASK
+│   ├── design/                      # thiết kế: PROJECT_ARCHITECTURE (file này), PIPELINE
+│   ├── sources/                     # nguồn dữ liệu: SOURCES, SOURCE_CANDIDATES, GIAO_TRINH, VISTA, LUAN_AN, PERMISSION_EMAILS, VJOL_PIPELINE.html
+│   ├── training/                    # đề xuất CPT + SFT: SUGGESTION (bản đầu), SUGGESTION_v2 (bản hiện hành)
+│   └── diagrams/                    # SVG: 00 (luồng chính), 01..08 + 22, 23 (vẽ bằng scripts/draw_diagrams.py), 09..13 (luồng con khác), 14..18 (SUGGESTION), 19..21 (SUGGESTION_v2), 26 (phụ thuộc task)
+├── configs/
+│   ├── ocr_bakeoff/engines.json     # cấu hình engine OCR cho đợt so sánh (lệnh dựng server, lời nhắc, giấy phép)
+│   └── benchmarks/                  # benchmark để quét nhiễm (hiện rỗng, K-01)
 ├── scripts/
-│   ├── run_all.py                   # script tổng: chạy các script con bên dưới
+│   ├── run_all.py                   # script tổng: chạy script con của từng nguồn
+│   ├── run_pipeline.py              # pipeline chung (ingest → finalize) trên mẫu N hoặc cả kho (--take-all, --shard I/N)
+│   ├── run_pipeline_cpu.sh          # chạy pipeline chung cho VJOL + VISTA chỉ bằng CPU, chia phần (gọi qua make pipeline-cpu)
+│   ├── pipeline_progress.py         # tiến độ + giờ dự kiến xong của make pipeline-cpu
+│   ├── dedup_global.py              # dedup vòng 2 toàn cục trên kho dấu vân tay
+│   ├── cpt_pack.py                  # cắt + ghép segment CPT thành chuỗi 8.192 token
+│   ├── make_judge_sample.py         # mẫu 50k phân tầng cho LLM chấm
+│   ├── count_ocr_pages.py           # đếm trang cần OCR của VJOL / VISTA (make count-ocr)
+│   ├── build_unaccented.py          # sinh danh sách từ không dấu từ kho chữ sạch
+│   ├── draw_diagrams.py             # vẽ lại sơ đồ docs/diagrams/00..08, 22, 23
+│   ├── bench_embed.py, head_clean.py  # đo tốc độ embed; xem đầu văn bản đã làm sạch
 │   ├── sea/                         # download_all.py, download_sea_*.py (3 bộ), count_rows.py
-│   ├── stbook/                      # crawl.py (tải sách), ocr.py (OCR Paddle + VietOCR), ocr_vlm.py + run_ocr_vlm.sh (OCR bằng chuỗi VLM, O-20), ocr_vlm_bench.py + run_ocr_vlm_bench.sh (thử concurrency), check_ocr_vlm.py (kiểm kết quả OCR), filter_ocr_pages.py (lọc trang baseline chữ rác / rp110 bịa, O-30)
-│   ├── giao_trinh/                  # extract.py (xử lý thô giáo trình), profile.py (khảo sát)
-│   ├── ocr_bakeoff/                 # so sánh engine OCR (F-11): select_pages, build_syllables, run_engine, score, diagnose_gt, run_bakeoff.sh
+│   ├── stbook/                      # crawl.py, ocr.py (Paddle + VietOCR), ocr_vlm.py + run_ocr_vlm.sh (chuỗi VLM, O-20), ocr_vlm_bench*, check_ocr_vlm.py, filter_ocr_pages.py (O-30)
+│   ├── giao_trinh/                  # extract.py (xử lý thô giáo trình), survey.py (khảo sát)
+│   ├── vjol/                        # extract.py + run_extract_vlm.sh (trích text), check_garbled*.py, audit_run.py, groundtruth.py, compare_runs.py, font_canary.py, plan_reocr.py, ...
+│   ├── vista/                       # extract.py + run_extract_vlm.sh, run_vista.sh (cả đường đi), check_raw.py, producer_survey.py, summarize_runs.py
+│   ├── anle/                        # download.py (án lệ từ HF, NS-03)
+│   ├── ocr_bakeoff/                 # so sánh engine OCR (F-11): select_pages, build_syllables, run_engine, score, diagnose_gt, eval_guard, run_bakeoff.sh
+│   ├── ocr_internal/                # thử OCR nội bộ VNPT trên mẫu VJOL + VISTA (OI-01): trial_vjol_vista.py, review_report.py
+│   ├── source_probe/                # probe_hf.py: kiểm nhanh chất lượng nguồn ứng viên (NS-11)
 │   ├── gpu_keepalive.py             # giữ GPU trên Run:ai không bị tự dừng khi job chỉ dùng CPU
 │   └── run_with_gpu_keepalive.sh    # chạy một script bất kỳ kèm gpu_keepalive, chạy nền
 ├── vi_corpus/
 │   ├── common/                      # dùng chung cho mọi nguồn
-│   │   ├── registry.py              #   sổ đăng ký nguồn: owner, license, domain, định dạng, đường dẫn raw
-│   │   ├── schema.py                #   schema chung của clean corpus + KPI truy vết nguồn
-│   │   ├── state.py                 #   ghi JSON nguyên tử, khoá chống chạy trùng, cấu hình log
-│   │   ├── ocr.py                   #   OCR một trang: PaddleOCR tìm dòng + VietOCR đọc chữ
-│   │   └── pdf_text.py              #   trích text từ PDF có lớp chữ (PyMuPDF)
-│   ├── sea/                         # nguồn SEA (Hugging Face)
-│   │   ├── datasets.py              #   danh sách 3 bộ: repo, thư mục tiếng Việt
-│   │   ├── hub.py                   #   token, liệt kê file, tải có retry, kiểm tra kích thước/sha256
-│   │   ├── checkpoint.py            #   state từng file + manifest
-│   │   ├── downloader.py            #   vòng tải song song, khoá, dọn file dở, --status
-│   │   ├── cli.py                   #   tham số dòng lệnh dùng chung cho 4 script tải
-│   │   └── reader.py                #   đọc parquet/jsonl.gz về schema chung
-│   ├── stbook/                      # nguồn sách stbook.vn
-│   │   ├── crawler/                 #   crawl metadata + PDF (categories, client, content, parse_*, storage, main)
-│   │   ├── ocr_books.py             #   tìm sách, OCR Paddle + VietOCR có checkpoint theo cuốn, đọc kết quả về schema chung
-│   │   └── ocr_vlm.py               #   OCR bằng chuỗi VLM: nhận cuốn bằng khoá, ghi page_info / stats, sao lưu kết quả bộ cũ
-│   ├── giao_trinh/                  # nguồn giáo trình (`extract.py` kiểm kê + trích text, `records.py` bản ghi + Parquet)
-│   ├── ocr_bakeoff/                 # so sánh engine OCR: pages (chọn trang, đáp án), engines, textnorm, metrics, syllables, perplexity, scoring, gt_diag (chẩn đoán đáp án bộ A), guard (bộ kiểm từng trang), cascade (chuỗi engine: pick_tier, CascadeOcr), vlm_bench (thử concurrency)
-│   ├── vjol/                        # bộ xử lý bài báo PDF dùng chung VJOL + VISTA: layout, extract, cli, records, clean, reocr, ...
-│   ├── vista/                       # VISTA: layout.py, records.py, raw_check.py (dùng lại bộ xử lý bài báo của vjol/, VS-04)
+│   │   ├── registry.py, schema.py, state.py    # sổ đăng ký nguồn; schema + KPI truy vết; ghi JSON nguyên tử, khoá, log
+│   │   ├── ocr.py, ocr_cascade.py, ocr_cache.py  # OCR một trang (Paddle + VietOCR); chuỗi VLM theo trang; bộ nhớ đệm OCR
+│   │   ├── pdf_text.py, batch_extract.py, parsers/  # trích text PDF / pptx / docx / doc / ppt / djvu / html / epub; vòng xử lý theo lô có checkpoint
+│   │   ├── garbled.py, defects.py, unaccented.py, unicode_clean.py, references.py, ocr_noise.py  # bộ dò chữ hỏng, khiếm khuyết, làm sạch
+│   │   └── parquet_export.py
+│   ├── sea/                         # nguồn SEA: datasets, hub, checkpoint, downloader, cli, reader
+│   ├── stbook/                      # crawler/ (crawl PDF), ocr_books.py, ocr_vlm.py, ocr_parallel.py, ocr_check.py, ocr_filter.py
+│   ├── giao_trinh/                  # extract.py (kiểm kê + trích text), records.py (bản ghi + Parquet)
+│   ├── vjol/                        # bộ xử lý bài báo PDF dùng chung VJOL + VISTA: layout, extract, cli, records, clean, hyphen_fix, hyphen_lm, reocr, font_canary, audit, ...
+│   ├── vista/                       # phần riêng của VISTA: layout, records, raw_check, producer_survey, summary
+│   ├── pipeline/                    # pipeline chung: config, runner, ingest, normalize, lines, chunk, tokens, language, spans, quality, perplexity, dedup, dedup_global, embed, reduce, viz, knowledge, cpt_pack, contamination, audit, report, curator, judge_sample, io
+│   ├── ocr_bakeoff/                 # so sánh engine OCR + cascade, guard, metrics, scoring
+│   ├── source_probe/                # specs, sample, measure: kiểm nhanh nguồn ứng viên
 │   └── __init__.py
-└── tests/                           # test không cần mạng: uv run pytest
+├── third_party/                     # opencv-contrib-python-shim: gói giả để paddlex không kéo opencv-contrib-python (J-31)
+├── reports/                         # báo cáo nghiên cứu (hiện: Knowledge injection cho SFT tiếng Việt.md)
+└── tests/                           # ~413 test không cần mạng: uv run pytest; tests/data/ = ca thử vàng VJOL
 ```
 
 ## 2. Cấu trúc thư mục dữ liệu
@@ -66,18 +84,26 @@ data/
 │   │       (mỗi bộ có thêm .cache/huggingface/ do thư viện HF tạo, đừng xoá khi đang tải)
 │   ├── stbook/<danh-mục>/books.json, content/<product_id>.pdf   # đúng cấu trúc của crawler
 │   ├── giao_trinh/<ngành>/<môn>/<file>    #   bản sao từ Google Drive bằng rclone (16 ngành)
-│   └── vjol/<năm>/<article_id>_<galley_id>.pdf, metadata/*.jsonl   # bài báo VJOL (chữ thường, J-02)
+│   ├── vjol/<năm>/<article_id>_<galley_id>.pdf, metadata/*.jsonl   # bài báo VJOL (chữ thường, J-02)
+│   ├── vista/<năm>/<publication_id>.pdf, unknown/, metadata/*.jsonl  # bài báo VISTA (chép từ MinIO, VS-05)
+│   └── anle/                              #   án lệ tải từ HF bằng scripts/anle/download.py (NS-03)
 ├── interim/                               # kết quả trung gian của từng nguồn
 │   ├── stbook_ocr/<danh-mục>/<product_id>.json     # text từng trang + metadata sách (chuỗi VLM: thêm page_info, stats)
 │   ├── stbook_ocr_baseline/<danh-mục>/             # bản kết quả của bộ OCR cũ, chép sang trước khi chuỗi VLM ghi đè
-│   └── giao_trinh_text/<sha256>.json               # text từng trang + method, khoá theo sha256 file
+│   ├── giao_trinh_text/<sha256>.json               # text từng trang + method, khoá theo sha256 file
+│   ├── vjol_text/<sha256>.json, vista_text/<sha256>.json  # checkpoint trích text bài báo (method, tier, status, extract_version)
+│   └── vjol_ocr_cache/                             # bộ nhớ đệm OCR theo trang (dùng lại khi trích lại)
 ├── processed/                             # kết quả cuối của từng nguồn (theo schema chung)
-│   └── giao_trinh/giao_trinh.parquet
+│   ├── giao_trinh/giao_trinh.parquet, vjol/vjol.parquet, vista/vista.parquet
+│   ├── pipeline_runs/<tên lần chạy>/        # 01_ingest … 07_reduced, clean, knowledge_units, cpt_segments, audit, manifest, report.html
+│   ├── dedup_global/verdict.parquet         # kết quả dedup vòng 2
+│   ├── ocr_count/, ocr_bakeoff/, source_probe/, ...  # kết quả các công cụ đo
 ├── state/                                 # checkpoint + khoá chống chạy trùng
 │   ├── sea_instruct_2602/, sea_pile_v2/, sea_lion_pile_v1/   # <tên-file>.json + _manifest.json + .run.lock
 │   ├── stbook_ocr/                        # .run.lock
 │   ├── stbook_ocr_vlm/<worker>/, claims/  # .run.lock từng tiến trình + khoá nhận từng cuốn
-│   └── ...                                # giao_trinh: do bước xử lý giáo trình tạo
+│   ├── dedup_index/<nguồn>/<run>.parquet  # kho dấu vân tay dedup vòng 1
+│   └── ...                                # giao_trinh, vjol_extract, vista_extract, ocr_count: do các bước tương ứng tạo
 └── logs/<việc>_<ngày_giờ>.log             # log từng lần chạy
 ```
 
@@ -89,11 +115,11 @@ Ghi chú: state của SEA nằm ở `state/<bộ>/` (không nằm trong `raw/sea
 |---|---|---|---|---|---|
 | SEA | `scripts/sea/download_all.py` (Hugging Face, có checkpoint) | `raw/sea_vi/<bộ>/` | `vi_corpus/sea/reader.py` đọc thẳng về schema chung (đã là text, bỏ bước parse) | (không cần) | kế hoạch: các stage chung |
 | stbook | `scripts/stbook/crawl.py` | `raw/stbook/` | `scripts/stbook/ocr_vlm.py` (chuỗi VLM Qwen3-VL-8B + bộ kiểm + OCR cũ dự phòng, O-20; `scripts/stbook/ocr.py` = bộ OCR cũ, checkpoint theo cuốn) | `interim/stbook_ocr/` | `ocr_books.iter_records`: mỗi cuốn một bản ghi |
-| giáo trình | `rclone copy` từ Google Drive (chạy tay, xem `docs/GIAO_TRINH.md`) | `raw/giao_trinh/` | `scripts/giao_trinh/extract.py`: kiểm kê sha256, trích text PDF/pptx, OCR trang scan (xuất Parquet tự động cuối lần chạy) | `interim/giao_trinh_text/<sha256>.json` | `processed/giao_trinh/giao_trinh.parquet` |
-| VJOL | không crawl trong repo này | `raw/vjol/` | `scripts/vjol/extract.py`: chọn mẫu chia đều theo năm, PyMuPDF cho mọi trang, trang scan và trang lỗi font (J-10) OCR bằng chuỗi VLM (`run_extract_vlm.sh` cho 4 GPU); `check_garbled.py` đo chữ hỏng bằng CPU | `interim/vjol_text/<sha256>.json` | `vjol/records.iter_records`: bỏ bìa / mục lục / tài liệu tham khảo, nối metadata tạp chí |
-| VISTA | không crawl trong repo này | `data/raw/vista/` | `scripts/vista/extract.py` (V1 xong, chưa chạy dữ liệu thật) | | |
+| giáo trình | `rclone copy` từ Google Drive (chạy tay, xem `docs/sources/GIAO_TRINH.md`) | `raw/giao_trinh/` | `scripts/giao_trinh/extract.py`: kiểm kê sha256, trích text PDF/pptx, OCR trang scan (xuất Parquet tự động cuối lần chạy) | `interim/giao_trinh_text/<sha256>.json` | `processed/giao_trinh/giao_trinh.parquet` |
+| VJOL | không crawl trong repo này | `raw/vjol/` | `scripts/vjol/extract.py`: PyMuPDF cho mọi trang; trang scan và trang lỗi font (J-10) OCR bằng chuỗi VLM (`run_extract_vlm.sh` cho 4 GPU); bài có lỗi nặng OCR lại cả bài; `--no-ocr` cho bản CPU (trang scan để `needs_ocr`); xem sơ đồ 22 | `interim/vjol_text/<sha256>.json` | `vjol/records.iter_records`: bỏ bìa / mục lục / tài liệu tham khảo / tiêu đề chạy, nối metadata tạp chí; `processed/vjol/vjol.parquet` |
+| VISTA | không crawl trong repo này; đã chép từ MinIO về `raw/vista/` (VS-05) | `raw/vista/` | `scripts/vista/extract.py` (dùng chung bộ xử lý của VJOL; luật producer OCR đời cũ); `run_vista.sh` chạy cả đường đi | `interim/vista_text/<sha256>.json` | `vista/records.iter_records`: một bản ghi / PDF, `meta.publication_ids`; `processed/vista/vista.parquet` |
 
-Sau khi mỗi nguồn ra bản ghi theo `vi_corpus/common/schema.py`, các stage chung (language, normalize, quality, dedup, knowledge unit, audit) xử lý giống nhau cho mọi nguồn; phần này đang ở mức thiết kế (`docs/PIPELINE.md`).
+Sau khi mỗi nguồn ra bản ghi theo `vi_corpus/common/schema.py`, các stage chung (prepare, language, quality, dedup, finalize) xử lý giống nhau cho mọi nguồn (`scripts/run_pipeline.py`; thiết kế và sơ đồ ở `docs/design/PIPELINE.md`). Nguồn đã có adapter ingest: SEA (3 bộ), stbook, giáo trình, VJOL, VISTA; các nguồn đã chọn khác (`phap_luat`, `anle`, `fineweb2_vi`, `wiki_vi`, `finepdfs_*`, `luanvan_vnu`) chưa có adapter (xem `docs/sources/SOURCES.md`).
 
 ## 4. Vai trò từng gói
 
@@ -112,9 +138,11 @@ Sau khi mỗi nguồn ra bản ghi theo `vi_corpus/common/schema.py`, các stage
 | `sea` | `scripts/sea/download_all.py` | luôn chạy (là bước tải, tự tạo `raw/sea_vi`) |
 | `stbook` | `scripts/stbook/ocr.py` | có `raw/stbook` |
 | `giao_trinh` | `scripts/giao_trinh/extract.py` | có `raw/giao_trinh` |
+| `vjol` | `scripts/vjol/extract.py` | có `raw/vjol` (xử lý MỌI PDF với tham số mặc định) |
+| `vista` | `scripts/vista/extract.py` | có `raw/vista` |
 
 ```bash
-uv run python scripts/run_all.py --data-root /duong/dan/data                    # cả 3 phần theo thứ tự trên
+uv run python scripts/run_all.py --data-root /duong/dan/data                    # cả 5 phần theo thứ tự trên
 uv run python scripts/run_all.py --data-root /duong/dan/data --only sea,giao_trinh
 uv run python scripts/run_all.py --data-root /duong/dan/data --status           # chuyển --status cho từng script
 ```
@@ -123,4 +151,5 @@ uv run python scripts/run_all.py --data-root /duong/dan/data --status           
 - Một phần lỗi không làm dừng các phần sau; cuối cùng in tóm tắt (`sea: ok | stbook: bỏ qua | giao_trinh: lỗi (mã 1)`) và thoát với mã khác 0 nếu có phần lỗi.
 - Muốn chạy nền trên Run:ai: `./scripts/run_with_gpu_keepalive.sh scripts/run_all.py --data-root /duong/dan/data`.
 - Tham số riêng của từng script (ví dụ `--device cpu` của OCR, `--workers` của SEA) không đi qua `run_all`; cần thì chạy trực tiếp script của phần đó.
+- Lưu ý: phần `stbook` của `run_all` vẫn gọi `scripts/stbook/ocr.py` (bộ OCR cũ Paddle + VietOCR), không phải chuỗi VLM đang là engine chính (O-20); chạy `scripts/stbook/ocr_vlm.py` / `run_ocr_vlm.sh` trực tiếp. Pipeline chung (`run_pipeline.py`) không nằm trong `run_all`.
 - Thêm nguồn mới: tạo `vi_corpus/<nguồn>/`, `scripts/<nguồn>/`, thêm một dòng vào `PARTS` và một `SourceSpec` vào `registry.py`.

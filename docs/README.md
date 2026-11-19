@@ -1,20 +1,40 @@
 # vi-corpus-etl
 
-ETL xây **corpus tiếng Việt cho LLM** từ nhiều nguồn, có truy vết nguồn gốc (provenance) cho từng bản ghi.
+ETL xây **corpus tiếng Việt cho LLM** từ nhiều nguồn, có truy vết nguồn gốc (provenance) cho từng bản ghi. Mục tiêu và quy mô: hàng tỷ token sạch (mức làm việc ≥10B, W7), ≥95% truy vết nguồn, dedup exact + fuzzy, knowledge unit cho CPT / SFT / Hybrid.
 
-| Nguồn | Nội dung | Trạng thái |
+| Nguồn | Nội dung | Trạng thái (2026-11-19) |
 |---|---|---|
-| SEA (3 bộ của AI Singapore) | Văn bản web + hội thoại instruct, phần tiếng Việt | Đã có bước **tải** (mục 1–7 bên dưới); bước xử lý: kế hoạch |
-| stbook.vn | Sách NXB Chính trị quốc gia Sự thật (PDF dạng ảnh, tải bằng repo `stbook-crawler`) | Đã có bước **OCR → text** (Phần B) |
-| Giáo trình (Google Drive) | Giáo trình đại học 16 ngành (PDF, pptx), tải bằng rclone | Đang viết bước xử lý (`docs/GIAO_TRINH.md`) |
-| VJOL | Bài báo khoa học (PDF theo thư mục năm + metadata tạp chí), **chỉ xử lý** dữ liệu có sẵn, không crawl | Đã có bước **trích text** (Phần G); `raw/vjol/` |
-| VISTA | Bài báo khoa học (PDF), chỉ xử lý | Kế hoạch: đường dẫn tạm |
+| SEA (3 bộ của AI Singapore) | Văn bản web + hội thoại instruct, phần tiếng Việt | **Tải** xong (Phần A); đọc vào pipeline chung bằng `vi_corpus/sea/reader.py` |
+| stbook.vn | Sách NXB Chính trị quốc gia Sự thật (PDF dạng ảnh) | Đã tải; **OCR** toàn bộ bằng chuỗi VLM đã chạy xong (Phần B) |
+| Giáo trình (Google Drive) | Giáo trình đại học 16 ngành (PDF, pptx, ...), tải bằng rclone | **Trích text** xong (`docs/sources/GIAO_TRINH.md`); OCR thật chưa chạy |
+| VJOL | Bài báo khoa học (PDF theo năm + metadata tạp chí), chỉ xử lý | **Trích text + làm sạch** (Phần G); lớp chữ cả kho đã trích, OCR GPU chờ |
+| VISTA | Bài báo khoa học (PDF), chỉ xử lý, dùng chung bộ xử lý với VJOL | Code xong, chạy cả kho (Phần H); OCR GPU chờ |
+| Nguồn đã chọn, chưa có code | `phap_luat`, `anle` (đã tải), `wiki_vi`, `fineweb2_vi`, `finepdfs_edu_vi`, `finepdfs_vi`, `luanvan_vnu` | Xem `docs/sources/SOURCES.md` |
 
-Chiến lược xử lý (nguồn → parse → ngôn ngữ → làm sạch → chất lượng → loại trùng → knowledge unit → audit):
-xem [`docs/PIPELINE.md`](PIPELINE.md), [`docs/SOURCES.md`](SOURCES.md) và lộ trình [`docs/ROADMAP.md`](ROADMAP.md).
-Các quyết định đã chốt qua từng phiên làm việc: [`docs/DECISION_LOG.md`](DECISION_LOG.md); sơ đồ luồng chính và luồng con: [`docs/diagrams/`](diagrams/).
-Cấu trúc repo và thư mục dữ liệu: [`docs/PROJECT_ARCHITECTURE.md`](PROJECT_ARCHITECTURE.md).
-Phần còn lại của README mô tả phần đã có code: **Phần A** tải dữ liệu SEA, **Phần B** OCR sách stbook, **Phần C** chạy tất cả bằng `scripts/run_all.py`, **Phần G** trích text VJOL, **Phần D** pipeline xử lý end-to-end trên N mẫu (có visualize, chạy nhiều GPU), **Phần E** công cụ hệ thống đọc .doc / .ppt / .djvu, **Phần F** so sánh engine OCR.
+## Mục lục tài liệu (`docs/`)
+
+| Thư mục | File | Nội dung |
+|---|---|---|
+| (gốc) | `README.md` | file này: hướng dẫn chạy từng phần + mục lục |
+| `project/` | [`DECISION_LOG.md`](project/DECISION_LOG.md) | mọi quyết định của chủ dự án theo phiên (ngày, quyết định, lý do, trạng thái) |
+| | [`PROGRESS.md`](project/PROGRESS.md) | tiến độ so với bảng Milestone W1–W8 |
+| | [`ROADMAP.md`](project/ROADMAP.md) | lộ trình theo tuần + thứ tự triển khai code |
+| | [`TASKS.md`](project/TASKS.md) | việc cần chốt (K), cần đo (E), cần code (L) cho pipeline CPT + SFT |
+| | [`SERVER_TASK.md`](project/SERVER_TASK.md) | việc phải chạy trên GPU server, lệnh + cách đọc kết quả (S-0 … S-29) |
+| `design/` | [`PROJECT_ARCHITECTURE.md`](design/PROJECT_ARCHITECTURE.md) | cây thư mục code, cấu trúc `data/`, luồng từng nguồn |
+| | [`PIPELINE.md`](design/PIPELINE.md) | thiết kế pipeline chung, sơ đồ, các đợt thay đổi |
+| `sources/` | [`SOURCES.md`](sources/SOURCES.md) | danh mục nguồn đã chọn (owner, license, domain, trạng thái) |
+| | [`SOURCE_CANDIDATES.md`](sources/SOURCE_CANDIDATES.md) | khảo sát nguồn ứng viên + kiểm chất lượng trên mẫu |
+| | [`GIAO_TRINH.md`](sources/GIAO_TRINH.md), [`VISTA.md`](sources/VISTA.md), [`LUAN_AN.md`](sources/LUAN_AN.md) | chiến lược / kế hoạch xử lý từng nguồn |
+| | [`PERMISSION_EMAILS.md`](sources/PERMISSION_EMAILS.md) | thư xin phép dữ liệu (bản nháp, chờ duyệt) |
+| | [`VJOL_PIPELINE.html`](sources/VJOL_PIPELINE.html) | trang giải thích pipeline VJOL (mở bằng trình duyệt) |
+| `training/` | [`SUGGESTION_v2.md`](training/SUGGESTION_v2.md) | đề xuất pipeline CPT + SFT đầy đủ (bản hiện hành, chưa phải quyết định) |
+| | [`SUGGESTION.md`](training/SUGGESTION.md) | bản đề xuất đầu tiên + thuật ngữ |
+| `diagrams/` | `*.svg` | sơ đồ luồng chính và luồng con (`scripts/draw_diagrams.py` vẽ lại 00–08, 22, 23) |
+
+Quy ước: mọi file `.md` trừ `CLAUDE.md` nằm trong `docs/`; quyết định mới ghi vào `project/DECISION_LOG.md`.
+
+Phần còn lại của README mô tả phần đã có code: **Phần A** tải dữ liệu SEA, **Phần B** OCR sách stbook, **Phần C** chạy tất cả bằng `scripts/run_all.py`, **Phần D** pipeline xử lý end-to-end trên N mẫu (có visualize, chạy nhiều GPU), **Phần E** công cụ hệ thống đọc .doc / .ppt / .djvu, **Phần F** so sánh engine OCR, **Phần G** trích text VJOL, **Phần H** VISTA và chạy cả kho VJOL + VISTA.
 
 ---
 
@@ -387,26 +407,27 @@ cuốn nào kết quả không đổi thì không ghi lại file. Báo cáo ở 
 
 # Phần C — Chạy tất cả bằng `scripts/run_all.py`
 
-Mỗi nguồn có một thư mục script riêng (`scripts/sea/`, `scripts/stbook/`, `scripts/giao_trinh/`, `scripts/vjol/`); `run_all.py` chạy lần lượt script của từng phần
-(SEA tải → stbook OCR → giáo trình trích text → VJOL trích text), truyền `--data-root` cho từng script:
+Mỗi nguồn có một thư mục script riêng (`scripts/sea/`, `scripts/stbook/`, `scripts/giao_trinh/`, `scripts/vjol/`, `scripts/vista/`); `run_all.py` chạy lần lượt script của từng phần
+(SEA tải → stbook OCR → giáo trình trích text → VJOL trích text → VISTA trích text), truyền `--data-root` cho từng script:
 
 ```bash
-uv run python scripts/run_all.py --data-root /duong/dan/data                     # cả 4 phần
+uv run python scripts/run_all.py --data-root /duong/dan/data                     # cả 5 phần
 uv run python scripts/run_all.py --data-root /duong/dan/data --only sea,giao_trinh   # chọn phần
 uv run python scripts/run_all.py --data-root /duong/dan/data --status            # xem tiến độ từng phần
 ```
-- Phần xử lý (`stbook`, `giao_trinh`, `vjol`) thiếu thư mục `raw/...` thì bị bỏ qua, có dòng log nói rõ. `sea` là bước tải nên luôn chạy.
+- Phần xử lý (`stbook`, `giao_trinh`, `vjol`, `vista`) thiếu thư mục `raw/...` thì bị bỏ qua, có dòng log nói rõ. `sea` là bước tải nên luôn chạy.
 - Một phần lỗi không làm dừng các phần sau; cuối cùng in tóm tắt và thoát với mã khác 0 nếu có phần lỗi.
 - Tham số riêng của từng script (`--workers`, `--device cpu`, ...) không đi qua `run_all`; muốn dùng thì chạy trực tiếp script của phần đó.
-- Giáo trình tải bằng `rclone` (xem `docs/GIAO_TRINH.md`), không nằm trong `run_all`.
+- Giáo trình tải bằng `rclone` (xem `docs/sources/GIAO_TRINH.md`), không nằm trong `run_all`.
 - `vjol` qua `run_all` xử lý **mọi** PDF với tham số mặc định (cần server VLM đã chạy sẵn nếu có trang scan); chạy mẫu hoặc nhiều GPU thì gọi thẳng script (Phần G).
+- `stbook` qua `run_all` vẫn gọi bộ OCR cũ (`scripts/stbook/ocr.py`); engine chính là chuỗi VLM (Phần B4), chạy trực tiếp `scripts/stbook/ocr_vlm.py`. Pipeline chung (Phần D) không nằm trong `run_all`.
 
 ---
 
 # Phần D — Pipeline xử lý end-to-end (thử trên N mẫu, có visualize, chạy nhiều GPU)
 
-Lấy mẫu **N bản ghi** từ `raw/` (SEA + stbook) rồi cho chạy qua toàn bộ pipeline, cuối cùng ra bộ sạch, knowledge unit, audit và **report.html** có bản đồ embedding.
-Mục đích: kiểm tra pipeline và chất lượng dữ liệu trước khi chạy toàn bộ. Thiết kế từng stage: [`docs/PIPELINE.md`](PIPELINE.md).
+Lấy mẫu **N bản ghi** từ `raw/` (SEA, stbook, giáo trình, VJOL, VISTA; hai nguồn cuối xem thêm Phần G, H) rồi cho chạy qua toàn bộ pipeline, cuối cùng ra bộ sạch, knowledge unit, audit và **report.html** có bản đồ embedding.
+Mục đích: kiểm tra pipeline và chất lượng dữ liệu trước khi chạy toàn bộ. Thiết kế từng stage: [`docs/design/PIPELINE.md`](design/PIPELINE.md).
 
 | # | Stage (`--until`) | Làm gì | File kết quả trong thư mục run |
 |---|---|---|---|
@@ -477,7 +498,7 @@ uv run python scripts/run_pipeline.py $R                      # 8. finalize: b�
 ```
 Đổi tham số thì không cần làm gì thêm (vân tay tự phát hiện). Sửa **code** của một stage mà chưa tăng hằng số phiên bản của nó, hoặc run cũ chưa có vân tay: thêm `--force-from quality` (xoá kết quả từ `quality` trở đi, giữ các stage trước).
 
-Các tham số mới (đợt code 2026-10-08, chi tiết `docs/PIPELINE.md` mục 6):
+Các tham số mới (đợt code 2026-10-08, chi tiết `docs/design/PIPELINE.md` mục 6):
 
 | Tham số | Ý nghĩa |
 |---|---|
@@ -560,8 +581,8 @@ Giáo trình có một số file định dạng cũ mà thư viện Python khôn
 | LibreOffice (chạy không giao diện) | đổi `.doc` / `.ppt` sang `.docx` / `.pptx` rồi đọc như file mới | `soffice --version` |
 | djvulibre | lấy chữ từ `.djvu` (`djvutxt`), xuất ảnh trang để OCR (`ddjvu`) | `djvutxt --help` |
 
-> Trạng thái: đã chốt cài (`docs/DECISION_LOG.md`, mục Q5); code đọc các định dạng này (D-05) **chưa viết**. Khi có code, thiếu
-> công cụ thì file tương ứng được ghi `skipped="tool_missing"`, lần chạy không bị hỏng; cài xong chạy lại để xử lý các file đó.
+> Trạng thái: đã chốt cài (`docs/project/DECISION_LOG.md`, mục Q5); code đọc các định dạng này đã viết (D-05, `vi_corpus/common/parsers/`, chưa thử trên file thật của Drive). Thiếu
+> công cụ thì file tương ứng được ghi `skipped` (`needs_libreoffice` / `needs_djvulibre`), lần chạy không bị hỏng; cài xong chạy lại với `--retry-skipped` để xử lý các file đó.
 
 Đếm trước xem có bao nhiêu file mỗi định dạng (chạy ở thư mục gốc repo trên server):
 ```bash
@@ -591,7 +612,7 @@ Lưu ý:
 # Phần F — So sánh engine OCR (F-11, chạy trên server GPU)
 
 Engine OCR hiện tại (Paddle detect + VietOCR) không xuất được `² ³`, nháy cong, `– —` và trộn dòng ở trang hai cột. Trước
-khi thay bằng mô hình thị giác - ngôn ngữ, chạy một đợt so sánh theo quy tắc chọn đã chốt trong `docs/DECISION_LOG.md`
+khi thay bằng mô hình thị giác - ngôn ngữ, chạy một đợt so sánh theo quy tắc chọn đã chốt trong `docs/project/DECISION_LOG.md`
 (F-11, O-02). Ứng viên khai báo ở `configs/ocr_bakeoff/engines.json`: `baseline`, `dots_ocr`, `qwen3vl_8b`,
 `qwen3vl_4b` (thêm engine = thêm một mục). `paddleocr_vl` đã bị loại sau lượt chạy đầu (CER tệ hơn baseline có ý nghĩa,
 mất dấu thanh, perplexity 90; O-10, O-11): mục cấu hình và adapter còn trong code nhưng `run_bakeoff.sh` không chạy nó
@@ -668,7 +689,7 @@ vLLM khởi động lâu hơn vài chục giây.
 
 # Cấu trúc code
 
-Xem chi tiết (cây thư mục, cấu trúc `data/`, luồng từng nguồn) trong [`docs/PROJECT_ARCHITECTURE.md`](PROJECT_ARCHITECTURE.md). Tóm tắt:
+Xem chi tiết (cây thư mục, cấu trúc `data/`, luồng từng nguồn) trong [`docs/design/PROJECT_ARCHITECTURE.md`](design/PROJECT_ARCHITECTURE.md). Tóm tắt:
 
 ```
 vi_corpus/
@@ -723,6 +744,43 @@ uv run python scripts/run_pipeline.py --data-root /duong/dan/data --mix vjol=100
 - **Metadata**: `vjol_merged.jsonl` đọc theo luồng một lượt, chỉ giữ bài có trong mẫu, nối qua `article_id`; PDF không có dòng metadata vẫn thành bản ghi (thiếu trường). Có trong cột `meta` của pipeline: `journal_slug`, `journal_title`, `year`, `language`, `doi`, `title`, `keywords`, `article_id`, `galley_id`, và số trang lỗi font phải OCR lại, số trang / dòng bị bỏ.
 - **Lỗi hệ thống** (`ServerDown`, `EngineUnavailable`) dừng cả lượt, không loại trang âm thầm (O-24); PDF đã xong vẫn nằm trong checkpoint. PDF hỏng chỉ tính một lỗi. Quyền `rights_status = unknown` (chỉ gắn nhãn, R-01).
 - **Chưa làm ở bản đầu**: `cmap_healer` (V-10; chữ hỏng do font được xử lý bằng OCR, J-10), parser bố cục (GROBID / Marker / Docling), dedup VJOL với nguồn khác (chạy `scripts/dedup_global.py` sau), bộ lọc trang `baseline` theo tỷ lệ âm tiết (O-27 c, chưa có ngưỡng).
+
+---
+
+# Phần H — VISTA và chạy cả kho VJOL + VISTA
+
+Dữ liệu VISTA: `<data-root>/raw/vista/<năm>/<publication_id>.pdf` (+ `unknown/<sha256>.pdf`) và `raw/vista/metadata/{vista_detail,vista_listing,pdf_download_log}.jsonl`; chép từ MinIO `datacrawl/sti.vista.gov.vn/` (VS-05). Dùng chung bộ xử lý bài báo PDF với VJOL (Phần G): cùng cờ, cùng cách trích 2 lượt, khác ở bố cục thư mục, nối metadata theo `publication_id` (một bản ghi / PDF, `meta.publication_ids`) và luật "PDF do phần mềm OCR đời cũ tạo thì OCR lại cả bài" (`OLD_OCR_PRODUCERS`). Kế hoạch và khảo sát: `docs/sources/VISTA.md`. Sơ đồ: `docs/diagrams/22_vjol_vista.svg`, `23_shard_run.svg`.
+
+```bash
+# trích text VISTA (cùng cờ với VJOL): thử không GPU, một GPU, 4 GPU
+uv run python scripts/vista/extract.py --data-root /duong/dan/data --sample-docs 20 --no-ocr
+DATA_ROOT=/duong/dan/data VLLM_BIN=$(which vllm) ./scripts/vista/run_extract_vlm.sh
+uv run python scripts/vista/check_raw.py --data-root /duong/dan/data      # kiểm bản chép so với nhật ký tải
+uv run python scripts/vista/producer_survey.py --data-root /duong/dan/data # producer PDF còn thiếu trong luật OCR cả bài
+
+# cả đường đi của VISTA (kiểm, khảo sát, mẫu, cả kho, dedup, tổng hợp): từng bước chạy lại được (docs/project/SERVER_TASK.md S-26)
+./scripts/vista/run_vista.sh check|survey|sample-extract|sample-pipeline|full-extract|full-pipeline|dedup|summary
+```
+
+**Đếm trang cần OCR (CPU)** của VJOL + VISTA: `make count-ocr ROOT=<data-root> [JOBS=16] [SOURCES="vjol vista"]` trích `--no-ocr` cho mọi PDF chưa có checkpoint rồi đếm; chỉ tin số khi "CHƯA quét", "bản trích cũ" và "lỗi" đều bằng 0; không chạy khi lượt GPU đang chạy (S-27).
+
+**Pipeline chung trên cả kho, chỉ CPU, chia phần** (PP-01, PP-03; S-28):
+
+```bash
+make pipeline-cpu ROOT=<data-root> [JOBS=128] [SHARDS=128] [SOURCES="vjol vista"] [PIPE_ARGS="..."] [STEP=all|shards|dedup|finalize|summary]
+make pipeline-progress ROOT=<data-root> [SHARDS=128]     # tiến độ + giờ dự kiến xong, chỉ đọc file
+# tương đương từng phần: scripts/run_pipeline.py --mix vjol=... --take-all --shard I/N --until dedup; scripts/dedup_global.py; rồi --global-verdict
+```
+`--take-all` giữ mọi đoạn của nguồn sách (không lấy mẫu); `--shard I/N` (chỉ vjol, vista) chia PDF theo sha256 thành N lần chạy độc lập vừa RAM, kho dấu vân tay riêng từng phần, `dedup_global.py` gộp lại nên trùng giữa các phần và giữa VJOL với VISTA vẫn bị bắt. Bản này tắt perplexity, hyphen-lm và embed, bỏ qua trang `needs_ocr`: chỉ để đo giờ / RAM và xem sớm `report.html`; sau OCR GPU chạy lại từ ingest với `--perplexity-model` và `--hyphen-lm-model` bật. **Chưa chạy với dữ liệu thật** (PP-03).
+
+**Các công cụ khác** (chạy ngoài pipeline):
+
+| Việc | Lệnh | Ghi chú |
+|---|---|---|
+| Kiểm nhanh chất lượng nguồn ứng viên từ mẫu từ xa (NS-11) | `uv run --no-sync --with zstandard python scripts/source_probe/probe_hf.py --data-root <root> [--only a,b] [--n 300]` | không tải cả bộ; ghi `processed/source_probe/summary.json`; kết quả: `docs/sources/SOURCE_CANDIDATES.md` mục 6 |
+| Tải án lệ (NS-03) | `uv run python scripts/anle/download.py --data-root <root>` | ghi `raw/anle/` |
+| Thử OCR nội bộ VNPT trên 30 + 30 PDF (OI-01) | `uv run python scripts/ocr_internal/trial_vjol_vista.py --data-root <root> [--dry-run] [--limit-files N]`, rồi `scripts/ocr_internal/review_report.py` | cần khoá `ACCESS_TOKEN`, `TOKEN_ID`, `TOKEN_KEY` trong `.env`; chưa chạy thật |
+| Vẽ lại sơ đồ pipeline | `uv run python scripts/draw_diagrams.py [--png]` | sửa nội dung trong file đó rồi chạy lại |
 
 ## Giấy phép dữ liệu
 Các bộ SEA dùng giấy phép [ODC-By 1.0](https://opendatacommons.org/licenses/by/1-0/), và người dùng cần tuân thủ [CommonCrawl ToU](https://commoncrawl.org/terms-of-use/).
