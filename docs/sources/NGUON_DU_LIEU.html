@@ -1,0 +1,417 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Các nguồn dữ liệu vi-corpus-etl</title>
+<!--
+  Tệp: docs/sources/NGUON_DU_LIEU.html
+  Mục đích: bản tổng hợp để mang đi báo cáo, gồm các nguồn dữ liệu đã nghiên cứu,
+  chia hai mục "Nguồn đã chốt" và "Nguồn loại bỏ" (kèm ghi chú nguồn chưa quyết).
+  Số liệu lấy từ docs/sources/SOURCES.md, docs/sources/SOURCE_CANDIDATES.md và
+  docs/project/DECISION_LOG.md (các mục Q7, NS-01..NS-22). Ô ghi "chưa đo" nghĩa là
+  tài liệu của dự án chưa có số liệu, không phải ước đoán.
+-->
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #ffffff; --text: #1d232b; --muted: #5d6875;
+    --line: #dde1e7; --accent: #1f6feb; --ok: #1a7f4b; --ok-bg: #e5f5ec;
+    --no: #b42318; --no-bg: #fdeceb; --warn: #9a6700; --warn-bg: #fff4d6;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #12161b; --card: #1b2128; --text: #e6e9ed; --muted: #9aa5b1;
+      --line: #2e3640; --accent: #5aa2ff; --ok: #4cc38a; --ok-bg: #16301f;
+      --no: #ff8b80; --no-bg: #3a1c1a; --warn: #e3b341; --warn-bg: #352b10;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 15px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 1000px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-size: 26px; margin: 0 0 4px; }
+  h2 { font-size: 21px; margin: 40px 0 6px; padding-bottom: 6px; border-bottom: 2px solid var(--line); }
+  h3 { font-size: 17px; margin: 0; }
+  p { margin: 6px 0; }
+  .sub { color: var(--muted); margin-bottom: 16px; }
+  .summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; margin: 16px 0; }
+  .stat { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+  .stat b { display: block; font-size: 22px; }
+  .stat span { color: var(--muted); font-size: 13px; }
+  table.sum { width: 100%; border-collapse: collapse; background: var(--card); border: 1px solid var(--line);
+              border-radius: 10px; overflow: hidden; font-size: 14px; }
+  table.sum th, table.sum td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  table.sum th { background: var(--bg); font-size: 13px; color: var(--muted); }
+  .scroll { overflow-x: auto; }
+  .card { background: var(--card); border: 1px solid var(--line); border-left-width: 5px; border-radius: 10px;
+          padding: 14px 16px; margin: 14px 0; break-inside: avoid; }
+  .card.ok { border-left-color: var(--ok); }
+  .card.no { border-left-color: var(--no); }
+  .card.pend { border-left-color: var(--warn); }
+  .head { display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; justify-content: space-between; }
+  code { background: var(--bg); padding: 1px 5px; border-radius: 4px; font-size: 13px; }
+  .tag { font-size: 12px; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+  .tag.ok { background: var(--ok-bg); color: var(--ok); }
+  .tag.no { background: var(--no-bg); color: var(--no); }
+  .tag.pend { background: var(--warn-bg); color: var(--warn); }
+  dl { margin: 10px 0 0; display: grid; grid-template-columns: 130px 1fr; gap: 6px 12px; }
+  dt { color: var(--muted); font-size: 13px; padding-top: 1px; }
+  dd { margin: 0; }
+  dd ul { margin: 0; padding-left: 18px; }
+  .strong li::marker { color: var(--ok); }
+  .weak li::marker { color: var(--no); }
+  .note { background: var(--warn-bg); border-radius: 8px; padding: 8px 12px; margin-top: 8px; font-size: 14px; }
+  .bigfig { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px 16px; margin: 12px 0; }
+  @media (max-width: 600px) { dl { grid-template-columns: 1fr; } dt { padding-top: 6px; } }
+  @media print { body { background: #fff; } .card, .stat { box-shadow: none; } main { padding: 0; } }
+</style>
+</head>
+<body>
+<main>
+
+<h1>Các nguồn dữ liệu của dự án vi-corpus-etl</h1>
+<p class="sub">Corpus tiếng Việt cho huấn luyện LLM (CPT / SFT). Tổng hợp đến ngày 2026-11-19 từ tài liệu dự án và nhật ký quyết định. Mục tiêu quy mô: hàng tỷ token sạch (mốc làm việc ≥10 tỷ token sạch).</p>
+
+<div class="summary">
+  <div class="stat"><b>14</b><span>nguồn đã chốt (ghi trong SOURCES.md)</span></div>
+  <div class="stat"><b>9</b><span>nguồn / nhóm đã loại bỏ</span></div>
+  <div class="stat"><b>6</b><span>nguồn còn mở (chờ phép / chờ truy cập)</span></div>
+  <div class="stat"><b>4</b><span>nguồn chốt đã tải xong (3 SEA + anle)</span></div>
+</div>
+
+<div class="bigfig">
+  <b>Cách đọc.</b> "Độ lớn" lấy từ số đo thật (API, README, thư mục đã tải) hoặc từ ước tính trên mẫu 300 bản ghi; từng dòng có ghi rõ loại nào. Mọi nguồn có quyền chưa rõ đều vào diện <b>quarantine</b> (giữ riêng, chưa đưa vào bản phát hành) cho đến khi có xác nhận quyền sử dụng.
+</div>
+
+<h2>Bảng tóm tắt nguồn đã chốt</h2>
+<div class="scroll">
+<table class="sum">
+  <tr><th>Nguồn</th><th>Loại nội dung</th><th>Độ lớn</th><th>Quyền</th><th>Trạng thái</th></tr>
+  <tr><td><code>sea_pile_v2</code></td><td>Web (CommonCrawl, đã lọc)</td><td>~132 GB, 253 parquet</td><td>ODC-By + CC ToU</td><td>Đã tải</td></tr>
+  <tr><td><code>sea_lion_pile_v1</code></td><td>Web (mC4)</td><td>~107 GB, 329 jsonl.gz</td><td>ODC-By + CC ToU</td><td>Đã tải</td></tr>
+  <tr><td><code>sea_instruct_2602</code></td><td>Hội thoại hỏi – đáp (SFT)</td><td>~2,7 GB, 12 parquet</td><td>ODC-By (cần xác nhận)</td><td>Đã tải</td></tr>
+  <tr><td><code>fineweb2_vi</code></td><td>Web (HF lọc)</td><td>chưa đo tổng</td><td>ODC-By + CC ToU</td><td>Chốt, chưa tải</td></tr>
+  <tr><td><code>wiki_vi</code></td><td>Bách khoa</td><td>chưa đo</td><td>CC BY-SA 4.0</td><td>Chốt, chưa tải</td></tr>
+  <tr><td><code>phap_luat</code></td><td>Văn bản pháp luật</td><td>4,37 GB; 170.824 + 518.235 văn bản</td><td>CC BY 4.0 + Điều 15 Luật SHTT</td><td>Chốt, chưa tải</td></tr>
+  <tr><td><code>anle</code></td><td>Bản án, án lệ</td><td>1.844 văn bản, 43,9 triệu ký tự, 14,9 MB</td><td>CC BY 4.0 + Điều 15</td><td>Đã tải</td></tr>
+  <tr><td><code>stbook</code></td><td>Sách chính trị – xã hội (OCR)</td><td>chưa ghi số trong tài liệu</td><td>Bản quyền NXB → quarantine</td><td>Đã crawl + có OCR</td></tr>
+  <tr><td><code>giao_trinh</code></td><td>Giáo trình đại học 16 ngành</td><td>≥1.498 file</td><td>Chưa rõ → quarantine</td><td>Có code xử lý</td></tr>
+  <tr><td><code>vjol</code></td><td>Bài báo khoa học</td><td>chưa ghi tổng; chạy thử 10.000 chunk</td><td>Chưa rõ → quarantine</td><td>Có code, chạy mẫu</td></tr>
+  <tr><td><code>vista</code></td><td>Bài báo khoa học</td><td>~283.000 PDF, 234 GB</td><td>Chưa rõ → quarantine</td><td>Code xong, chờ chép lên server</td></tr>
+  <tr><td><code>luanvan_vnu</code></td><td>Luận văn / luận án ĐHQGHN (phần mở)</td><td>~15.700 mục, ~23 GB, ~0,5 tỷ token (ước)</td><td>Chưa rõ → quarantine</td><td>Chốt, chưa tải</td></tr>
+  <tr><td><code>finepdfs_edu_vi</code></td><td>PDF giáo dục</td><td>131.190 văn bản, ~1,2 tỷ token (ước)</td><td>ODC-By + CC ToU</td><td>Chốt, chưa tải</td></tr>
+  <tr><td><code>finepdfs_vi</code> (phần lọc)</td><td>PDF giáo dục + nghiên cứu</td><td>thêm ~70 nghìn file, ~0,4 tỷ token (ước thô)</td><td>ODC-By + CC ToU</td><td>Chốt, chưa tải, chưa có bước lọc</td></tr>
+</table>
+</div>
+
+<!-- ===================================================== -->
+<h2>1. Nguồn đã chốt</h2>
+<p class="sub">Chia theo nhóm: web quy mô lớn, tri thức có cấu trúc, sách / giáo trình, khoa học, PDF giáo dục.</p>
+
+<h3 style="margin-top:20px">1.1 Web quy mô lớn và SFT</h3>
+
+<div class="card ok">
+  <div class="head"><h3>SEA-PILE v2 <code>sea_pile_v2</code></h3><span class="tag ok">Chốt · đã tải</span></div>
+  <dl>
+    <dt>Mô tả</dt><dd>AI Singapore, HF <code>aisingapore/SEA-PILE-v2</code>, phần <code>vi/</code>. Văn bản web tiếng Việt từ CommonCrawl đã lọc: tin tức, blog, diễn đàn, trang doanh nghiệp.</dd>
+    <dt>Độ lớn</dt><dd>~132 GB, 253 file parquet (số đo thật trên ổ đĩa).</dd>
+    <dt>Lý do chốt</dt><dd>Nền khối lượng chính của corpus; đã tải xong, quyền rõ (ODC-By). Phần tải gốc giữ nguyên từng byte để dễ kiểm lineage.</dd>
+    <dt>Điểm mạnh</dt><dd class="strong"><ul><li>Rất lớn, lọc sạch hơn mC4 cũ</li><li>License rõ, tải được tự động</li></ul></dd>
+    <dt>Điểm yếu</dt><dd class="weak"><ul><li>Tri thức loãng, lẫn quảng cáo, bán hàng, tin vặt</li><li>Trùng nhiều với FineWeb-2 và SEA-PILE v1</li><li>Bộ lọc chất lượng hiện chưa bắt spam cờ bạc / văn bản xào</li></ul></dd>
+    <dt>Cần lưu ý</dt><dd>Phải dedup toàn cục (2 vòng, exact + fuzzy) và thêm mã chặn spam trước khi dùng; ưu tiên giữ bản SEA-PILE khi trùng với FineWeb-2. Chấp nhận thêm điều khoản CommonCrawl ToU.</dd>
+  </dl>
+</div>
+
+<div class="card ok">
+  <div class="head"><h3>SEA-PILE v1 (mC4) <code>sea_lion_pile_v1</code></h3><span class="tag ok">Chốt · đã tải</span></div>
+  <dl>
+    <dt>Mô tả</dt><dd>HF <code>aisingapore/SEA-PILE-v1</code>, <code>sea-pile-mc4/vi/</code> (trên HF chỉ có phần mC4 của "SEA-LION-Pile v1").</dd>
+    <dt>Độ lớn</dt><dd>~107 GB, 329 file jsonl.gz.</dd>
+    <dt>Lý do chốt</dt><dd>Đã tải xong, bổ sung khối lượng web; dedup sẽ loại phần trùng.</dd>
+    <dt>Điểm mạnh</dt><dd class="strong"><ul><li>Khối lượng lớn, miễn phí, quyền rõ</li></ul></dd>
+    <dt>Điểm yếu</dt><dd class="weak"><ul><li>Cách lọc cũ, nhiễu hơn v2</li><li>Trùng nhiều với SEA-PILE v2 và CulturaX (nên không lấy thêm CulturaX)</li></ul></dd>
+    <dt>Cần lưu ý</dt><dd>Là nguồn nên đặt ưu tiên thấp nhất khi trùng. Mỗi record phải ghi rõ nguồn con để truy lineage.</dd>
+  </dl>
+</div>
+
+<div class="card ok">
+  <div class="head"><h3>SEA-Instruct-2602 <code>sea_instruct_2602</code></h3><span class="tag ok">Chốt · đã tải</span></div>
+  <dl>
+    <dt>Mô tả</dt><dd>HF <code>aisingapore/SEA-Instruct-2602</code> (gated), thư mục <code>Vietnamese/</code>. Hội thoại hỏi – đáp tiếng Việt đa chủ đề.</dd>
+    <dt>Độ lớn</dt><dd>~2,7 GB, 12 file parquet.</dd>
+    <dt>Lý do chốt</dt><dd>Nguồn instruction sẵn có cho giai đoạn SFT; nhỏ, rẻ.</dd>
+    <dt>Điểm mạnh</dt><dd class="strong"><ul><li>Đúng định dạng SFT, đa lĩnh vực</li></ul></dd>
+    <dt>Điểm yếu</dt><dd class="weak"><ul><li>Không phải văn bản kiến thức liền mạch, không dùng cho CPT</li><li>License ODC-By ghi "cần xác nhận"; dữ liệu gated</li></ul></dd>
+    <dt>Cần lưu ý</dt><dd>Cột <code>conversations</code> là chuỗi kiểu Python (nháy đơn, <code>None</code>): đọc bằng <code>ast.literal_eval</code>, không dùng <code>json.loads</code>. Cần token HF để tải.</dd>
+  </dl>
+</div>
+
+<div class="card ok">
+  <div class="head"><h3>FineWeb-2 tiếng Việt <code>fineweb2_vi</code></h3><span class="tag ok">Chốt 2026-10-08 · chưa tải</span></div>
+  <dl>
+    <dt>Mô tả</dt><dd>HF <code>HuggingFaceFW/fineweb-2</code>, config <code>vie_Latn</code>. Web tiếng Việt từ CommonCrawl do Hugging Face lọc.</dd>
+    <dt>Độ lớn</dt><dd>Chưa đo tổng trong tài liệu dự án (FineWeb2-HQ, tập con 10%, là 4,0 triệu văn bản / 63 GB).</dd>
+    <dt>Lý do chốt</dt><dd>Quyền rõ, dễ lấy, thêm khối lượng web chất lượng khá (quyết định Q7).</dd>
+    <dt>Điểm mạnh</dt><dd class="strong"><ul><li>Lọc sẵn, định dạng parquet, không gated</li></ul></dd>
+    <dt>Điểm yếu</dt><dd class="weak"><ul><li>Mẫu 300 bản: 3–10% chứa từ khoá cờ bạc, nhiều trang quảng cáo dịch vụ</li><li>Trùng nhiều với SEA-PILE</li></ul></dd>
+    <dt>Cần lưu ý</dt><dd>Dedup toàn cục xử lý trùng; xếp ưu tiên sau SEA-PILE. Cần mã chặn spam cờ bạc / người lớn trong stage quality (chưa code, cần chủ dự án đồng ý).</dd>
+  </dl>
+</div>
+
+<h3 style="margin-top:28px">1.2 Tri thức có cấu trúc: bách khoa, pháp luật, tư pháp</h3>
+
+<div class="card ok">
+  <div class="head"><h3>Wikipedia tiếng Việt <code>wiki_vi</code></h3><span class="tag ok">Chốt 2026-10-08 · chưa tải</span></div>
+  <dl>
+    <dt>Mô tả</dt><dd>HF <code>wikimedia/wikipedia</code>, config <code>*.vi</code>, bản dump mới nhất. Bài bách khoa mọi lĩnh vực.</dd>
+    <dt>Độ lớn</dt><dd>Chưa đo trong tài liệu dự án.</dd>
+    <dt>Lý do chốt</dt><dd>Quyền rõ nhất (CC BY-SA 4.0 + GFDL), kiến thức có cấu trúc, chất lượng biên tập cao.</dd>
+    <dt>Điểm mạnh</dt><dd class="strong"><ul><li>License sạch, văn phong chuẩn, kiến thức đa lĩnh vực</li></ul></dd>
+    <dt>Điểm yếu</dt><dd class="weak"><ul><li>Nhiều bài sơ khai do bot tạo (địa danh, loài sinh vật)</li><li>Mô hình lớn đã học Wikipedia nhiều lần</li></ul></dd>
+    <dt>Cần lưu ý</dt><dd>CC BY-SA là <b>share-alike</b>: cần giữ ghi nguồn và xem xét nghĩa vụ khi phát hành lại. Nên lọc bài sơ khai.</dd>
+  </dl>
+</div>
+
+<div class="card ok">
+  <div class="head"><h3>Văn bản pháp luật <code>phap_luat</code></h3><span class="tag ok">Chốt toàn bộ (NS-01) · chưa tải</span></div>
+  <dl>
+    <dt>Mô tả</dt><dd>HF <code>th1nhng0/vietnamese-legal-documents</code> (cào từ vbpl.vn, Bộ Tư pháp). Luật, nghị định, thông tư, quyết định; kèm metadata và quan hệ giữa văn bản.</dd>
+    <dt>Độ lớn</dt><dd>4,37 GB parquet; config <code>content</code> 170.824 văn bản (HTML), <code>legacy_content</code> 518.235 văn bản (text thuần, trùng một phần). 732 văn bản không có nội dung.</dd>
+    <dt>Lý do chốt</dt><dd>Chủ dự án: "cứ dùng full, quan trọng là chất lượng data". Tri thức pháp luật có cấu trúc; quyền rõ (bộ tổng hợp CC BY 4.0, văn bản pháp luật không được bảo hộ theo Điều 15 Luật SHTT).</dd>
+    <dt>Điểm mạnh</dt><dd class="strong"><ul><li>Quyền sử dụng rõ nhất trong các nguồn</li><li>Văn phong chính xác, metadata đầy đủ</li></ul></dd>
+    <dt>Điểm yếu</dt><dd class="weak"><ul><li>Văn phong khuôn mẫu, lặp lại nhiều (văn bản sửa đổi chép lại)</li><li>Dễ lấn át nguồn khác nếu không chỉnh trọng số</li></ul></dd>
+    <dt>Cần lưu ý</dt><dd>Gộp <code>content</code> và <code>legacy_content</code> theo <code>so_ky_hieu</code> trước khi dedup; HTML cần trafilatura. Tỉ lệ pháp luật trong hỗn hợp quyết ở bước dựng mix, không cắt ở mức corpus.</dd>
+  </dl>
+</div>
+
+<div class="card ok">
+  <div class="head"><h3>Bản án và án lệ <code>anle</code></h3><span class="tag ok">Chốt · đã tải (NS-03)</span></div>
+  <dl>
+    <dt>Mô tả</dt><dd>HF <code>tmquan/anle-toaan-gov-vn</code> (ViLA đã crawl cổng anle.toaan.gov.vn ngày 2026-07-21). Chỉ 9 văn bản là án lệ chính thức, 1.835 là bản án / quyết định gốc.</dd>
+    <dt>Độ lớn</dt><dd>1.844 văn bản, ~43,9 triệu ký tự markdown, 14,9 MB. Rất nhỏ.</dd>
+    <dt>Lý do chốt</dt><dd>Dùng lại bản ViLA đã công bố, không crawl lại; văn bản tư pháp thuộc Điều 15 Luật SHTT.</dd>
+    <dt>Điểm mạnh</dt><dd class="strong"><ul><li>Văn bản tư pháp thật, lập luận pháp lý dài</li><li>Đã tải, kích thước nhỏ</li></ul></dd>
+    <dt>Điểm yếu</dt><dd class="weak"><ul><li>Rất nhỏ so với mục tiêu</li><li>Nhãn <code>category</code>, <code>court_level</code> do regex + LLM, có nhiễu</li><li>Ẩn danh "có thể chưa đầy đủ"</li></ul></dd>
+    <dt>Cần lưu ý</dt><dd>Phải <b>quét thông tin cá nhân</b> trước khi dùng. Lọc theo <code>confidence</code>. Cổng hiện có 91 án lệ, 3 án lệ ngày 2026-09-24 có thể chưa có trong bộ. Chưa có bước ingest.</dd>
+  </dl>
+</div>
+
+<h3 style="margin-top:28px">1.3 Sách và giáo trình</h3>
+
+<div class="card ok">
+  <div class="head"><h3>Sách stbook.vn <code>stbook</code></h3><span class="tag ok">Chốt · đã crawl, có OCR</span></div>
+  <dl>
+    <dt>Mô tả</dt><dd>Sách của NXB Chính trị quốc gia Sự thật (lý luận chính trị, lịch sử, pháp luật, kinh tế – xã hội, văn hoá, tiểu sử). PDF dạng ảnh, tải bằng crawler nội bộ, OCR tại chỗ.</dd>
+    <dt>Độ lớn</dt><dd>Chưa có số tổng trong tài liệu. Ước tính thời gian OCR toàn bộ: ~16 giờ trên 4 GPU A100 (đo 1.000 trang, ~1,55 trang/giây/GPU).</dd>
+    <dt>Lý do chốt</dt><dd>Sách biên soạn kỹ, văn phong chuẩn, kiến thức dày; nguồn sách duy nhất dạng này đã có sẵn.</dd>
+    <dt>Điểm mạnh</dt><dd class="strong"><ul><li>Chất lượng nội dung cao, văn phong biên tập</li><li>Có quy trình OCR kiểm soát (VLM cascade + guard từng trang)</li></ul></dd>
+    <dt>Điểm yếu</dt><dd class="weak"><ul><li>Bản quyền NXB, chưa rõ quyền tái sử dụng</li><li>Chủ đề lệch chính trị – xã hội</li><li>Chất lượng phụ thuộc OCR; guard loại ~0,6% trang</li></ul></dd>
+    <dt>Cần lưu ý</dt><dd><div class="note">Quyền chưa rõ → <b>quarantine</b>. Chạy OCR thật trên GPU chưa được kiểm chứng ngoài mô phỏng; sau OCR chạy <code>filter_ocr_pages.py</code> để loại trang sai. Sách ngoại ngữ trong tập cần lọc theo ngôn ngữ từng trang.</div></dd>
+  </dl>
+</div>
+
+<div class="card ok">
+  <div class="head"><h3>Giáo trình đại học <code>giao_trinh</code></h3><span class="tag ok">Chốt · đã có code xử lý</span></div>
+  <dl>
+    <dt>Mô tả</dt><dd>Thư mục Google Drive "Tổng hợp giáo trình Đại học": 16 ngành (kỹ thuật, CNTT, kinh tế, y dược...). PDF là chính, một ít pptx / ppt / docx / djvu. Hầu hết là shortcut tới file của người khác, tải bằng rclone.</dd>
+    <dt>Độ lớn</dt><dd>≥1.498 file (chưa ghi dung lượng / token).</dd>
+    <dt>Lý do chốt</dt><dd>Nội dung giáo trình đại học đa ngành, kiến thức chuyên sâu, đúng mục tiêu STEM. Chủ dự án quyết định <b>giữ cả sách tiếng Anh</b>.</dd>
+    <dt>Điểm mạnh</dt><dd class="strong"><ul><li>Kiến thức học thuật dày, nhiều ngành</li><li>Có lớp chữ nên nhiều file không cần OCR</li></ul></dd>
+    <dt>Điểm yếu</dt><dd class="weak"><ul><li>Quyền chưa rõ, có sách từ PDFDrive, z-lib (nguồn vi phạm bản quyền tiềm tàng)</li><li>Lẫn tiếng Anh và định dạng đa dạng</li></ul></dd>
+    <dt>Cần lưu ý</dt><dd><div class="note">Rủi ro pháp lý cao nhất trong các nguồn đã chốt → <b>quarantine</b>, cần quyết định trước khi phát hành. Chỉ tải bằng <code>rclone</code> (gdown không dùng được). OCR giáo trình chưa nối với VLM cascade.</div></dd>
+  </dl>
+</div>
+
+<div class="card ok">
+  <div class="head"><h3>Luận văn / luận án ĐHQGHN, phần mở <code>luanvan_vnu</code></h3><span class="tag ok">Chốt phần ~31% (NS-12) · chưa tải</span></div>
+  <dl>
+    <dt>Mô tả</dt><dd>repository.vnu.edu.vn (DSpace 7.4): ~50.400 luận văn / luận án trong 115.028 mục. Chỉ lấy phần truy cập ẩn danh, không đăng nhập.</dd>
+    <dt>Độ lớn</dt><dd>~15.700 mục, ~23 GB, ~0,5 tỷ token (ước thô; tỉ lệ mở 31%, khoảng tin cậy 21–41% từ mẫu 76 mục). Tải ~12 giờ ở ≤2 yêu cầu/giây.</dd>
+    <dt>Lý do chốt</dt><dd>Đường hợp lệ duy nhất để lấy toàn văn; PDF xuất từ Word có lớp chữ sạch, gần như không cần GPU.</dd>
+    <dt>Điểm mạnh</dt><dd class="strong"><ul><li>Văn bản học thuật dài, đa ngành, chất lượng chữ tốt</li><li>Không cần OCR</li></ul></dd>
+    <dt>Điểm yếu</dt><dd class="weak"><ul><li>Chỉ ~31% mở; mở lệch theo năm (2015–2017 ~80%, 2018–2021 ~100% đóng, luận án tiến sĩ đóng)</li><li>Số liệu từ mẫu nhỏ, sai số lớn</li></ul></dd>
+    <dt>Cần lưu ý</dt><dd><div class="note">Quyền chưa rõ (<code>dc.rights</code> trống) → <b>quarantine</b>. Tuân thủ robots.txt, không đăng nhập, không né hạn chế. Lọc mục mở qua <code>accessStatus</code>. Phần 69% còn lại phải xin LIC (thư nháp chưa gửi).</div></dd>
+  </dl>
+</div>
+
+<h3 style="margin-top:28px">1.4 Bài báo khoa học</h3>
+
+<div class="card ok">
+  <div class="head"><h3>VJOL <code>vjol</code></h3><span class="tag ok">Chốt · có code, chạy mẫu</span></div>
+  <dl>
+    <dt>Mô tả</dt><dd>vjol.info.vn: bài báo trên các tạp chí khoa học Việt Nam, đa ngành, kèm tiêu đề, tóm tắt, từ khoá; một phần tiếng Anh. Chỉ xử lý PDF, không crawl.</dd>
+    <dt>Độ lớn</dt><dd>Chưa ghi tổng trong tài liệu; ~1/3 bài không có PDF. Đã chạy thử 3.000 bài và 10.000 chunk trên server.</dd>
+    <dt>Lý do chốt</dt><dd>Nguồn khoa học tiếng Việt nội địa lớn nhất có sẵn; nội dung chuyên sâu đúng mục tiêu STEM.</dd>
+    <dt>Điểm mạnh</dt><dd class="strong"><ul><li>Kiến thức khoa học bản địa, có metadata tốt (DOI, từ khoá)</li><li>Có cơ chế riêng cho lỗi font và OCR</li></ul></dd>
+    <dt>Điểm yếu</dt><dd class="weak"><ul><li>Nhiều PDF lỗi font (chữ trông như tiếng Việt nhưng sai: "Baỷng, hieọu"), bản scan</li><li>Cần OCR GPU cho nhiều trang; chất lượng chưa đo hết</li></ul></dd>
+    <dt>Cần lưu ý</dt><dd><div class="note">Bản quyền thuộc tạp chí / tác giả → <b>quarantine</b>. Phải dùng bộ phát hiện font lỗi và OCR lại trang lỗi; trang bị OCR hỏng bị loại chứ không đưa vào. Một số cải tiến (J-25..J-49) đã viết code nhưng chưa đo trên server.</div></dd>
+  </dl>
+</div>
+
+<div class="card ok">
+  <div class="head"><h3>VISTA <code>vista</code></h3><span class="tag ok">Chốt · code V1 xong, chờ chép lên server</span></div>
+  <dl>
+    <dt>Mô tả</dt><dd>sti.vista.gov.vn (Cục Thông tin KH&amp;CN quốc gia): bài báo khoa học trên các tạp chí trong nước, đa ngành. Chép từ MinIO <code>datacrawl/sti.vista.gov.vn/</code>.</dd>
+    <dt>Độ lớn</dt><dd>323.513 bài có metadata, ~283.000 PDF, 234 GB (số đo).</dd>
+    <dt>Lý do chốt</dt><dd>Quy mô khoa học lớn nhất trong các nguồn tự xử lý; dùng chung code với VJOL nên chi phí thêm thấp.</dd>
+    <dt>Điểm mạnh</dt><dd class="strong"><ul><li>Rất lớn, đa ngành, có metadata để nối</li></ul></dd>
+    <dt>Điểm yếu</dt><dd class="weak"><ul><li>Nhiều bản scan trước 2009 và lớp chữ OCR cũ mất dấu tiếng Việt</li><li>Một PDF có thể thuộc nhiều bài (<code>shared_pdf</code>)</li></ul></dd>
+    <dt>Cần lưu ý</dt><dd><div class="note">Quyền chưa rõ → <b>quarantine</b>. GPU chỉ chạy sau khi hoàn tất VJOL; chia 234 GB thành các shard để vừa RAM. Chưa chạy trên dữ liệu VISTA thật.</div></dd>
+  </dl>
+</div>
+
+<h3 style="margin-top:28px">1.5 PDF giáo dục từ web (FinePDFs)</h3>
+
+<div class="card ok">
+  <div class="head"><h3>FinePDFs-Edu tiếng Việt <code>finepdfs_edu_vi</code></h3><span class="tag ok">Chốt (NS-13) · chưa tải</span></div>
+  <dl>
+    <dt>Mô tả</dt><dd>HF <code>HuggingFaceFW/finepdfs-edu</code>, <code>vie_Latn</code>: PDF trên web, Hugging Face trích chữ, giữ ~11% file có điểm "giáo dục" cao nhất.</dd>
+    <dt>Độ lớn</dt><dd>131.190 văn bản, 2,99 GB parquet (đo), ~1,2 tỷ token Qwen3 (ước từ mẫu 300).</dd>
+    <dt>Lý do chốt</dt><dd>Nguồn mới tốt nhất trong lần kiểm mẫu: 81% band chất lượng A, nhiều lời giải SGK, đề thi, giáo án, tài liệu hướng dẫn.</dd>
+    <dt>Điểm mạnh</dt><dd class="strong"><ul><li>Đậm kiến thức STEM / giáo dục, LaTeX hỏng chỉ 7%</li><li>Rẻ: 3 file parquet, không gated</li></ul></dd>
+    <dt>Điểm yếu</dt><dd class="weak"><ul><li>10% tiếng Anh / song ngữ; 21% bị cắt cụt (PDF dài)</li><li>Classifier giáo dục vẫn cho lọt tài liệu tôn giáo, biểu mẫu, bài phát biểu</li></ul></dd>
+    <dt>Cần lưu ý</dt><dd>Khi trùng với PDF tự trích (VJOL, VISTA, giáo trình, luận văn) thì <b>giữ bản tự trích</b> (có metadata, OCR cascade). Bỏ bản <code>is_truncated</code> hoặc đánh dấu. Quyền: ODC-By + CommonCrawl ToU, nhưng từng PDF gốc có bản quyền riêng của chủ file.</dd>
+  </dl>
+</div>
+
+<div class="card ok">
+  <div class="head"><h3>FinePDFs đầy đủ, chỉ nhóm giáo dục + nghiên cứu <code>finepdfs_vi</code></h3><span class="tag ok">Chốt có điều kiện (NS-18/20/21) · chưa tải</span></div>
+  <dl>
+    <dt>Mô tả</dt><dd>HF <code>HuggingFaceFW/finepdfs</code>, <code>vie_Latn</code>. Chỉ lấy 2 nhóm: giáo dục (bài giảng, đề thi, giáo án, lời giải, giáo trình) và nghiên cứu (bài báo, luận văn, báo cáo khoa học). Bỏ phần còn lại.</dd>
+    <dt>Độ lớn</dt><dd>Toàn bộ: 1.229.248 văn bản, ~7,4 tỷ token. Phần giữ lại: thêm ~70 nghìn file, ~0,4 tỷ token (ước thô từ mẫu nhỏ, sai số lớn) sau khi trừ phần đã có trong Edu.</dd>
+    <dt>Lý do chốt</dt><dd>Hai nhóm này đúng mục tiêu kiến thức; phần giáo dục còn thiếu và nhóm nghiên cứu (điểm edu thấp) hầu như chưa có trong bản Edu.</dd>
+    <dt>Điểm mạnh</dt><dd class="strong"><ul><li>Thêm bài báo / luận văn đã có chữ sẵn từ web</li></ul></dd>
+    <dt>Điểm yếu</dt><dd class="weak"><ul><li>~90% bộ là hành chính, tài chính, biểu mẫu... không cần</li><li>24% mẫu bị gắn nhãn lặp (bảng biểu)</li></ul></dd>
+    <dt>Cần lưu ý</dt><dd><div class="note"><b>Phải có bước lọc chủ đề chạy trước pipeline</b> (LLM gán nhãn vài nghìn mẫu → huấn luyện bộ phân loại nhỏ → chạy cả bộ). Bước này chưa code. Bỏ các file trùng <code>id</code> với <code>finepdfs_edu_vi</code>.</div></dd>
+  </dl>
+</div>
+
+<!-- ===================================================== -->
+<h2>2. Nguồn loại bỏ</h2>
+<p class="sub">Các nguồn đã được xem xét, đo mẫu hoặc cân nhắc và chủ dự án quyết định không dùng. Ghi lại lý do để tránh xét lại.</p>
+
+<div class="card no">
+  <div class="head"><h3>HPLT 3.0 tiếng Việt <code>hplt3_vi</code></h3><span class="tag no">Loại (NS-16)</span></div>
+  <dl>
+    <dt>Mô tả</dt><dd>Web crawl riêng (có Internet Archive), có điểm chất lượng WDS; giấy phép CC0.</dd>
+    <dt>Độ lớn</dt><dd>~260 GB nén cho tiếng Việt; số token chưa ước.</dd>
+    <dt>Lý do loại</dt><dd>Mẫu 300 bản ở nhóm điểm cao nhất: <b>35% có từ khoá cờ bạc</b> (29% khi phân loại thô), văn bản xào từ, tán gẫu diễn đàn, 39% bản dính câu. Điểm WDS đo hình thức trang, không đo nội dung; kiến thức chỉ ~8–13%. Phần web chung đã có SEA-PILE và FineWeb-2.</dd>
+    <dt>Điểm mạnh</dt><dd class="strong"><ul><li>CC0, lớn, có nhãn register</li></ul></dd>
+    <dt>Điểm yếu</dt><dd class="weak"><ul><li>Spam, trùng, tri thức thấp</li></ul></dd>
+  </dl>
+</div>
+
+<div class="card no">
+  <div class="head"><h3>FineWeb2-HQ <code>epfml/FineWeb2-HQ</code></h3><span class="tag no">Loại (NS-17)</span></div>
+  <dl>
+    <dt>Mô tả</dt><dd>Top 10% FineWeb-2 theo classifier "giàu kiến thức".</dd>
+    <dt>Độ lớn</dt><dd>4,0 triệu văn bản, 63 GB; ước ~3,6 tỷ token (đo trên mẫu).</dd>
+    <dt>Lý do loại</dt><dd>Là tập con của FineWeb-2 (đã chốt) nên không thêm dữ liệu mới; mẫu cho thấy chủ yếu tin tức, giải trí, không phải STEM. Pipeline đã có stage quality + LLM judge làm việc chấm điểm. Chủ dự án: "ta có FineWeb2 rồi + module chấm chất lượng rồi thì thêm cái này làm gì".</dd>
+    <dt>Điểm mạnh</dt><dd class="strong"><ul><li>Viết tốt, ít spam (2%)</li></ul></dd>
+    <dt>Điểm yếu</dt><dd class="weak"><ul><li>Lệch tin tức, trùng hoàn toàn với nguồn đã có</li></ul></dd>
+  </dl>
+</div>
+
+<div class="card no">
+  <div class="head"><h3>vi_pubmed <code>VietAI/vi_pubmed</code></h3><span class="tag no">Loại (NS-14)</span></div>
+  <dl>
+    <dt>Mô tả</dt><dd>20,1 triệu tóm tắt PubMed dịch máy sang tiếng Việt (cột <code>en</code> + <code>vi</code>).</dd>
+    <dt>Độ lớn</dt><dd>44 GB, ước ~2,7 tỷ token.</dd>
+    <dt>Lý do loại</dt><dd><b>59% bản dịch bị cắt giữa câu</b> (bản Anh chỉ 0,3%); bản Việt chỉ dài 0,65 lần bản gốc; 4% có ký tự lạ "⁇"; chỉ là tóm tắt ngắn (trung vị 137 token); kiến thức y sinh mô hình đã học từ tiếng Anh; license gốc theo điều khoản NLM chưa rõ.</dd>
+    <dt>Điểm mạnh</dt><dd class="strong"><ul><li>Khối lượng lớn, miền y sinh</li></ul></dd>
+    <dt>Điểm yếu</dt><dd class="weak"><ul><li>Dịch máy hỏng, ngắn, license chưa rõ</li></ul></dd>
+  </dl>
+</div>
+
+<div class="card no">
+  <div class="head"><h3>Cosmopedia dịch <code>thangvip/cosmopedia_vi_*</code></h3><span class="tag no">Loại (NS-19)</span></div>
+  <dl>
+    <dt>Mô tả</dt><dd>Sách giáo khoa tổng hợp do Mixtral sinh, dịch máy sang tiếng Việt (toán, Khan Academy, OpenStax).</dd>
+    <dt>Độ lớn</dt><dd>~345 nghìn văn bản, ~0,27 tỷ token.</dd>
+    <dt>Lý do loại</dt><dd>Mẫu: 6–13% bản dịch rỗng; <b>LaTeX hỏng ở 80% bài có công thức</b> (<code>\ frac</code>, <code>\ cdot</code>); 84–91% bài thiếu khoảng trắng sau dấu chấm; thuật ngữ dịch sai. Văn do AI viết rồi dịch máy, nên giá trị kiến thức thấp. Chủ dự án: "bỏ cái cosmopedia".</dd>
+    <dt>Điểm mạnh</dt><dd class="strong"><ul><li>Nhiều bài toán / khoa học theo cấu trúc sư phạm</li></ul></dd>
+    <dt>Điểm yếu</dt><dd class="weak"><ul><li>Tổng hợp + dịch máy, công thức hỏng, license không ghi</li></ul></dd>
+  </dl>
+</div>
+
+<div class="card no">
+  <div class="head"><h3>MetaMathQA vi và Orca-Math vi (SFT toán)</h3><span class="tag no">Loại (NS-15)</span></div>
+  <dl>
+    <dt>Mô tả</dt><dd>Các bộ <code>5CD-AI/...MetaMathQA...translated</code> (395k) và <code>...orca-math...200k</code>: bài toán cấp 1–3 do GPT-3.5/4 sinh, dịch sang tiếng Việt.</dd>
+    <dt>Độ lớn</dt><dd>~0,09 tỷ và ~0,07 tỷ token (ước).</dd>
+    <dt>Lý do loại</dt><dd>Chủ dự án: "mấy cái tư duy đơn giản này nó biết rồi" (mô hình 27B nội bộ gần như chắc đã học loại dữ liệu này). LaTeX hỏng 7% / 25%, thuật ngữ dịch sai, điều khoản OpenAI có thể hạn chế dùng thương mại, cần quét contamination (gốc từ GSM8K / MATH).</dd>
+    <dt>Điểm mạnh</dt><dd class="strong"><ul><li>Dịch khá trôi chảy, đúng định dạng SFT</li></ul></dd>
+    <dt>Điểm yếu</dt><dd class="weak"><ul><li>Dễ, lặp, nguy cơ rò đề, quyền chưa rõ</li></ul></dd>
+    <dt>Ghi chú</dt><dd>Xét lại ở giai đoạn SFT nếu bài đánh giá toán tiếng Việt cho thấy mô hình yếu.</dd>
+  </dl>
+</div>
+
+<div class="card no">
+  <div class="head"><h3>Wikisource tiếng Việt <code>wikisource_vi</code></h3><span class="tag no">Loại (NS-22, đổi NS-02)</span></div>
+  <dl>
+    <dt>Mô tả</dt><dd>Dump Wikisource vi (CC BY-SA 4.0 + GFDL). Chủ dự án đã thử lấy đủ 15.899 trang bằng API.</dd>
+    <dt>Độ lớn</dt><dd>129,6 triệu ký tự (~28,3 triệu từ), ước ~50–60 triệu token, khoảng 0,5% mục tiêu.</dd>
+    <dt>Lý do loại</dt><dd>Quá nhỏ; nội dung chủ yếu thơ văn cũ, Hán Việt và văn bản pháp luật đã có trong <code>phap_luat</code>; có trùng cha – con (17 bộ luật). Dump thiếu gần nửa nội dung (7.269 / 15.896 trang chính là stub). Đã xoá dữ liệu thử.</dd>
+    <dt>Điểm mạnh</dt><dd class="strong"><ul><li>License sạch</li></ul></dd>
+    <dt>Điểm yếu</dt><dd class="weak"><ul><li>Nhỏ, lệch văn học cổ, trùng</li></ul></dd>
+  </dl>
+</div>
+
+<div class="card no">
+  <div class="head"><h3>Các phần của FinePDFs đầy đủ ngoài giáo dục / nghiên cứu</h3><span class="tag no">Loại (NS-18/20)</span></div>
+  <dl>
+    <dt>Mô tả</dt><dd>~90% của bộ 1,23 triệu văn bản: văn bản hành chính, pháp luật (27%), báo cáo tài chính, họp cổ đông (10%), biểu mẫu, thời khoá biểu, tuyển dụng, tôn giáo, catalog.</dd>
+    <dt>Độ lớn</dt><dd>~6,6 tỷ trong tổng ~7,4 tỷ token (ước).</dd>
+    <dt>Lý do loại</dt><dd>Chủ dự án: "tài chính thì không cần, hành chính pháp luật thì đủ nguồn rồi". Dedup chỉ bỏ trùng và stage quality chỉ xét hình thức, nên không tự loại được văn bản hành chính sạch chữ, nên phải lọc chủ đề <b>trước</b> pipeline để khỏi tốn GPU xử lý ~7 tỷ token chỉ để giữ ~0,4 tỷ.</dd>
+  </dl>
+</div>
+
+<div class="card no">
+  <div class="head"><h3>Từ điển tiếng Việt <code>NhanAZ-Drops/tu-dien-tieng-viet</code></h3><span class="tag no">Loại (NS-04)</span></div>
+  <dl>
+    <dt>Mô tả</dt><dd>Bộ dữ liệu được nhắc tên nhưng không tìm thấy.</dd>
+    <dt>Độ lớn</dt><dd>Không có.</dd>
+    <dt>Lý do loại</dt><dd>API Hugging Face không thấy repo hay tài khoản này; tên "từ điển" không khớp mô tả "HTML điều luật". Chủ dự án: "không có thì thôi".</dd>
+  </dl>
+</div>
+
+<div class="card no">
+  <div class="head"><h3>Nhóm nguồn được khảo sát nhưng không đề xuất</h3><span class="tag no">Loại / không dùng</span></div>
+  <dl>
+    <dt>Trùng nguồn đã có</dt><dd>CulturaX vi, MADLAD-400 vi, <code>VTSNLP/vietnamese_curated_dataset</code> (gần như trùng SEA-PILE v1 + FineWeb-2); FineWiki viwiki (trùng Wikipedia); HPLT 2.0 cleaned (kém hơn 3.0).</dd>
+    <dt>Chất lượng / quyền</dt><dd>Khan Academy vi (CC BY-NC-SA, chủ yếu video); toanmath.com, loigiaihay.com, vietjack.com, olm.vn (bản quyền thương mại); PhoMT, MTet (câu ngắn, chỉ cho nghiên cứu); <code>5CD-AI/Viet-Doc-VQA*</code> và các bộ do AI sinh, nhiễu.</dd>
+    <dt>Không có / chưa xác nhận</dt><dd>Repo không tồn tại hoặc private (<code>vilm/CulturaX-vi</code>, <code>5CD-AI/Viet-fineweb-edu</code>, <code>binhvq/news-corpus</code>, <code>vinai/PhoGPT-pretrain</code>...); sáng chế, CORE, BASE (chưa xác nhận có toàn văn); Project Gutenberg vi, data.gov.vn, Tạp chí Cộng sản (ít STEM hoặc bản quyền).</dd>
+    <dt>Không đi theo mục tiêu</dt><dd>Code / The Stack (lệch mục tiêu kiến thức tiếng Việt); <code>tinystories-envi</code>, <code>vi-alpaca</code> (không có giá trị STEM); VAST journals (robots.txt <code>ai-train=no</code>, đã có trên VJOL).</dd>
+  </dl>
+</div>
+
+<!-- ===================================================== -->
+<h2>3. Nguồn chưa quyết (còn mở)</h2>
+<p class="sub">Không thuộc "chốt" hay "loại": đang chờ giấy phép, quyền truy cập hoặc ngân sách. Nên nêu rõ khi báo cáo để khỏi nhầm là đã bỏ.</p>
+
+<div class="card pend">
+  <table class="sum">
+    <tr><th>Nguồn</th><th>Quy mô / đặc điểm</th><th>Vướng mắc</th><th>Hướng xử lý</th></tr>
+    <tr><td>HUST DSpace (dlib.hust.edu.vn), NS-10</td><td>33.202 mục, 31.335 có file (luận văn kỹ thuật, đồ án, bài báo)</td><td>Ngày 2026-11-10 mọi đường dẫn trả 403 cho máy local; không vượt chặn</td><td>Thử từ server GPU hoặc hỏi thư viện ĐHBK</td></tr>
+    <tr><td>Luận án Thư viện Quốc gia (luanan.nlv.gov.vn)</td><td>20.496 luận án, 317.963 trang</td><td>Site chỉ có bản tóm tắt; ảnh trang bị robots.txt cấm. Chỉ có 258 tóm tắt năm 2010 trên <code>dulieu.itrithuc.vn</code> (phi thương mại)</td><td>Chưa chọn</td></tr>
+    <tr><td>VOER (voer.edu.vn)</td><td>22.343 tài liệu</td><td>CC BY 3.0 nhưng robots.txt có <code>ai-train=no</code></td><td>Xin phép bằng văn bản (NS-08)</td></tr>
+    <tr><td>SGK NXB Giáo dục</td><td>SGK lớp 1–12 (flipbook ảnh → OCR)</td><td>Bản quyền NXBGDVN, cấm tải khi chưa phép</td><td>Xin phép</td></tr>
+    <tr><td>Tia Sáng, Bách khoa toàn thư</td><td>Báo khoa học; ~40k mục từ</td><td>Bản quyền, cần văn bản cho phép</td><td>Xin phép; bản nháp email ở <code>PERMISSION_EMAILS.md</code>, chưa gửi</td></tr>
+    <tr><td>Dịch OpenWebMath / FineMath (NS-09)</td><td>14,7 tỷ / 6,7 triệu dòng token tiếng Anh (ODC-By)</td><td>Cần ngân sách GPU, mô hình dịch giữ LaTeX</td><td>Để sau, đã ghi lại</td></tr>
+  </table>
+</div>
+
+<h2>4. Các điểm chung cần nói khi báo cáo</h2>
+<div class="bigfig">
+  <ul style="margin:4px 0; padding-left:20px">
+    <li><b>Quyền sử dụng:</b> chỉ <code>wiki_vi</code>, <code>phap_luat</code>, <code>anle</code> và nhóm web / FinePDFs (ODC-By + CommonCrawl ToU) có cơ sở rõ. <code>stbook</code>, <code>giao_trinh</code>, <code>vjol</code>, <code>vista</code>, <code>luanvan_vnu</code> đều ở diện quarantine; cần quyết định về quyền trước khi phát hành corpus.</li>
+    <li><b>Trùng lặp:</b> các nguồn web trùng nhau và nhóm PDF trùng nhau; pipeline dedup 2 vòng (exact + fuzzy) xử lý, khi trùng giữ bản tự trích.</li>
+    <li><b>Lỗ hổng chất lượng:</b> stage quality hiện chưa bắt spam cờ bạc / người lớn / văn bản xào; đây là việc phải làm trước khi dùng nguồn web.</li>
+    <li><b>Tính chắc chắn của số liệu:</b> nhiều số "token" là ước tính từ mẫu 300 bản ghi (sai số lớn); số GB và số file là số đo thật. Nguồn chưa tải thì chưa có số token đo thật.</li>
+    <li><b>Benchmark:</b> các bộ đề / benchmark tiếng Việt (VMLU, ViExam, VNHSGE, MATH vi, GSM8K vi...) phải đưa vào contamination scan, không đưa vào train.</li>
+  </ul>
+</div>
+
+</main>
+</body>
+</html>
