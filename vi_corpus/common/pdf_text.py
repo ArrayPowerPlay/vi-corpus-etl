@@ -32,7 +32,7 @@ ghép dòng thành đoạn) để dùng khi ghép các trang thành một văn b
 
 import logging
 import re
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 
 import pymupdf
 
@@ -81,10 +81,15 @@ def page_text(page: pymupdf.Page, tcvn3_all: bool = False) -> str:
     """
     Text của một trang theo thứ tự trong PDF, mỗi dòng một dòng, chèn lại dấu cách bị mất.
 
-    Span gõ bằng font TCVN3 (theo tên font) được đổi sang Unicode; `tcvn3_all=True` thì đổi mọi span.
+    Span gõ bằng font TCVN3 (theo tên font) được đổi sang Unicode khi trang có bằng chứng TCVN3 (xem page_has_tcvn3_evidence);
+    `tcvn3_all=True` thì đổi mọi span.
     """
     lines = []
-    for block in page.get_text("rawdict")["blocks"]:
+    blocks = page.get_text("rawdict")["blocks"]
+    evidence = page_has_tcvn3_evidence(
+        (span["font"].split("+")[-1], "".join(ch["c"] for ch in span["chars"]))
+        for block in blocks for line in block.get("lines", []) for span in line["spans"])
+    for block in blocks:
         for line in block.get("lines", []):
             dx, dy = line["dir"]  # hướng dòng chữ: (1, 0) ngang, (0, -1) xoay dọc từ dưới lên
 
@@ -97,11 +102,7 @@ def page_text(page: pymupdf.Page, tcvn3_all: bool = False) -> str:
             prev = None
             for span in line["spans"]:
                 font = span["font"].split("+")[-1]
-                # Một số font Unicode cũng có tên bắt đầu bằng "Vn" (vd VnBitstreamCharter).
-                # Chỉ dựa vào tên font sẽ chuyển nhầm Unicode tiếng Việt thành mojibake. Với font
-                # có tên kiểu TCVN3, cần thấy thêm dấu hiệu bảng mã TCVN3 trong chính span đó.
-                span_text = "".join(ch["c"] for ch in span["chars"])
-                convert = should_convert_tcvn3_span(font, span_text, tcvn3_all)
+                convert = should_convert_tcvn3_span(font, evidence, tcvn3_all)
                 upper = convert and _TCVN3_UPPER_FONT.search(font)
                 for ch in span["chars"]:
                     c = ch["c"]
@@ -131,9 +132,23 @@ def is_tcvn3_document(text: str, fonts: Sequence[str] = ()) -> bool:
     return is_tcvn3(text)
 
 
-def should_convert_tcvn3_span(font: str, text: str, tcvn3_all: bool = False) -> bool:
-    """Chỉ chuyển span mang dấu hiệu mã TCVN3; tên font Vn* một mình chưa đủ bằng chứng."""
-    return tcvn3_all or bool(_TCVN3_FONT.match(font) and is_tcvn3(text))
+def page_has_tcvn3_evidence(spans: Iterable[tuple[str, str]]) -> bool:
+    """
+    Trang có bằng chứng TCVN3 khi ít nhất một span mang tên font kiểu TCVN3 (`.Vn...`) có text đạt ngưỡng is_tcvn3.
+
+    Một số font Unicode cũng có tên bắt đầu bằng "Vn" (vd VnBitstreamCharter), nên tên font một mình chưa đủ. Quyết định ở mức trang
+    chứ không ở mức span: ngưỡng TCVN3_MIN_RATIO đo trên cả tài liệu, một span ngắn hoặc ít dấu (tiêu đề toàn chữ không dấu,
+    câu dài chỉ có một chữ có dấu) sẽ không đạt dù cùng font với phần thân đạt.
+
+    Args:
+        spans: các cặp (tên font đã bỏ tiền tố subset, text) của mọi span trong trang.
+    """
+    return any(_TCVN3_FONT.match(font) and is_tcvn3(text) for font, text in spans)
+
+
+def should_convert_tcvn3_span(font: str, page_evidence: bool, tcvn3_all: bool = False) -> bool:
+    """Đổi span sang Unicode khi `tcvn3_all`, hoặc khi font mang tên kiểu TCVN3 và trang có bằng chứng TCVN3 (page_has_tcvn3_evidence)."""
+    return tcvn3_all or bool(page_evidence and _TCVN3_FONT.match(font))
 
 
 def tcvn3_to_unicode(text: str) -> str:
