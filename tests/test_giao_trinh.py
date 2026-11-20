@@ -210,3 +210,53 @@ def test_nhieu_tien_trinh_dung_khoa_nhan_file(tmp_path):
     root = _make_root(tmp_path)
     run_extract(root, tmp_path, lambda: None, multi_process=True)
     assert len(list((tmp_path / "state/giao_trinh_claims").glob("*.lock"))) == 3
+
+
+def test_extract_file_do_chu_hong_do_font_va_ghi_extract_version(tmp_path):
+    """GT-06: trang lớp chữ sai bảng mã không còn thành văn bản rác mà chờ OCR (needs_ocr + lý do); trang tiếng Việt đúng giữ nguyên."""
+    from tests.test_garbled import GARBLED, GOOD_VI, mixed_pdf
+    from vi_corpus.giao_trinh.extract import EXTRACT_VERSION, extract_file
+
+    pdf = tmp_path / "sach.pdf"
+    mixed_pdf(pdf, [GARBLED, GOOD_VI, GOOD_VI, GOOD_VI])  # 1 / 4 trang hỏng < 30%: chỉ trang hỏng đi OCR, không phải cả bài
+    out = extract_file(pdf, lambda: None)  # không có bộ OCR: trang lỗi font ở lại needs_ocr
+    assert out["error"] is None and out["extract_version"] == EXTRACT_VERSION  # không có tập âm tiết nên không có "+vocab"
+    garbled, good = out["pages"][0], out["pages"][1]
+    assert [p["method"] for p in out["pages"]] == ["needs_ocr", "text", "text", "text"]
+    assert garbled["method"] == "needs_ocr" and garbled["reason"] == "garbled_text_layer"
+    # chữ hỏng nằm lại trong checkpoint nhưng không vào bản ghi (iter_records bỏ trang needs_ocr)
+    assert good["method"] == "text" and "lạm phát" in good["text"]
+
+
+def test_checkpoint_cu_khong_co_extract_version_bi_lam_lai(tmp_path):
+    """GT-06: checkpoint trước khi có bộ dò chữ hỏng (không có extract_version) bị làm lại một lần, sau đó không làm lại nữa."""
+    from vi_corpus.giao_trinh.extract import EXTRACT_VERSION
+
+    root = tmp_path / "raw/giao_trinh/Toán/Giải tích"
+    root.mkdir(parents=True)
+    _make_pdf(root / "a.pdf", "The derivative of a function is the limit of the ratio of increments.")
+    base = tmp_path / "raw/giao_trinh"
+    assert run_extract(base, tmp_path, lambda: None, ocr_enabled=False) == 0
+    ckpt = next((tmp_path / "interim/giao_trinh_text").glob("*.json"))
+    done = json.loads(ckpt.read_text(encoding="utf-8"))
+    assert done["extract_version"] == EXTRACT_VERSION
+    del done["extract_version"]  # giả lập checkpoint của bản cũ
+    ckpt.write_text(json.dumps(done, ensure_ascii=False), encoding="utf-8")
+    assert run_extract(base, tmp_path, lambda: None, ocr_enabled=False) == 0
+    redone = json.loads(ckpt.read_text(encoding="utf-8"))
+    assert redone["extract_version"] == EXTRACT_VERSION
+    mtime = ckpt.stat().st_mtime_ns
+    assert run_extract(base, tmp_path, lambda: None, ocr_enabled=False) == 0
+    assert ckpt.stat().st_mtime_ns == mtime  # lần này đã đúng phiên bản: không ghi lại
+
+
+def test_status_dem_ly_do_ocr(tmp_path):
+    """status() đếm số trang theo lý do OCR (lỗi font: trang hỏng + trang còn lại của bài có >= 30% trang hỏng) để biết lần chạy không OCR còn thiếu bao nhiêu trang vì lý do nào."""
+    from tests.test_garbled import GARBLED, GOOD_VI, mixed_pdf
+
+    root = tmp_path / "raw/giao_trinh/Điện"
+    mixed_pdf(root / "sach.pdf", [GARBLED, GOOD_VI, GARBLED])
+    assert run_extract(tmp_path / "raw/giao_trinh", tmp_path, lambda: None, ocr_enabled=False) == 0
+    s = status(tmp_path / "raw/giao_trinh", tmp_path)
+    assert s["pages"]["needs_ocr"] == 3  # 2 / 3 trang hỏng >= 30%: cả bài đi OCR
+    assert s["reasons"] == {"garbled_text_layer": 2, "garbled_doc": 1}

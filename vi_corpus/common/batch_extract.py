@@ -276,9 +276,9 @@ def status(root: Path, data_root: Path, text_dir: str) -> dict:
 
     Returns:
         {"files", "checkpoints", "errors", "skipped", "pages": {method: số trang}, "ocr_status": {ok|blank|flagged: số trang OCR VLM},
-        "ocr_tier": {engine: số trang OCR VLM}}.
+        "ocr_tier": {engine: số trang OCR VLM}, "reasons": {lý do: số trang} (trang cần / đã qua OCR vì lỗi font, không có lớp chữ... theo trường "reason" của trang)}.
     """
-    info = {"files": len(list_files(root)), "checkpoints": 0, "errors": 0, "skipped": 0, "pages": {}, "ocr_status": {}, "ocr_tier": {}}
+    info = {"files": len(list_files(root)), "checkpoints": 0, "errors": 0, "skipped": 0, "pages": {}, "ocr_status": {}, "ocr_tier": {}, "reasons": {}}
     for ckpt in sorted((data_root / text_dir).glob("*.json")):
         done = read_json(ckpt)
         if done is None:
@@ -288,6 +288,8 @@ def status(root: Path, data_root: Path, text_dir: str) -> dict:
         info["skipped"] += bool(done.get("skipped"))
         for page in done["pages"]:
             info["pages"][page["method"]] = info["pages"].get(page["method"], 0) + 1
+            if page.get("reason"):
+                info["reasons"][page["reason"]] = info["reasons"].get(page["reason"], 0) + 1
             if page["method"] == "ocr_vlm":
                 for key, field in (("ocr_status", "status"), ("ocr_tier", "tier")):
                     info[key][page.get(field)] = info[key].get(page.get(field), 0) + 1

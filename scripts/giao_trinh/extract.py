@@ -55,6 +55,8 @@ def format_status(s: dict) -> str:
         n = sum(s["ocr_status"].values())
         lines.append(f"[giao_trinh] OCR VLM {n} trang: trạng thái {s['ocr_status']}, engine {s['ocr_tier']}, "
                      f"tỷ lệ flagged {s['ocr_status'].get('flagged', 0) / n:.2%}")
+    if s.get("reasons"):
+        lines.append(f"[giao_trinh] Trang có lý do OCR: {dict(sorted(s['reasons'].items()))}")
     if s["pages"].get("needs_ocr"):
         lines.append(f"[giao_trinh] Còn {s['pages']['needs_ocr']} trang needs_ocr: chạy lại có OCR (không --no-ocr) để làm tiếp")
     return "\n".join(lines)
@@ -99,7 +101,7 @@ def main() -> int:
         parser.error(str(e))
     try:
         failed = run_extract(root, args.data_root, getter, ocr_enabled=not args.no_ocr, limit_files=args.limit_files,
-                             retry_skipped=args.retry_skipped, multi_process=args.multi_process)
+                             retry_skipped=args.retry_skipped, multi_process=args.multi_process, syllables=args.syllables)
     except (ServerDown, EngineUnavailable) as exc:
         # exc_info: ghi cả chuỗi nguyên nhân, nếu không log chỉ còn dòng bọc ngoài
         log.error("%s. Dừng cả lượt (không loại trang âm thầm); sửa server / môi trường rồi chạy lại đúng lệnh cũ.", exc, exc_info=True)

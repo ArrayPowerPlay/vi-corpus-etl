@@ -76,7 +76,7 @@ def detect_format(path: Path) -> str:
     return suffix or (path.suffix.lower().lstrip(".") or "unknown")
 
 
-def parse_file(path: Path, get_ocr: Callable[[], object | None], ocr_cache=None) -> dict:
+def parse_file(path: Path, get_ocr: Callable[[], object | None], ocr_cache=None, pdf_kwargs: dict | None = None) -> dict:
     """
     Trích text một file theo định dạng nhận được; không ném lỗi của file ra ngoài (xem docstring module).
 
@@ -84,6 +84,7 @@ def parse_file(path: Path, get_ocr: Callable[[], object | None], ocr_cache=None)
         path:      File cần đọc.
         get_ocr:   Hàm trả bộ OCR (có .page_text(ảnh)) hoặc None; chỉ gọi khi gặp trang scan (PDF, DJVU).
         ocr_cache: vi_corpus.common.ocr_cache.OcrCache của file này (chỉ PDF dùng): trang đã OCR không OCR lại, kết quả mới được ghi vào.
+        pdf_kwargs: Tham số thêm cho vi_corpus.common.pdf_text.extract_pdf (chỉ PDF dùng), vd bật dò chữ hỏng do font (detect_garbled, GT-06).
 
     Raises:
         ServerDown, EngineUnavailable: chuỗi OCR hỏng. Đây là lỗi hệ thống chứ không phải của file, nên không ghi vào checkpoint mà dừng cả lượt
@@ -94,7 +95,7 @@ def parse_file(path: Path, get_ocr: Callable[[], object | None], ocr_cache=None)
 
     fmt = detect_format(path)
     out = {"format": fmt, "pages": [], "error": None, "skipped": None, "parser_version": PARSER_VERSION}
-    handlers = {"pdf": lambda: extract_pdf(path, get_ocr, ocr_cache=ocr_cache), "docx": lambda: office.extract_docx(path),
+    handlers = {"pdf": lambda: extract_pdf(path, get_ocr, ocr_cache=ocr_cache, **(pdf_kwargs or {})), "docx": lambda: office.extract_docx(path),
                 "pptx": lambda: office.extract_pptx(path), "doc": lambda: office.extract_legacy(path, "docx"),
                 "ppt": lambda: office.extract_legacy(path, "pptx"), "djvu": lambda: djvu.extract_djvu(path, get_ocr),
                 "html": lambda: web.extract_html(path), "epub": lambda: web.extract_epub(path)}
