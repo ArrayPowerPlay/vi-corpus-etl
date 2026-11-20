@@ -260,3 +260,22 @@ def test_status_dem_ly_do_ocr(tmp_path):
     s = status(tmp_path / "raw/giao_trinh", tmp_path)
     assert s["pages"]["needs_ocr"] == 3  # 2 / 3 trang hỏng >= 30%: cả bài đi OCR
     assert s["reasons"] == {"garbled_text_layer": 2, "garbled_doc": 1}
+
+
+def test_nguong_giao_trinh_bo_bao_nham_sach_ky_thuat_va_van_bat_chu_hong():
+    """GT-07: ngưỡng riêng của giáo trình không gắn cờ trang sách kỹ thuật tiếng Anh nhiều từ lạ / mã nguồn, nhưng vẫn bắt chữ hỏng, chữ Kirin và ký tự điều khiển."""
+    from tests.test_garbled import GARBLED, GOOD_VI
+    from vi_corpus.common.garbled import DEFAULT_THRESHOLDS, page_signals
+    from vi_corpus.giao_trinh.extract import GIAO_TRINH_THRESHOLDS as TH
+
+    vocab = frozenset("the of and is to in".split())
+    rare = "the of and is to in alpha beta gamma delta " * 10  # 40% từ ngoài tập âm tiết: sách kỹ thuật tiếng Anh nhiều thuật ngữ
+    assert "unknown" in page_signals(rare, DEFAULT_THRESHOLDS, vocab)  # ngưỡng VJOL (0,30) báo nhầm
+    assert page_signals(rare, TH, vocab) == []  # ngưỡng giáo trình (0,50)
+    code = "The getElementById function returns a node for the given value of the id parameter and the browser renders it with the querySelector. " * 3
+    assert "case" in page_signals(code, DEFAULT_THRESHOLDS)  # camelCase của mã nguồn: ngưỡng VJOL (0,05) báo nhầm
+    assert page_signals(code, TH) == []  # ngưỡng giáo trình (0,30)
+    assert page_signals(GOOD_VI * 3, TH) == []  # không dùng tập âm tiết giả (toàn từ Việt sẽ thành "lạ")
+    assert "tone" in page_signals(GARBLED, TH)
+    assert "script" in page_signals("Ĉӕi vӟi trѭӡng hӧp bӕn cӵc tѭѫng hӛ ta có các nghiӋm phӭc như sau. " * 3, TH)
+    assert "control" in page_signals("ab\x01\x02\x03\x04\x05 " * 6, TH)

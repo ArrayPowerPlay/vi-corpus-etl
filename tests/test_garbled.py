@@ -536,3 +536,13 @@ def test_tin_hieu_control_bat_trang_nhieu_ky_tu_dieu_khien_khong_can_min_words()
     assert "control" not in g.page_signals(good)
     assert "control" not in g.page_signals(good + "\x01\x02")
     assert "control" in g.SIGNALS
+
+
+def test_tin_hieu_script_mac_dinh_tat_va_bat_khi_dat_nguong():
+    """GT-07: chữ Kirin lẫn trong trang Latinh ("vӟi trѭӡng") chỉ là tín hiệu khi Thresholds.script <= 1; mặc định tắt nên VJOL / VISTA không đổi."""
+    mangled = "Ĉӕi vӟi trѭӡng hӧp bӕn cӵc tѭѫng hӛ ta có các nghiӋm phӭc như sau. " * 3
+    assert "script" in g.SIGNALS
+    assert "script" not in g.page_signals(mangled)  # ngưỡng mặc định 2.0 = tắt
+    assert "script" in g.page_signals(mangled, g.DEFAULT_THRESHOLDS._replace(script=0.01))
+    assert "script" not in g.page_signals(GOOD_VI * 3, g.DEFAULT_THRESHOLDS._replace(script=0.01))
+    assert "script" not in g.page_signals("Tên riêng Ӌ và Ӕ trong một câu tiếng Việt khá dài. " * 2, g.DEFAULT_THRESHOLDS._replace(script=0.01))  # chỉ 4 chữ, dưới script_min_count

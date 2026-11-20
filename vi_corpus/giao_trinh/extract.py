@@ -43,11 +43,23 @@ CLAIM_DIR = "state/giao_trinh_claims"
 # Phiên bản cách trích text giáo trình, ghi vào checkpoint (extract_version); đổi số này thì lần chạy sau làm lại mọi checkpoint cũ hơn.
 # Checkpoint không có trường này = trước GT-06 (chưa dò chữ hỏng do font). g1 = GT-06: PDF có trang lỗi font (lớp chữ sai bảng mã, bộ dò chung với
 # VJOL ở vi_corpus.common.garbled) cũng đi OCR lại thay vì thành văn bản rác bị stage quality loại.
-EXTRACT_VERSION = "g1"
+# g2 = GT-07: ngưỡng bộ dò riêng của giáo trình (GIAO_TRINH_THRESHOLDS), vì ngưỡng của VJOL gắn cờ nhầm ~60% trang đúng của giáo trình.
+EXTRACT_VERSION = "g2"
 VOCAB_TAG = "+vocab"  # hậu tố extract_version khi bộ dò có tín hiệu âm tiết lạ (họ sai dấu kiểu Windows-1258)
 UNACC_TAG = "+unacc"  # hậu tố (kèm băm nội dung) khi bộ dò dùng danh sách từ không dấu sinh từ dữ liệu
 SYLLABLES_REL = "processed/ocr_bakeoff/syllables.json"
 UNACCENTED_REL = "processed/ocr_bakeoff/unaccented.json"
+
+
+# GT-07: ngưỡng bộ dò chữ hỏng cho giáo trình, chỉnh bằng lượt kiểm chứng OCR 750 trang (GT-06, processed/giao_trinh_verify_flagged/): với ngưỡng của VJOL,
+# trong các trang bị gắn cờ do tín hiệu `case` thì ~58% OCR khớp lớp chữ >= 0,8 (gắn nhầm; sách tiếng Anh, mã nguồn, ligature) còn 11% hỏng thật; tín hiệu `unknown`
+# đứng một mình thì 90% gắn nhầm, 0% hỏng thật (sách kỹ thuật tiếng Anh có 30-50% từ ngoài tập âm tiết). Ngưỡng mới là điểm khởi đầu từ 448 trang gắn cờ, chưa kiểm chứng
+# trên mẫu độc lập (chia đôi theo file cho kết quả chọn ngưỡng khác nhau ở `case` / `nodiac`):
+#   tone 0,05 -> 0,10 (trang đúng median 0,076, hỏng median 0,34); case 0,05 -> 0,30 (đúng median 0,094); foreign 0,003 -> 0,04 (đúng median 0,022, hỏng 0,096);
+#   unknown 0,30 -> 0,50 (đúng max 0,50, hỏng median 0,69); nodiac 0,02 -> 0,03 (không phân biệt được đúng / hỏng, chỉ hạ số báo nhầm);
+#   script (mới) 0,01: chữ Kirin / Armenia do font cũ ánh xạ sai, 12 trang hỏng thật, 1 trang đúng, 0 trong 300 trang đối chứng.
+# `control` và `hyphen` giữ nguyên (control: 85% hỏng thật).
+GIAO_TRINH_THRESHOLDS = DEFAULT_THRESHOLDS._replace(tone=0.10, case=0.30, foreign=0.04, unknown=0.50, nodiac=0.03, script=0.01)
 
 
 def version_for(vocab: frozenset[str] | None, unaccented: frozenset[str] | None = None) -> str:
@@ -70,7 +82,7 @@ def checkpoint_path(data_root: Path, sha256: str) -> Path:
 
 
 def extract_file(path: Path, get_ocr: Callable[[], object | None], cache_root: Path | None = None,
-                 vocab: frozenset[str] | None = None, th: Thresholds = DEFAULT_THRESHOLDS,
+                 vocab: frozenset[str] | None = None, th: Thresholds = GIAO_TRINH_THRESHOLDS,
                  unaccented: frozenset[str] | None = None) -> dict:
     """
     Trích text một file theo định dạng nhận từ nội dung đầu file (vi_corpus.common.parsers.parse_file); không ném lỗi của file.
@@ -105,7 +117,7 @@ def extract_file(path: Path, get_ocr: Callable[[], object | None], cache_root: P
 def run_extract(root: Path, data_root: Path, get_ocr: Callable[[], object | None],
                 ocr_enabled: bool = True, limit_files: int | None = None, retry_skipped: bool = False,
                 multi_process: bool = False, syllables: Path | None = None, unaccented_path: Path | None = None,
-                th: Thresholds = DEFAULT_THRESHOLDS) -> int:
+                th: Thresholds = GIAO_TRINH_THRESHOLDS) -> int:
     """
     Kiểm kê rồi trích text mọi file giáo trình chưa làm (xem vi_corpus.common.batch_extract.run_batch).
     retry_skipped=True thì làm lại cả file từng bị bỏ qua (vd sau khi cài LibreOffice / djvulibre).

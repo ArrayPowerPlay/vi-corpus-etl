@@ -25,6 +25,8 @@ tối đa MỘT dấu thanh (huyền, sắc, ngã, hỏi, nặng) trên mỗi â
 - Danh sách từ không dấu (nodiac) lấy từ file sinh bằng scripts/build_unaccented.py (J-25 A): từ mà chữ đúng gần như không bao giờ viết
   trần, lập từ kho chữ sạch thay cho danh sách viết tay (vốn có "doanh", "cung" là từ đúng không dấu nên loại oan). Thiếu file thì dùng
   UNACCENTED_WORDS (danh sách tối thiểu đã bỏ hai từ đó).
+- Tín hiệu thứ tám "script" (GT-07): chữ Kirin / Armenia lẫn vào trang Latinh ("Ĉӕi vӟi trѭӡng hӧp", font tiếng Việt đời cũ ánh xạ sai sang vùng Unicode khác); tiếng
+  Việt và tiếng Anh đúng không có chữ Kirin. Mặc định TẮT (Thresholds.script > 1) để VJOL / VISTA không đổi hành vi; giáo trình bật (vi_corpus.giao_trinh.extract).
 - single_letter_ratio: tín hiệu thứ hai (chữ bị mất kiểu "đ u"), chỉ để đo (scripts/vjol/check_garbled.py), chưa dùng để quyết.
 Ngưỡng chỉnh bằng số liệu của scripts/vjol/check_garbled.py (J-13: trang 5%, cấp bài 30%, cứng ở quality 8%).
 """
@@ -46,7 +48,7 @@ GARBLED_HARD_RATIO = 0.08
 GARBLED_MIN_WORDS = 10
 GARBLED_DOC_SHARE = 0.30
 FOREIGN_LETTERS = frozenset("ñöïøåæÑÖÏØÅÆ")  # chữ cái Latin-1 không có trong tiếng Việt; trong chữ VNI chúng thay cho ư, ị, ờ, ả ...
-SIGNALS = ("tone", "case", "foreign", "unknown", "nodiac", "hyphen", "control")  # tên các tín hiệu, theo thứ tự page_signals trả về
+SIGNALS = ("tone", "case", "foreign", "unknown", "nodiac", "hyphen", "control", "script")  # tên các tín hiệu, theo thứ tự page_signals trả về
 
 
 class Thresholds(NamedTuple):
@@ -67,6 +69,8 @@ class Thresholds(NamedTuple):
     hyphen_min_words: int = 50  # số từ Latinh tối thiểu để xét tín hiệu hyphen
     control: float = 0.10  # tỷ lệ ký tự điều khiển C0 trên ký tự khác khoảng trắng (J-56: 13.904/14.015 trang `text` dưới 0,1; kiểu hỏng nặng 0,14-1,0; không dựa min_words vì ký tự điều khiển cắt vụn từ)
     control_min_count: int = 5  # số ký tự điều khiển tối thiểu (trang cực ngắn có 1-2 ký tự lạ không kích hoạt)
+    script: float = 2.0  # tỷ lệ chữ cái Kirin / Armenia (GT-07); > 1 = tín hiệu TẮT (VJOL / VISTA không dùng), giáo trình đặt 0,01
+    script_min_count: int = 5  # số chữ cái Kirin / Armenia tối thiểu (một vài chữ trong tên riêng, công thức không kích hoạt)
 
 
 DEFAULT_THRESHOLDS = Thresholds()
@@ -142,6 +146,20 @@ def control_char_ratio(text: str) -> tuple[float, int]:
             total += 1
             ctrl += is_ctrl
     return (ctrl / total if total else 0.0), ctrl
+
+
+def script_letter_ratio(text: str) -> tuple[float, int, int]:
+    """
+    Tỷ lệ chữ cái Kirin / Armenia (U+0400-U+058F) trên mọi chữ cái (GT-07): font tiếng Việt đời cũ ánh xạ sai sang các vùng này ("vӟi", "trѭӡng").
+
+    Returns:
+        (tỷ lệ, số chữ cái, số chữ cái Kirin / Armenia); tỷ lệ là 0.0 khi không có chữ cái nào.
+    """
+    letters = [c for c in text if c.isalpha()]
+    if not letters:
+        return 0.0, 0, 0
+    n = sum("\u0400" <= c <= "\u058f" for c in letters)
+    return n / len(letters), len(letters), n
 
 
 def garbled_ratio(text: str) -> tuple[float, int]:
@@ -296,15 +314,15 @@ def reversed_gain(text: str, vocab: frozenset[str], min_len: int = 3) -> tuple[f
 
 def page_measures(text: str, vocab: frozenset[str] | None = None, unaccented: frozenset[str] | None = None) -> dict:
     """
-    Số đo thô của bảy tín hiệu cho một trang: {"tone" | "case" | "foreign" | "unknown" | "nodiac" | "hyphen" | "control": (tỷ lệ, số mẫu[, số chữ cái lạ / số chỗ lỗi])}; "unknown" là None khi không có vocab.
+    Số đo thô của tám tín hiệu cho một trang: {"tone" | "case" | "foreign" | "unknown" | "nodiac" | "hyphen" | "control" | "script": (tỷ lệ, số mẫu[, số chữ cái lạ / số chỗ lỗi])}; "unknown" là None khi không có vocab.
 
     Số mẫu là số từ (tone), số từ >= 4 chữ cái (case), số chữ cái (foreign, kèm số chữ cái lạ ở phần tử thứ ba), số từ Latinh (unknown, nodiac,
-    hyphen; hyphen kèm số chỗ lỗi ở phần tử thứ ba; control: (tỷ lệ, số ký tự điều khiển)). Tách khỏi page_signals để script đo tính một lần rồi thử nhiều ngưỡng.
+    hyphen; hyphen kèm số chỗ lỗi ở phần tử thứ ba; control: (tỷ lệ, số ký tự điều khiển); script: (tỷ lệ, số chữ cái, số chữ cái Kirin / Armenia)). Tách khỏi page_signals để script đo tính một lần rồi thử nhiều ngưỡng.
     `unaccented`: danh sách từ không dấu (None = UNACCENTED_WORDS).
     """
     return {"tone": garbled_ratio(text), "case": case_mix_ratio(text), "foreign": foreign_letter_ratio(text),
             "unknown": unknown_syllable_rate(text, vocab) if vocab is not None else None, "nodiac": unaccented_ratio(text, unaccented),
-            "hyphen": hyphen_lost(text), "control": control_char_ratio(text)}
+            "hyphen": hyphen_lost(text), "control": control_char_ratio(text), "script": script_letter_ratio(text)}
 
 
 def signals_from_measures(m: dict, th: Thresholds = DEFAULT_THRESHOLDS) -> list[str]:
@@ -324,6 +342,8 @@ def signals_from_measures(m: dict, th: Thresholds = DEFAULT_THRESHOLDS) -> list[
         out.append("hyphen")
     if m["control"][1] >= th.control_min_count and m["control"][0] >= th.control:
         out.append("control")
+    if m["script"][2] >= th.script_min_count and m["script"][0] >= th.script:
+        out.append("script")
     return out
 
 
