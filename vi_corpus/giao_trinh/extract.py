@@ -31,7 +31,7 @@ from vi_corpus.common.batch_extract import (  # noqa: F401 — inventory, file_s
 )
 from vi_corpus.common.batch_extract import checkpoint_path as _checkpoint_path
 from vi_corpus.common.batch_extract import status as _status
-from vi_corpus.common.garbled import DEFAULT_THRESHOLDS, Thresholds, load_unaccented, load_vocab, unaccented_tag
+from vi_corpus.common.garbled import DEFAULT_THRESHOLDS, REASON_FORCED, Thresholds, load_unaccented, load_vocab, unaccented_tag
 from vi_corpus.common.ocr_cache import OcrCache
 from vi_corpus.common.parsers import detect_format, parse_file
 
@@ -44,7 +44,8 @@ CLAIM_DIR = "state/giao_trinh_claims"
 # Checkpoint không có trường này = trước GT-06 (chưa dò chữ hỏng do font). g1 = GT-06: PDF có trang lỗi font (lớp chữ sai bảng mã, bộ dò chung với
 # VJOL ở vi_corpus.common.garbled) cũng đi OCR lại thay vì thành văn bản rác bị stage quality loại.
 # g2 = GT-07: ngưỡng bộ dò riêng của giáo trình (GIAO_TRINH_THRESHOLDS), vì ngưỡng của VJOL gắn cờ nhầm ~60% trang đúng của giáo trình.
-EXTRACT_VERSION = "g2"
+# g3 = GT-08: trang scan bị lọt (HIDDEN_SCAN_RULES) và tài liệu chỉ định OCR cả bài (FORCE_OCR_SHA256).
+EXTRACT_VERSION = "g3"
 VOCAB_TAG = "+vocab"  # hậu tố extract_version khi bộ dò có tín hiệu âm tiết lạ (họ sai dấu kiểu Windows-1258)
 UNACC_TAG = "+unacc"  # hậu tố (kèm băm nội dung) khi bộ dò dùng danh sách từ không dấu sinh từ dữ liệu
 SYLLABLES_REL = "processed/ocr_bakeoff/syllables.json"
@@ -60,6 +61,16 @@ UNACCENTED_REL = "processed/ocr_bakeoff/unaccented.json"
 #   script (mới) 0,01: chữ Kirin / Armenia do font cũ ánh xạ sai, 12 trang hỏng thật, 1 trang đúng, 0 trong 300 trang đối chứng.
 # `control` và `hyphen` giữ nguyên (control: 85% hỏng thật).
 GIAO_TRINH_THRESHOLDS = DEFAULT_THRESHOLDS._replace(tone=0.10, case=0.30, foreign=0.04, unknown=0.50, nodiac=0.03, script=0.01)
+
+# GT-08: trang scan bị lọt (vi_corpus.common.pdf_text.hidden_scan_pages): (số ký tự còn lại tối đa sau khi bỏ dòng lặp, độ phủ ảnh tối thiểu). Kiểm chứng
+# OCR 920 trang (processed/giao_trinh_audit/): < 30 ký tự và ảnh >= 50% trang thì 86% trang có nội dung trong ảnh mà lớp chữ thiếu (độ trùng từ <= 0,4),
+# 4% trang đúng (2.868 trang toàn kho); 30-60 ký tự và ảnh >= 10% thì ~50% thiếu, ~17% đúng (3.728 trang); vùng 60-100 ký tự (26% thiếu) không lấy.
+HIDDEN_SCAN_RULES = ((30, 0.5), (60, 0.1))
+# GT-08: tài liệu OCR lại cả bài theo sha256 của file (lý do REASON_FORCED), vì lớp chữ hỏng kiểu bộ dò chung chưa bắt.
+FORCE_OCR_SHA256 = {
+    # "Giáo trình hệ thông tin phân tán.pdf" (Điều khiển công nghiệp): dấu rời kiểu TeX ("C´ac h.ê thô´ng"), 30 / 30 trang mẫu độ trùng từ <= 0,4.
+    "c93216a835c6bdba056ac5f218657b02a92f33238125c1d3193f56475a7c6e32",
+}
 
 
 def version_for(vocab: frozenset[str] | None, unaccented: frozenset[str] | None = None) -> str:
@@ -105,10 +116,14 @@ def extract_file(path: Path, get_ocr: Callable[[], object | None], cache_root: P
         ServerDown, EngineUnavailable: chuỗi OCR hỏng (lỗi hệ thống, không phải lỗi của file) — dừng cả lượt.
     """
     signature = getattr(get_ocr, "signature", None)
+    is_pdf = detect_format(path) == "pdf"
+    sha = file_sha256(path) if is_pdf else None
     cache = None
-    if cache_root is not None and callable(signature) and detect_format(path) == "pdf":
-        cache = OcrCache.for_pdf(cache_root, file_sha256(path), signature(), OCR_CACHE_DIR)
-    pdf_kwargs = {"detect_garbled": True, "garbled_vocab": vocab, "garbled_th": th, "garbled_unaccented": unaccented}
+    if cache_root is not None and callable(signature) and is_pdf:
+        cache = OcrCache.for_pdf(cache_root, sha, signature(), OCR_CACHE_DIR)
+    pdf_kwargs = {"detect_garbled": True, "garbled_vocab": vocab, "garbled_th": th, "garbled_unaccented": unaccented, "hidden_scan": HIDDEN_SCAN_RULES}
+    if sha in FORCE_OCR_SHA256:
+        pdf_kwargs["ocr_all_if"] = lambda layer: REASON_FORCED
     out = parse_file(path, get_ocr, ocr_cache=cache, pdf_kwargs=pdf_kwargs)
     out["extract_version"] = version_for(vocab, unaccented)
     return out

@@ -82,6 +82,8 @@ REASON_DEFECT = "defect_doc"  # J-42 (3), P1: lớp chữ lệch dấu / rơi ch
 REASON_FONT_GROUP = "font_group_bad"  # J-42 (4), P2: bài thuộc nhóm (producer, creator) mà phép thử OCR so với lớp chữ cho độ giống thấp (scripts/vjol/font_canary.py): cả bài đi OCR
 REASON_NO_TEXT = "no_text_layer"  # J-33 B: trang không có lớp chữ và không có ảnh nhúng nhưng vẽ ra nội dung (ảnh trong form XObject, nét vẽ): OCR vẽ lại cả trang
 REASON_BLANK = "blank_page"  # J-33 B: trang không có chữ và vẽ ra trang trắng (method "empty"): ghi lý do để bài rỗng không mất im lặng
+REASON_HIDDEN_SCAN = "hidden_scan"  # GT-08: ảnh phủ phần lớn trang mà lớp chữ (bỏ dòng lặp như watermark) gần như rỗng: nội dung nằm trong ảnh, OCR vẽ lại cả trang
+REASON_FORCED = "forced_doc"  # GT-08: tài liệu được chỉ định OCR lại cả bài theo sha256 (lớp chữ hỏng kiểu bộ dò chưa bắt, vd dấu rời kiểu TeX)
 GARBLED_REASONS = frozenset({REASON_PAGE, REASON_DOC, REASON_PRODUCER, REASON_DEFECT, REASON_FONT_GROUP})  # lý do thuộc lỗi lớp chữ (khác REASON_NO_TEXT / REASON_BLANK: trang không có lớp chữ)
 
 # Từ chức năng / thông dụng của tiếng Việt viết KHÔNG dấu ("của" -> "cua") mà tiếng Anh gần như không dùng; chữ có dấu đúng thì hầu như không

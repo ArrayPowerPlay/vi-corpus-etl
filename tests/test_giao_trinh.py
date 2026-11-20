@@ -279,3 +279,51 @@ def test_nguong_giao_trinh_bo_bao_nham_sach_ky_thuat_va_van_bat_chu_hong():
     assert "tone" in page_signals(GARBLED, TH)
     assert "script" in page_signals("Ĉӕi vӟi trѭӡng hӧp bӕn cӵc tѭѫng hӛ ta có các nghiӋm phӭc như sau. " * 3, TH)
     assert "control" in page_signals("ab\x01\x02\x03\x04\x05 " * 6, TH)
+
+
+def _hidden_scan_pdf(path):
+    """PDF 4 trang: 3 trang ảnh phủ kín + watermark lặp (trang 0 chỉ có watermark, trang 1 thêm 40 ký tự, trang 2 thêm 200 ký tự), trang 3 chỉ có chữ."""
+    import io
+
+    from PIL import Image
+
+    buf = io.BytesIO()
+    Image.new("RGB", (50, 50), "white").save(buf, "PNG")
+    doc = pymupdf.open()
+    extra = ["", "x" * 40, "Real content of this page. " * 8]
+    for body in extra:
+        page = doc.new_page()
+        page.insert_image(page.rect, stream=buf.getvalue())
+        page.insert_text((20, 20), "CuuDuongThanCong.com https://fb.com/tailieudientucntt")
+        if body:
+            page.insert_text((20, 60), body)
+    doc.new_page().insert_text((20, 20), "CuuDuongThanCong.com https://fb.com/tailieudientucntt " + "Normal text page here. " * 4)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    doc.save(path)
+    doc.close()
+
+
+def test_trang_scan_bi_lot_di_ocr(tmp_path):
+    """GT-08: trang ảnh phủ kín mà lớp chữ chỉ còn watermark lặp (hoặc < 60 ký tự) đi OCR với lý do hidden_scan; trang có đủ chữ và trang không ảnh giữ lớp chữ."""
+    from vi_corpus.common.pdf_text import extract_pdf
+    from vi_corpus.giao_trinh.extract import HIDDEN_SCAN_RULES
+
+    path = tmp_path / "raw/giao_trinh/Điện/sach.pdf"
+    _hidden_scan_pdf(path)
+    assert [p["method"] for p in extract_pdf(path, lambda: None)] == ["text"] * 4  # mặc định tắt (VJOL / VISTA không đổi)
+    pages = extract_pdf(path, lambda: None, hidden_scan=HIDDEN_SCAN_RULES)
+    assert [(p["method"], p.get("reason")) for p in pages] == [("needs_ocr", "hidden_scan"), ("needs_ocr", "hidden_scan"), ("text", None), ("text", None)]
+    assert run_extract(tmp_path / "raw/giao_trinh", tmp_path, lambda: None, ocr_enabled=False) == 0
+    assert status(tmp_path / "raw/giao_trinh", tmp_path)["reasons"] == {"hidden_scan": 2}
+
+
+def test_tai_lieu_chi_dinh_ocr_ca_bai(tmp_path, monkeypatch):
+    """GT-08: file có sha256 trong FORCE_OCR_SHA256 thì mọi trang chữ đi OCR với lý do forced_doc."""
+    from tests.test_garbled import GOOD_VI, mixed_pdf
+    from vi_corpus.giao_trinh import extract as gt
+
+    path = tmp_path / "raw/giao_trinh/Điện/sach.pdf"
+    mixed_pdf(path, [GOOD_VI, GOOD_VI])
+    monkeypatch.setattr(gt, "FORCE_OCR_SHA256", {gt.file_sha256(path)})
+    assert run_extract(tmp_path / "raw/giao_trinh", tmp_path, lambda: None, ocr_enabled=False) == 0
+    assert status(tmp_path / "raw/giao_trinh", tmp_path)["reasons"] == {"forced_doc": 2}

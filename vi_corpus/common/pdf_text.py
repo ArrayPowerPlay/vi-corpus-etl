@@ -36,8 +36,8 @@ from collections.abc import Callable, Iterable, Sequence
 
 import pymupdf
 
-from vi_corpus.common.garbled import (DEFAULT_THRESHOLDS, REASON_BLANK, REASON_FONT_GROUP, REASON_NO_TEXT, REASON_PRODUCER, Thresholds, page_signals,
-                                      plan_garbled)
+from vi_corpus.common.garbled import (DEFAULT_THRESHOLDS, REASON_BLANK, REASON_FONT_GROUP, REASON_HIDDEN_SCAN, REASON_NO_TEXT, REASON_PRODUCER, Thresholds,
+                                      page_signals, plan_garbled)
 from vi_corpus.common.ocr_noise import strip_vlm_noise
 from vi_corpus.common.unicode_clean import scrub_surrogates
 
@@ -47,6 +47,10 @@ logger = logging.getLogger("vi_corpus")
 SPACE_GAP_RATIO = 0.15
 # Trang có ít hơn số ký tự này (không tính khoảng trắng) mà có ảnh thì coi là trang scan.
 MIN_TEXT_CHARS = 30
+# GT-08: dòng lặp ở >= REPEAT_MIN_PAGES trang và >= REPEAT_MIN_SHARE số trang của tài liệu (watermark, header, chân trang) không tính vào chữ còn lại của trang
+# khi dò trang scan bị lọt (hidden_scan_pages).
+REPEAT_MIN_PAGES = 3
+REPEAT_MIN_SHARE = 0.3
 
 # Bảng mã TCVN3 (ABC): ký tự mà lớp chữ PDF trả ra -> chữ Unicode. Chữ hoa có dấu nằm ở font
 # riêng (.VnTimeH) dùng chung mã với chữ thường, nên chỉ khôi phục được thành chữ thường.
@@ -201,12 +205,59 @@ def page_has_ink(page: pymupdf.Page) -> bool:
     return bool(samples) and sum(b < PROBE_DARK for b in samples) / len(samples) >= PROBE_MIN_INK
 
 
+def image_coverage(page) -> float:
+    """Tỷ lệ diện tích trang bị ảnh nhúng phủ (cộng diện tích từng ảnh trong khung trang, chặn ở 1,0; ảnh chồng nhau được tính lặp)."""
+    area = abs(page.rect)
+    if not area:
+        return 0.0
+    covered = sum(abs(rect & page.rect) for img in page.get_images(full=True) for rect in page.get_image_rects(img[0]))
+    return min(1.0, covered / area)
+
+
+def hidden_scan_pages(doc, texts: Sequence[str], layer: Sequence[str | None], rules: Sequence[tuple[int, float]]) -> set[int]:
+    """
+    GT-08: trang có lớp chữ nhưng thật ra là trang scan (nội dung nằm trong ảnh, lớp chữ chỉ có watermark / header / vài nhãn).
+
+    Chữ còn lại của trang = số ký tự không phải khoảng trắng sau khi bỏ các dòng lặp ở >= REPEAT_MIN_PAGES trang và >= REPEAT_MIN_SHARE số trang
+    (đếm trên `texts` của mọi trang). Trang bị chọn khi có một quy tắc (max_chars, min_cov) mà chữ còn lại < max_chars và ảnh phủ >= min_cov trang.
+
+    Args:
+        doc:    Tài liệu pymupdf (để đo độ phủ ảnh).
+        texts:  Lớp chữ của mọi trang.
+        layer:  Lớp chữ của trang được coi là trang chữ, None cho trang khác (chỉ xét trang khác None).
+        rules:  Các cặp (max_chars, min_cov); rỗng = không chọn trang nào.
+
+    Returns:
+        Tập chỉ số trang cần OCR lại.
+    """
+    if not rules:
+        return set()
+    counts: dict[str, int] = {}
+    for text in texts:
+        for line in {x.strip() for x in text.splitlines() if x.strip()}:
+            counts[line] = counts.get(line, 0) + 1
+    repeated = {line for line, n in counts.items() if n >= REPEAT_MIN_PAGES and n >= REPEAT_MIN_SHARE * len(texts)}
+    limit = max(chars for chars, _ in rules)
+    out = set()
+    for i, text in enumerate(layer):
+        if text is None:
+            continue
+        resid = len("".join("".join(x.split()) for x in text.splitlines() if x.strip() not in repeated))
+        if resid >= limit or not doc[i].get_images():
+            continue
+        cov = image_coverage(doc[i])
+        if any(resid < chars and cov >= min_cov for chars, min_cov in rules):
+            out.add(i)
+    return out
+
+
 def extract_pdf(path, get_ocr: Callable[[], object | None], detect_garbled: bool = False,
                 garbled_vocab: frozenset[str] | None = None, garbled_th: Thresholds = DEFAULT_THRESHOLDS,
                 garbled_unaccented: frozenset[str] | None = None, ocr_cache=None,
                 ocr_all_producers: Sequence[tuple[str, str]] = (), rescue_empty: bool = False,
                 ocr_all_groups: Sequence[tuple[str, str]] = (),
-                ocr_all_if: Callable[[Sequence[str | None]], str | None] | None = None) -> list[dict]:
+                ocr_all_if: Callable[[Sequence[str | None]], str | None] | None = None,
+                hidden_scan: Sequence[tuple[int, float]] = ()) -> list[dict]:
     """
     Trích text từng trang của một PDF.
 
@@ -230,6 +281,8 @@ def extract_pdf(path, get_ocr: Callable[[], object | None], detect_garbled: bool
                  chỉ gọi khi bài chưa bị đưa đi OCR cả bài bởi producer / nhóm font. Chỉ có tác dụng khi detect_garbled bật.
         rescue_empty: True thì trang không có chữ và không có ảnh nhúng được vẽ ra thử (page_has_ink): có nội dung thì OCR (REASON_NO_TEXT), trắng thì
                  method "empty" kèm reason REASON_BLANK (J-33 B). Mặc định tắt, giáo trình chạy y như trước.
+        hidden_scan: Các cặp (max_chars, min_cov) của hidden_scan_pages (GT-08): trang chữ khớp một cặp thì OCR vẽ lại cả trang (lý do REASON_HIDDEN_SCAN,
+                 trừ khi trang đã có lý do lỗi font). Rỗng (mặc định) = tắt; VJOL / VISTA chạy y như trước.
 
     Returns:
         Danh sách {"text": ..., "method": ...} theo thứ tự trang (method xem đầu file). Trang lỗi font có thêm "reason",
@@ -291,6 +344,9 @@ def extract_pdf(path, get_ocr: Callable[[], object | None], detect_garbled: bool
                 reasons.update({i: reasons.get(i, whole_doc) for i, t in enumerate(layer) if t is not None})
             for i in reasons:
                 pages[i] = None
+        for i in hidden_scan_pages(doc, texts, layer, hidden_scan) - reasons.keys():
+            reasons[i] = REASON_HIDDEN_SCAN
+            pages[i] = None
         reasons.update({i: REASON_NO_TEXT for i in no_text})
         todo = sorted([*scan_idx, *reasons])
         if todo:

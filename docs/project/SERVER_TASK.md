@@ -44,7 +44,7 @@
 | S-27 | VJOL + VISTA: đếm số file và số trang cần OCR bằng `make count-ocr` (CPU; đổi mã từ S-26 trùng) | yêu cầu 2026-11-06, 2026-11-13 | CHẠY NGAY khi không có lượt GPU nào của VJOL / VISTA đang chạy | trích `--no-ocr` vài giờ CPU, đếm vài phút | không |
 | S-28 | VJOL + VISTA: pipeline chung chỉ bằng CPU, chia 128 phần (`make pipeline-cpu`) và xem tiến độ (`make pipeline-progress`) | PP-01, PP-03 | CHẠY NGAY (cần checkpoint `--no-ocr` của S-27); là bản thử, sau OCR GPU phải chạy lại từ ingest | chưa đo (đo trong chính lần chạy này) | không |
 | S-29 | Chạy thử OCR nội bộ VNPT trên 30 PDF VJOL + 30 PDF VISTA và dựng trang duyệt tay | OI-01 | CẦN khoá API trong `.env` | vài giờ (tuỳ hạn mức API) | không |
-| S-30 | Giáo trình: OCR GPU ~35.700 trang scan bằng chuỗi VLM (`run_extract_vlm.sh`), xuất lại Parquet | GT-01 | CHẠY SAU khi `git pull` bản có GT-01; thử `LIMIT_FILES=5` trước (chưa chạy thật trên GPU) | chưa đo (đo trong chính lần chạy này) | 4 |
+| S-30 | Giáo trình: OCR GPU ~49.200 trang (scan + lỗi font + scan bị lọt, GT-07 / GT-08) bằng chuỗi VLM (`run_extract_vlm.sh`), xuất lại Parquet | GT-01 | CHẠY SAU khi `git pull` bản có GT-01; thử `LIMIT_FILES=5` trước (chưa chạy thật trên GPU) | chưa đo (đo trong chính lần chạy này) | 4 |
 
 Thứ tự khuyến nghị: S-10 (VJOL ưu tiên cao nhất, R-15) → S-0 → S-1 → S-2 → S-3 (có đủ số để tính giờ OCR) → S-4 → S-5. S-6 đến S-9 và S-11 làm sau phiên code (S-11 cần script `scripts/dedup_pairs_sample.py`, viết ở gói G-05 bước 2).
 
