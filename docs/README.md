@@ -9,7 +9,7 @@ ETL xây **corpus tiếng Việt cho LLM** từ nhiều nguồn, có truy vết 
 | Giáo trình (Google Drive) | Giáo trình đại học 16 ngành (PDF, pptx, ...), tải bằng rclone | **Trích text** xong (`docs/sources/GIAO_TRINH.md`); OCR thật chưa chạy |
 | VJOL | Bài báo khoa học (PDF theo năm + metadata tạp chí), chỉ xử lý | **Trích text + làm sạch** (Phần G); lớp chữ cả kho đã trích, OCR GPU chờ |
 | VISTA | Bài báo khoa học (PDF), chỉ xử lý, dùng chung bộ xử lý với VJOL | Code xong, chạy cả kho (Phần H); OCR GPU chờ |
-| Nguồn đã chọn, chưa có code | `phap_luat`, `anle` (đã tải), `wiki_vi`, `fineweb2_vi`, `finepdfs_edu_vi`, `finepdfs_vi`, `luanvan_vnu` | Xem `docs/sources/SOURCES.md` |
+| Nguồn đã chọn, chưa có code | `phap_luat`, `anle` (đã tải), `wiki_vi`, `fineweb2_vi`, `finepdfs_edu_vi`, `finepdfs_vi` (đã tải 2026-11-20, thiết kế ở `docs/design/FinePDFs.md`), `luanvan_vnu` | Xem `docs/sources/SOURCES.md` |
 
 ## Mục lục tài liệu (`docs/`)
 
@@ -23,6 +23,7 @@ ETL xây **corpus tiếng Việt cho LLM** từ nhiều nguồn, có truy vết 
 | | [`SERVER_TASK.md`](project/SERVER_TASK.md) | việc phải chạy trên GPU server, lệnh + cách đọc kết quả (S-0 … S-29) |
 | `design/` | [`PROJECT_ARCHITECTURE.md`](design/PROJECT_ARCHITECTURE.md) | cây thư mục code, cấu trúc `data/`, luồng từng nguồn |
 | | [`PIPELINE.md`](design/PIPELINE.md) | thiết kế pipeline chung, sơ đồ, các đợt thay đổi |
+| | [`FinePDFs.md`](design/FinePDFs.md), [`VJOL.md`](design/VJOL.md), [`VISTA.md`](design/VISTA.md) | pipeline chi tiết từng nguồn PDF (có sơ đồ Mermaid): FinePDFs (thiết kế, chưa code), VJOL, VISTA (đang chạy) |
 | `sources/` | [`SOURCES.md`](sources/SOURCES.md) | danh mục nguồn đã chọn (owner, license, domain, trạng thái) |
 | | [`SOURCE_CANDIDATES.md`](sources/SOURCE_CANDIDATES.md) | khảo sát nguồn ứng viên + kiểm chất lượng trên mẫu |
 | | [`GIAO_TRINH.md`](sources/GIAO_TRINH.md), [`VISTA.md`](sources/VISTA.md), [`LUAN_AN.md`](sources/LUAN_AN.md) | chiến lược / kế hoạch xử lý từng nguồn |
