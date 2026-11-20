@@ -76,30 +76,39 @@ def detect_format(path: Path) -> str:
     return suffix or (path.suffix.lower().lstrip(".") or "unknown")
 
 
-def parse_file(path: Path, get_ocr: Callable[[], object | None]) -> dict:
+def parse_file(path: Path, get_ocr: Callable[[], object | None], ocr_cache=None) -> dict:
     """
-    Trích text một file theo định dạng nhận được; không ném lỗi ra ngoài (xem docstring module).
+    Trích text một file theo định dạng nhận được; không ném lỗi của file ra ngoài (xem docstring module).
 
     Args:
-        path:    File cần đọc.
-        get_ocr: Hàm trả bộ OCR (có .page_text(ảnh)) hoặc None; chỉ gọi khi gặp trang scan (PDF, DJVU).
+        path:      File cần đọc.
+        get_ocr:   Hàm trả bộ OCR (có .page_text(ảnh)) hoặc None; chỉ gọi khi gặp trang scan (PDF, DJVU).
+        ocr_cache: vi_corpus.common.ocr_cache.OcrCache của file này (chỉ PDF dùng): trang đã OCR không OCR lại, kết quả mới được ghi vào.
+
+    Raises:
+        ServerDown, EngineUnavailable: chuỗi OCR hỏng. Đây là lỗi hệ thống chứ không phải của file, nên không ghi vào checkpoint mà dừng cả lượt
+        (nếu không, mọi file scan sẽ bị ghi lỗi hoặc mất trang âm thầm).
     """
     from vi_corpus.common.parsers import djvu, office, web
     from vi_corpus.common.pdf_text import extract_pdf
 
     fmt = detect_format(path)
     out = {"format": fmt, "pages": [], "error": None, "skipped": None, "parser_version": PARSER_VERSION}
-    handlers = {"pdf": lambda: extract_pdf(path, get_ocr), "docx": lambda: office.extract_docx(path),
+    handlers = {"pdf": lambda: extract_pdf(path, get_ocr, ocr_cache=ocr_cache), "docx": lambda: office.extract_docx(path),
                 "pptx": lambda: office.extract_pptx(path), "doc": lambda: office.extract_legacy(path, "docx"),
                 "ppt": lambda: office.extract_legacy(path, "pptx"), "djvu": lambda: djvu.extract_djvu(path, get_ocr),
                 "html": lambda: web.extract_html(path), "epub": lambda: web.extract_epub(path)}
     if fmt not in handlers:
         out["skipped"] = "unsupported_format"
         return out
+    from vi_corpus.ocr_bakeoff.cascade import EngineUnavailable, ServerDown
+
     try:
         out["pages"] = handlers[fmt]()
     except MissingTool as exc:
         out["skipped"] = exc.args[0]
+    except (ServerDown, EngineUnavailable):
+        raise
     except Exception as exc:  # noqa: BLE001 — một file lỗi không được dừng cả lô
         out["error"] = f"{type(exc).__name__}: {exc}"[:300]
     return out

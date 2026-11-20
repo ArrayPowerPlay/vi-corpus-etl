@@ -28,7 +28,8 @@ def iter_records(spec: SourceSpec, data_root: Path, limit_files: int | None = No
     """
     Sinh bản ghi CORPUS_SCHEMA từ interim/giao_trinh_text/, mỗi tài liệu một bản ghi.
 
-    Bỏ qua checkpoint lỗi / bị skip / không có chữ. Trang needs_ocr (chưa OCR) bị bỏ vì text của chúng là rác.
+    Bỏ qua checkpoint lỗi / bị skip / không có chữ. Trang needs_ocr (chưa OCR) bị bỏ vì text của chúng là rác; trang ocr_vlm bị loại (flagged) có text rỗng
+    nên cũng không vào bản ghi (văn bản bị loại nằm ở rejected_text trong checkpoint).
     source_path là đường dẫn đầu tiên của file (các đường dẫn trùng nằm trong checkpoint). Slide, Word, HTML, EPUB
     (LINE_PARAGRAPH_FORMATS) mỗi dòng một đoạn và giữ mọi dòng; PDF / DJVU thì bỏ tiêu đề chạy và ghép dòng thành đoạn.
 
@@ -36,7 +37,7 @@ def iter_records(spec: SourceSpec, data_root: Path, limit_files: int | None = No
         spec:        Nguồn giao_trinh trong registry.
         data_root:   Thư mục gốc dữ liệu.
         limit_files: Chỉ đọc N checkpoint đầu (chạy thử).
-        with_meta:   Thêm khoá "meta" (JSON: định dạng, ngành, môn, số dòng tiêu đề / số trang bị clean_pages bỏ).
+        with_meta:   Thêm khoá "meta" (JSON: định dạng, ngành, môn, số dòng tiêu đề bị clean_pages bỏ, số trang, số trang OCR VLM / bị flagged / còn needs_ocr).
     """
     for path in sorted((data_root / TEXT_DIR).glob("*.json"))[:limit_files]:
         done = read_json(path)
@@ -64,6 +65,9 @@ def iter_records(spec: SourceSpec, data_root: Path, limit_files: int | None = No
             "dedup_family_id": None,
         }
         if with_meta:
+            ocr = [p for p in done["pages"] if p["method"] == "ocr_vlm"]
             rec["meta"] = json.dumps({"format": done["format"], "nganh": done.get("nganh"), "mon": done.get("mon"),
-                                      "page_lines_removed": page_stats.get("lines_removed", 0)}, ensure_ascii=False)
+                                      "page_lines_removed": page_stats.get("lines_removed", 0), "pages": len(done["pages"]),
+                                      "ocr_pages": len(ocr), "ocr_flagged_pages": sum(p.get("status") == "flagged" for p in ocr),
+                                      "needs_ocr_pages": sum(p["method"] == "needs_ocr" for p in done["pages"])}, ensure_ascii=False)
         yield rec

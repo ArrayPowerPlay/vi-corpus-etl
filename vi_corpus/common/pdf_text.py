@@ -58,6 +58,9 @@ _TCVN3["−"] = "ư"  # PyMuPDF trả mã 0xAD (ư) của font TCVN3 thành dấ
 _TCVN3["μ"] = "à"  # và mã 0xB5 (à) thành chữ Hy Lạp mu U+03BC ("NHμ XUÊT B¶N")
 # Tên font TCVN3 (bỏ tiền tố subset "ABCDEF+"): .VnTime, VnArial, VnSouthernH... (không khớp VNI-Times).
 _TCVN3_FONT = re.compile(r"^\.?Vn[A-Z]")
+# VNI dùng bảng mã riêng; nhiều ký tự VNI cũng nằm trong tập dấu hiệu TCVN3,
+# vì vậy không được bật chế độ chuyển mã toàn tài liệu khi PDF có font VNI.
+_VNI_FONT = re.compile(r"^VNI[-_]", re.IGNORECASE)
 # Font TCVN3 chữ hoa có hậu tố H (.VnTimeH, VnArialH, VnBahamasBHBold): mã chữ thường hiện ra chữ hoa.
 _TCVN3_UPPER_FONT = re.compile(r"H(?:[,-]?(?:Bold|Italic))*$")
 # Ký tự chỉ có trong TCVN3, không xuất hiện trong văn bản tiếng Việt Unicode bình thường.
@@ -94,7 +97,11 @@ def page_text(page: pymupdf.Page, tcvn3_all: bool = False) -> str:
             prev = None
             for span in line["spans"]:
                 font = span["font"].split("+")[-1]
-                convert = tcvn3_all or _TCVN3_FONT.match(font)
+                # Một số font Unicode cũng có tên bắt đầu bằng "Vn" (vd VnBitstreamCharter).
+                # Chỉ dựa vào tên font sẽ chuyển nhầm Unicode tiếng Việt thành mojibake. Với font
+                # có tên kiểu TCVN3, cần thấy thêm dấu hiệu bảng mã TCVN3 trong chính span đó.
+                span_text = "".join(ch["c"] for ch in span["chars"])
+                convert = should_convert_tcvn3_span(font, span_text, tcvn3_all)
                 upper = convert and _TCVN3_UPPER_FONT.search(font)
                 for ch in span["chars"]:
                     c = ch["c"]
@@ -115,6 +122,18 @@ def is_tcvn3(text: str) -> bool:
     """True nếu text trông như lớp chữ của font TCVN3 (tỉ lệ ký tự đặc trưng >= TCVN3_MIN_RATIO)."""
     letters = sum(c.isalpha() for c in text)
     return letters > 0 and sum(c in _TCVN3_MARKERS for c in text) / letters >= TCVN3_MIN_RATIO
+
+
+def is_tcvn3_document(text: str, fonts: Sequence[str] = ()) -> bool:
+    """Nhận diện tài liệu TCVN3; tránh false positive khi có font VNI dùng chung ký tự dấu hiệu."""
+    if any(_VNI_FONT.match(font.split("+")[-1]) for font in fonts):
+        return False
+    return is_tcvn3(text)
+
+
+def should_convert_tcvn3_span(font: str, text: str, tcvn3_all: bool = False) -> bool:
+    """Chỉ chuyển span mang dấu hiệu mã TCVN3; tên font Vn* một mình chưa đủ bằng chứng."""
+    return tcvn3_all or bool(_TCVN3_FONT.match(font) and is_tcvn3(text))
 
 
 def tcvn3_to_unicode(text: str) -> str:
@@ -212,7 +231,8 @@ def extract_pdf(path, get_ocr: Callable[[], object | None], detect_garbled: bool
         if doc.needs_pass:
             raise ValueError("PDF có mật khẩu")
         texts = [page_text(page) for page in doc]
-        tcvn3 = is_tcvn3("".join(texts))
+        fonts = [font[3] for page in doc for font in page.get_fonts()]
+        tcvn3 = is_tcvn3_document("".join(texts), fonts)
         if tcvn3:  # font TCVN3 không mang tên .Vn...: đổi mọi span (đọc lại, tránh đổi 2 lần)
             texts = [page_text(page, tcvn3_all=True) for page in doc]
         # PDF có bảng ToUnicode hỏng cho ra surrogate lẻ (vd U+D835), không ghi được checkpoint UTF-8: thay bằng U+FFFD và ghi log đường dẫn để tìm file

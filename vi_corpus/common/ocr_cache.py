@@ -47,14 +47,14 @@ class OcrCache:
         self._dirty = False
 
     @staticmethod
-    def cache_path(data_root: Path, sha256: str) -> Path:
-        """Đường dẫn file cache của PDF có băm nội dung `sha256`."""
-        return data_root / CACHE_DIR / sha256[:2] / f"{sha256}.json"
+    def cache_path(data_root: Path, sha256: str, cache_dir: str = CACHE_DIR) -> Path:
+        """Đường dẫn file cache của PDF có băm nội dung `sha256`; `cache_dir` (tương đối so với data_root) mặc định là của VJOL / VISTA."""
+        return data_root / cache_dir / sha256[:2] / f"{sha256}.json"
 
     @classmethod
-    def for_pdf(cls, data_root: Path, sha256: str, signature: str) -> "OcrCache":
-        """Cache của PDF có băm `sha256` dưới `data_root`."""
-        return cls(cls.cache_path(data_root, sha256), signature)
+    def for_pdf(cls, data_root: Path, sha256: str, signature: str, cache_dir: str = CACHE_DIR) -> "OcrCache":
+        """Cache của PDF có băm `sha256` dưới `data_root` (thư mục `cache_dir`, giáo trình dùng riêng thư mục của mình)."""
+        return cls(cls.cache_path(data_root, sha256, cache_dir), signature)
 
     def get(self, index: int, render: bool) -> dict | None:
         """Kết quả OCR đã lưu của trang `index` (bản sao), None nếu chưa có."""

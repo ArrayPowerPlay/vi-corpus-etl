@@ -275,9 +275,10 @@ def status(root: Path, data_root: Path, text_dir: str) -> dict:
     Tóm tắt tiến độ (không băm file): số file trong raw, số checkpoint, và thống kê trang theo method.
 
     Returns:
-        {"files", "checkpoints", "errors", "skipped", "pages": {method: số trang}}.
+        {"files", "checkpoints", "errors", "skipped", "pages": {method: số trang}, "ocr_status": {ok|blank|flagged: số trang OCR VLM},
+        "ocr_tier": {engine: số trang OCR VLM}}.
     """
-    info = {"files": len(list_files(root)), "checkpoints": 0, "errors": 0, "skipped": 0, "pages": {}}
+    info = {"files": len(list_files(root)), "checkpoints": 0, "errors": 0, "skipped": 0, "pages": {}, "ocr_status": {}, "ocr_tier": {}}
     for ckpt in sorted((data_root / text_dir).glob("*.json")):
         done = read_json(ckpt)
         if done is None:
@@ -287,4 +288,7 @@ def status(root: Path, data_root: Path, text_dir: str) -> dict:
         info["skipped"] += bool(done.get("skipped"))
         for page in done["pages"]:
             info["pages"][page["method"]] = info["pages"].get(page["method"], 0) + 1
+            if page["method"] == "ocr_vlm":
+                for key, field in (("ocr_status", "status"), ("ocr_tier", "tier")):
+                    info[key][page.get(field)] = info[key].get(page.get(field), 0) + 1
     return info

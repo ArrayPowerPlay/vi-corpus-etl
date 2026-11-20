@@ -3,6 +3,8 @@ Test xử lý thô giáo trình: clean_pages, kiểm kê/dedup theo sha256, chec
 Không cần mô hình OCR (dùng bộ OCR giả), không cần mạng.
 """
 
+import json
+
 import pymupdf
 
 from vi_corpus.common.pdf_text import clean_pages
@@ -120,3 +122,91 @@ def test_trang_scan_dung_ocr_gia_va_needs_ocr_duoc_lam_lai(tmp_path):
     assert run_extract(root.parent.parent, tmp_path, lambda: FakeOcr()) == 0
     assert status(root.parent.parent, tmp_path)["pages"] == {"ocr": 1}
     assert list(iter_records(SOURCES["giao_trinh"], tmp_path))[0]["text"] == "Nội dung OCR giả"
+
+
+def _make_scan_pdf(path, n_pages=2):
+    """Tạo PDF `n_pages` trang chỉ có ảnh (trang scan)."""
+    import io
+
+    from PIL import Image
+
+    buf = io.BytesIO()
+    Image.new("RGB", (50, 50), "white").save(buf, "PNG")
+    doc = pymupdf.open()
+    for _ in range(n_pages):
+        doc.new_page().insert_image(pymupdf.Rect(0, 0, 200, 200), stream=buf.getvalue())
+    path.parent.mkdir(parents=True, exist_ok=True)
+    doc.save(path)
+    doc.close()
+
+
+class FakeCascadeGetter:
+    """get_ocr giả có đúng giao diện CascadeOcrGetter: có signature(), trả bộ OCR có ocr_pages; đếm số trang đã OCR."""
+
+    def __init__(self, texts=None, error=None):
+        """texts: text từng trang (None = trang bị loại flagged); error: ngoại lệ ném khi gọi ocr_pages."""
+        self.texts, self.error, self.ocr_calls = texts or ["Trang một.", None], error, 0
+
+    def signature(self):
+        """Chữ ký bộ OCR giả."""
+        return "fake"
+
+    def __call__(self):
+        """Trả chính nó làm bộ OCR."""
+        return self
+
+    def ocr_pages(self, pages, render=None):
+        """OCR giả: mỗi trang một kết quả theo self.texts; ném self.error nếu có."""
+        if self.error:
+            raise self.error
+        pages = list(pages)
+        self.ocr_calls += len(pages)
+        out = []
+        for i in range(len(pages)):
+            text = self.texts[i % len(self.texts)]
+            out.append({"text": text or "", "method": "ocr_vlm", "tier": "qwen3vl_8b_mt4k",
+                        "status": "ok" if text else "flagged", **({} if text else {"rejected_text": "rác"})})
+        return out
+
+
+def test_ocr_vlm_trang_flagged_bi_bo_va_cache_ocr_dung_lai(tmp_path):
+    """Chuỗi OCR VLM: trang ok vào bản ghi, trang flagged thì không; meta đếm trang OCR; xoá checkpoint rồi chạy lại thì lấy từ cache, không OCR lại."""
+    root = tmp_path / "raw/giao_trinh"
+    _make_scan_pdf(root / "Toán/Đại số/scan.pdf")
+    getter = FakeCascadeGetter()
+    assert run_extract(root, tmp_path, getter) == 0 and getter.ocr_calls == 2
+    s = status(root, tmp_path)
+    assert s["pages"] == {"ocr_vlm": 2} and s["ocr_status"] == {"ok": 1, "flagged": 1} and s["ocr_tier"] == {"qwen3vl_8b_mt4k": 2}
+    rec = next(iter_records(SOURCES["giao_trinh"], tmp_path, with_meta=True))
+    assert rec["text"] == "Trang một."
+    meta = json.loads(rec["meta"])
+    assert (meta["pages"], meta["ocr_pages"], meta["ocr_flagged_pages"], meta["needs_ocr_pages"]) == (2, 2, 1, 0)
+    assert any((tmp_path / "interim/giao_trinh_ocr_cache").rglob("*.json"))
+
+    for ckpt in (tmp_path / "interim/giao_trinh_text").glob("*.json"):
+        ckpt.unlink()
+    again = FakeCascadeGetter()
+    assert run_extract(root, tmp_path, again) == 0
+    assert again.ocr_calls == 0  # cả hai trang lấy từ cache
+    assert status(root, tmp_path)["pages"] == {"ocr_vlm": 2}
+
+
+def test_chuoi_ocr_hong_dung_ca_luot_khong_ghi_checkpoint(tmp_path):
+    """ServerDown / EngineUnavailable không được ghi thành lỗi của file: ném lên để dừng cả lượt, checkpoint không có."""
+    import pytest
+
+    from vi_corpus.ocr_bakeoff.cascade import EngineUnavailable, ServerDown
+
+    root = tmp_path / "raw/giao_trinh"
+    _make_scan_pdf(root / "Toán/Đại số/scan.pdf")
+    for exc in (ServerDown("server chết"), EngineUnavailable("thiếu libGL")):
+        with pytest.raises(type(exc)):
+            run_extract(root, tmp_path, FakeCascadeGetter(error=exc))
+        assert not list((tmp_path / "interim/giao_trinh_text").glob("*.json"))
+
+
+def test_nhieu_tien_trinh_dung_khoa_nhan_file(tmp_path):
+    """multi_process=True: file được nhận bằng khoá flock ở state/giao_trinh_claims/ (mỗi sha256 một file khoá)."""
+    root = _make_root(tmp_path)
+    run_extract(root, tmp_path, lambda: None, multi_process=True)
+    assert len(list((tmp_path / "state/giao_trinh_claims").glob("*.lock"))) == 3
