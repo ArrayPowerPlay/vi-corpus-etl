@@ -28,7 +28,7 @@ data/raw/
 |---|---|---|---|
 | SEA (AI Singapore, HF) | only the Vietnamese partition of 3 datasets, byte-for-byte | `raw/sea_vi/<key>/` | download done, processing = design |
 | stbook.vn | books as image-only PDFs, OCR'd here | `raw/stbook/` | crawl done; OCR of the whole corpus run with the VLM cascade (O-20, 2026-10-18), page filter O-30 coded |
-| giao_trinh | Google Drive university textbooks, PDF/pptx | `raw/giao_trinh/` | download by rclone; `scripts/giao_trinh/extract.py` (raw processing; text-layer pass done: 1,663 files, 1,549 records, 35,663 `needs_ocr` pages left; OCR of those pages is wired to the VLM cascade, GT-01, but not run on the GPU yet, `docs/project/SERVER_TASK.md` S-30) |
+| giao_trinh | Google Drive university textbooks, PDF/pptx | `raw/giao_trinh/` | download by rclone; `scripts/giao_trinh/extract.py` (raw processing; text-layer pass done: 1,663 files, 1,569 records, 35,663 `needs_ocr` pages left, 1 truncated PDF excluded (GT-04); OCR of those pages is wired to the VLM cascade, GT-01, but not run on the GPU yet, `docs/project/SERVER_TASK.md` S-30) |
 | VJOL | scientific papers (PDF), only **processed**, never crawled here | `raw/vjol/` (registry key `vjol`) | `scripts/vjol/extract.py`; 10,000-chunk runs done (J-21 ... J-57, `vjol_10k_v10`); text-layer pass (`--no-ocr`) over the whole corpus done; next = GPU OCR + final pipeline (PP-01, PP-04, `docs/project/SERVER_TASK.md` S-23/S-24, S-28) |
 | VISTA | scientific papers (PDF), same processing as VJOL | `raw/vista/` (copied from MinIO `datacrawl/sti.vista.gov.vn/`) | copied to the server (VS-05); V1 code done (VS-04, VS-06); text-layer pass + CPU pipeline run with `make count-ocr` / `make pipeline-cpu` (PP-01); GPU OCR pending; plan `docs/sources/VISTA.md` |
 

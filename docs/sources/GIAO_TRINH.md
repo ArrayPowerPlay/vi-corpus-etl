@@ -5,8 +5,8 @@
 > (xuất `processed/giao_trinh/giao_trinh.parquet` tự động ở cuối mỗi lần chạy). Code: `vi_corpus/giao_trinh/` (`extract.py`, `records.py`),
 > `vi_corpus/common/pdf_text.py` (`extract_pdf`, `clean_pages`). Đã thử E2E với dữ liệu tổng hợp (kill -9 rồi chạy lại đúng lệnh cũ);
 > **Cập nhật 2026-11-20 (GT-01, GT-02)**: lượt trích lớp chữ đã chạy trên server (không OCR): 1.687 file, 1.663 nội dung duy nhất đã có checkpoint
-> (1 lỗi: PDF hỏng / tải thiếu; 20 bỏ qua: thiếu LibreOffice / djvulibre), 1.549 bản ghi trong `giao_trinh.parquet`. Trang theo method:
-> `text` 144.475, `pptx` 2.460, `tcvn3` 2.524, `empty` 294, `docx` 1, **`needs_ocr` 35.663** (chưa vào bản ghi). OCR trang scan **đã nối vào chuỗi VLM**
+> (1 lỗi: PDF bị cắt cụt, bị loại có chủ ý; 20 file bỏ qua do thiếu LibreOffice / djvulibre đã làm lại sau khi cài, GT-04), 1.569 bản ghi trong
+> `giao_trinh.parquet`. Trang theo method: `text` 144.475, `pptx` 3.319, `djvu` 820, `tcvn3` 2.524, `empty` 294, `docx` 1, **`needs_ocr` 35.663** (chưa vào bản ghi). OCR trang scan **đã nối vào chuỗi VLM**
 > (O-20: `qwen3vl_8b_mt4k` -> `rp110` -> baseline -> bỏ trang) qua `CascadeOcrGetter`, kèm cache OCR theo trang (`interim/giao_trinh_ocr_cache/`) và
 > `scripts/giao_trinh/run_extract_vlm.sh` (4 GPU, chia file bằng khoá); **chưa chạy thật trên GPU** (việc S-30 trong `docs/project/SERVER_TASK.md`).
 > Nhận diện font TCVN3 nay quyết ở mức trang (`page_has_tcvn3_evidence`): một span `.Vn*` đạt ngưỡng thì mọi span `.Vn*` của trang được đổi; font có
