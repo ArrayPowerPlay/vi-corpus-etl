@@ -204,6 +204,24 @@ def test_retry_skipped_lam_lai_file_bi_bo_qua():
     assert not _needs_redo({"error": None, "skipped": None, "pages": [{"method": "text"}]}, True, retry_skipped=True)
 
 
+def test_pptx_trang_ghi_chu_khong_co_khung_chu(tmp_path):
+    """Slide có trang ghi chú nhưng không có khung chữ (notes_text_frame là None, hay gặp ở .ppt đổi qua LibreOffice) vẫn đọc được phần thân slide."""
+    pptx = pytest.importorskip("pptx")
+    pres = pptx.Presentation()
+    slide = pres.slides.add_slide(pres.slide_layouts[1])
+    slide.shapes.title.text = "Đồ họa máy tính"
+    slide.placeholders[1].text = "Phép biến đổi hình học 3D"
+    notes = slide.notes_slide  # tạo trang ghi chú rồi gỡ khung chữ của nó
+    for shape in list(notes.placeholders):
+        if shape.placeholder_format.type == pptx.enum.shapes.PP_PLACEHOLDER.BODY:
+            shape._element.getparent().remove(shape._element)
+    assert slide.has_notes_slide and notes.notes_text_frame is None
+    path = tmp_path / "slide.pptx"
+    pres.save(str(path))
+    out = parse_file(path, lambda: None)
+    assert out["error"] is None and "Phép biến đổi hình học 3D" in out["pages"][0]["text"]
+
+
 def test_parser_pptx_epub_va_ole_thieu_libreoffice(tmp_path, monkeypatch):
     """pptx (đuôi sai) và epub đọc được qua parse_file; .doc OLE khi máy không có LibreOffice thì skipped, không lỗi."""
     pptx = pytest.importorskip("pptx")

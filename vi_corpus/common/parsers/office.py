@@ -62,7 +62,7 @@ def extract_pptx(path: Path) -> list[dict]:
     pages = []
     for slide in Presentation(path).slides:
         lines = shape_lines(slide.shapes)
-        if slide.has_notes_slide:
+        if slide.has_notes_slide and slide.notes_slide.notes_text_frame is not None:  # trang ghi chú có thể không có khung chữ (None)
             lines += [p.text for p in slide.notes_slide.notes_text_frame.paragraphs]
         pages.append({"text": "\n".join(ln for ln in lines if ln.strip()), "method": "pptx"})
     return pages
