@@ -6,7 +6,7 @@ ETL xây **corpus tiếng Việt cho LLM** từ nhiều nguồn, có truy vết 
 |---|---|---|
 | SEA (3 bộ của AI Singapore) | Văn bản web + hội thoại instruct, phần tiếng Việt | **Tải** xong (Phần A); đọc vào pipeline chung bằng `vi_corpus/sea/reader.py` |
 | stbook.vn | Sách NXB Chính trị quốc gia Sự thật (PDF dạng ảnh) | Đã tải; **OCR** toàn bộ bằng chuỗi VLM đã chạy xong (Phần B) |
-| Giáo trình (Google Drive) | Giáo trình đại học 16 ngành (PDF, pptx, ...), tải bằng rclone | **Trích text** xong (`docs/sources/GIAO_TRINH.md`); OCR thật chưa chạy |
+| Giáo trình (Google Drive) | Giáo trình đại học 16 ngành (PDF, pptx, ...), tải bằng rclone | **Trích text** xong (`docs/sources/GIAO_TRINH.md`); OCR chuỗi VLM đã nối, chưa chạy GPU (S-30) |
 | VJOL | Bài báo khoa học (PDF theo năm + metadata tạp chí), chỉ xử lý | **Trích text + làm sạch** (Phần G); lớp chữ cả kho đã trích, OCR GPU chờ |
 | VISTA | Bài báo khoa học (PDF), chỉ xử lý, dùng chung bộ xử lý với VJOL | Code xong, chạy cả kho (Phần H); OCR GPU chờ |
 | Nguồn đã chọn, chưa có code | `phap_luat`, `anle` (đã tải), `wiki_vi`, `fineweb2_vi`, `finepdfs_edu_vi`, `finepdfs_vi`, `luanvan_vnu` | Xem `docs/sources/SOURCES.md` |

@@ -44,6 +44,7 @@
 | S-27 | VJOL + VISTA: đếm số file và số trang cần OCR bằng `make count-ocr` (CPU; đổi mã từ S-26 trùng) | yêu cầu 2026-11-06, 2026-11-13 | CHẠY NGAY khi không có lượt GPU nào của VJOL / VISTA đang chạy | trích `--no-ocr` vài giờ CPU, đếm vài phút | không |
 | S-28 | VJOL + VISTA: pipeline chung chỉ bằng CPU, chia 128 phần (`make pipeline-cpu`) và xem tiến độ (`make pipeline-progress`) | PP-01, PP-03 | CHẠY NGAY (cần checkpoint `--no-ocr` của S-27); là bản thử, sau OCR GPU phải chạy lại từ ingest | chưa đo (đo trong chính lần chạy này) | không |
 | S-29 | Chạy thử OCR nội bộ VNPT trên 30 PDF VJOL + 30 PDF VISTA và dựng trang duyệt tay | OI-01 | CẦN khoá API trong `.env` | vài giờ (tuỳ hạn mức API) | không |
+| S-30 | Giáo trình: OCR GPU ~35.700 trang scan bằng chuỗi VLM (`run_extract_vlm.sh`), xuất lại Parquet | GT-01 | CHẠY SAU khi `git pull` bản có GT-01; thử `LIMIT_FILES=5` trước (chưa chạy thật trên GPU) | chưa đo (đo trong chính lần chạy này) | 4 |
 
 Thứ tự khuyến nghị: S-10 (VJOL ưu tiên cao nhất, R-15) → S-0 → S-1 → S-2 → S-3 (có đủ số để tính giờ OCR) → S-4 → S-5. S-6 đến S-9 và S-11 làm sau phiên code (S-11 cần script `scripts/dedup_pairs_sample.py`, viết ở gói G-05 bước 2).
 
@@ -1021,6 +1022,23 @@ uv run python scripts/ocr_internal/review_report.py --data-root $SEA_DATA_ROOT  
 ```
 Kết quả ở `processed/ocr_internal_trial/<run>/`: `report.md` (kết luận OK / KHÔNG ĐẠT, danh sách file lỗi kèm session_id để gửi bên cung cấp), `report.csv`, `results/<sha256>.json`. Code đã kiểm bằng máy chủ giả, **chưa chạy thật** (OI-01).
 
+## S-30. Giáo trình: OCR GPU các trang scan  [CHẠY SAU khi pull bản có GT-01; không chạy chung GPU với OCR VJOL / VISTA]
+
+**Mục đích**: GT-01. 35.663 trang `needs_ocr` của giáo trình (ước lượng 2026-11-20) hiện bị bỏ khỏi bản ghi; chạy chuỗi VLM (O-20) cho các trang đó. Chuỗi: `qwen3vl_8b_mt4k` -> trang bị bộ kiểm báo thì `rp110` -> vẫn bị báo thì Paddle + VietOCR -> vẫn bị báo thì bỏ trang (giữ `rejected_text`). Server vLLM chỉ được dựng khi gặp trang scan đầu tiên.
+
+```bash
+cd /home/jovyan/dinh/vi-corpus-etl && git pull && source /home/jovyan/dinh/env.sh
+# 1. thử 5 file trước (code OCR giáo trình mới chỉ được thử bằng server giả)
+DATA_ROOT=$SEA_DATA_ROOT VLLM_BIN=$(which vllm) LIMIT_FILES=5 ./scripts/giao_trinh/run_extract_vlm.sh
+uv run --no-sync python scripts/giao_trinh/extract.py --data-root $SEA_DATA_ROOT --status
+# 2. chạy đủ trong tmux (chạy lại đúng lệnh này nếu bị ngắt: checkpoint theo file + cache theo trang)
+tmux new -s gt_ocr
+DATA_ROOT=$SEA_DATA_ROOT VLLM_BIN=$(which vllm) ./scripts/giao_trinh/run_extract_vlm.sh
+```
+Biến tuỳ chọn: `GPUS` (mặc định `0 1 2 3`), `CONCURRENCY` (32), `LIMIT_FILES`, `TIERS`, `GPU_MEM`, `SYLLABLES`, `RETRY_SKIPPED=1`. Cần `uv sync --group ocr` (engine baseline; script tự chạy). Xong script xuất Parquet một lần (`--export-only` nếu cần xuất lại). Mã thoát khác 0 nghĩa là có file lỗi hoặc chuỗi OCR hỏng (`ServerDown` / `EngineUnavailable` dừng cả lượt, không bỏ trang âm thầm). Lưu ý: nếu một worker bị kill (OOM) mà không ghi file trạng thái, script vẫn có thể báo xong; luôn xem lại `--status` (số trang `needs_ocr` còn lại phải về 0 hoặc gần 0).
+
+**Báo lại cho Claude**: số giờ, trang/giây mỗi GPU, `--status` (trang `ocr_vlm` theo trạng thái và engine, tỷ lệ flagged, số trang `needs_ocr` còn lại), số bản ghi trong Parquet trước / sau, vài trang đọc tay ở cuốn scan dài.
+
 ## Bảng ghi kết quả
 
 (Điền sau khi chạy. Ghi ngày, người chạy, lệnh đã chạy nếu khác hướng dẫn.)
@@ -1049,3 +1067,4 @@ Kết quả ở `processed/ocr_internal_trial/<run>/`: `report.md` (kết luận
 | S-26 | | mẫu: giờ trích 3.000 PDF, trang OCR %, RAM đỉnh pipeline mẫu; cả kho: giờ trích, `summary` (đoạn / token giữ / RAM từng phần): | |
 | S-28 | | giờ từng bước; RAM đỉnh mỗi phần; `summary` (đoạn / token giữ); phần lỗi: | |
 | S-29 | | số file OK / lỗi; kết luận `report.md`; kết luận duyệt tay (Tốt / Tạm được / Kém): | |
+| S-30 | | giờ; trang/giây mỗi GPU; trang `ocr_vlm` theo trạng thái / engine; flagged %; `needs_ocr` còn lại; bản ghi Parquet trước / sau: | |

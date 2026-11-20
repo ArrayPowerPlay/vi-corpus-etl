@@ -1,9 +1,9 @@
 # Tiến độ so với bảng Milestone Tracker (W1-W8)
 
 > File này đối chiếu từng mục của bảng mục tiêu (ảnh Milestone Tracker, phần việc xử lý dữ liệu) với code và tài liệu hiện có trong repo.
-> Cập nhật tay mỗi khi hoàn thành một mục. Đánh giá dựa trên code, test (413 test, `uv run pytest`), `docs/project/DECISION_LOG.md` (đến phiên 2026-11-17) và lịch sử git (đến 2026-11-19). **Các con số mục tiêu (token, số ứng viên, F1...) vẫn chưa được đo trên dữ liệu thật ở quy mô đầy đủ**: kết quả chạy trên server chỉ được ghi vào tài liệu khi chủ dự án báo lại (bảng cuối `docs/project/SERVER_TASK.md`), và bảng đó hiện còn trống.
+> Cập nhật tay mỗi khi hoàn thành một mục. Đánh giá dựa trên code, test (747 test qua, 3 bỏ qua, `uv run pytest`, đo 2026-11-20), `docs/project/DECISION_LOG.md` (đến phiên 2026-11-17) và lịch sử git (đến 2026-11-19). **Các con số mục tiêu (token, số ứng viên, F1...) vẫn chưa được đo trên dữ liệu thật ở quy mô đầy đủ**: kết quả chạy trên server chỉ được ghi vào tài liệu khi chủ dự án báo lại (bảng cuối `docs/project/SERVER_TASK.md`), và bảng đó hiện còn trống.
 > Cột "Actual Result" ở ngoài cùng bên phải của bảng gốc bị cắt khỏi ảnh nên chưa được đưa vào đây.
-> Cập nhật lần cuối: 2026-11-19 (rà lại toàn bộ theo code và nhật ký quyết định; bản trước là 2026-10-08).
+> Cập nhật lần cuối: 2026-11-19 (rà lại toàn bộ theo code và nhật ký quyết định; bản trước là 2026-10-08); 2026-11-20: cập nhật dòng giáo trình (GT-01) và số test.
 
 Quy ước: ✅ xong | 🟡 mới làm một phần (bản tạm, chưa đạt yêu cầu mở rộng) | ⬜ chưa làm
 
@@ -70,7 +70,7 @@ Nguồn: ảnh chụp bảng chủ dự án gửi 2026-10-08 (luồng: Raw sourc
 | ≥10 nguồn giá trị cao, ≥3 domain học thuật | 🟡 | Có code và dữ liệu cho 7 nguồn (3 SEA, stbook, giáo trình 16 ngành, VJOL, VISTA); đã chọn thêm 7 nguồn chưa có code (chỉ `anle` đã tải về). Đủ ≥3 domain học thuật khi VJOL / VISTA / giáo trình / luận văn chạy xong. |
 | ≥1B raw token | 🟡 | SEA ~240 GB và VISTA ~234 GB PDF nên nhiều khả năng đạt, nhưng **chưa đo** (`tokens.py` đã đếm bằng Qwen3, chưa chạy cả kho SEA). |
 | ≥300M clean token | ⬜ | Chưa có số đo. Quy mô làm việc là hàng tỷ token (T-10), W2 chỉ là mức sàn. |
-| Parse: PDF → text | 🟡 | stbook: OCR VLM đã chạy xong cả kho. Giáo trình: text + OCR (OCR giáo trình chưa nối chuỗi VLM). VJOL / VISTA: lớp chữ đã trích cả kho, OCR GPU các trang `needs_ocr` chờ chạy (số trang: `make count-ocr`). |
+| Parse: PDF → text | 🟡 | stbook: OCR VLM đã chạy xong cả kho. Giáo trình: lớp chữ đã trích (1.663 file, còn 35.663 trang `needs_ocr`); OCR chuỗi VLM đã nối (GT-01), chưa chạy GPU (S-30). VJOL / VISTA: lớp chữ đã trích cả kho, OCR GPU các trang `needs_ocr` chờ chạy (số trang: `make count-ocr`). |
 | Language id | ✅ | `pipeline/language.py`: fastText `lid.176` theo đoạn, `lang_mix` (D-02). Heuristic cũ vẫn chọn được. |
 | Boilerplate | ✅ | `pipeline/lines.py`: xoá dòng lặp trong văn bản, qua trang, giữa văn bản (web); VJOL còn bỏ bìa / mục lục / tài liệu tham khảo / tiêu đề chạy (D-04, J-xx). Ngưỡng chưa chỉnh trên dữ liệu thật. |
 | Exact dedup | ✅ | sha256 text đã chuẩn hóa (`pipeline/dedup.py`), theo văn bản + theo đoạn. |
@@ -154,4 +154,4 @@ Các quyết định đã chốt nằm ở `docs/project/DECISION_LOG.md`; việ
 4. **Thêm nguồn đã chọn**: viết adapter ingest + registry cho `phap_luat`, `anle` (đã tải), `fineweb2_vi`, `wiki_vi`, `finepdfs_edu_vi`; bước lọc chủ đề trước khi nạp `finepdfs_vi` (NS-20, NS-21); tải phần mở của `luanvan_vnu` (NS-12). Chờ duyệt thư xin phép cho VOER, Tia Sáng, NXB Giáo dục, bách khoa (NS-08).
 5. **Chấm 50.000 mẫu bằng LLM** (R-11, R-12, K-06, K-12) trước khi chốt ngưỡng rule; cần dựng vLLM trên server (S-7).
 6. **Contamination scan**: chọn danh sách benchmark (K-01) rồi viết lại `contamination.py` theo từng câu (L-01).
-7. Điền license / owner còn "chưa rõ" trong `docs/sources/SOURCES.md`; OCR giáo trình nối chuỗi VLM (chưa làm); OCR nội bộ VNPT (S-29, OI-01) nếu có khoá.
+7. Điền license / owner còn "chưa rõ" trong `docs/sources/SOURCES.md`; chạy OCR GPU giáo trình (đã nối chuỗi VLM, S-30); OCR nội bộ VNPT (S-29, OI-01) nếu có khoá.

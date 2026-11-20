@@ -1,10 +1,17 @@
 # Chiến lược xử lý giáo trình (Google Drive "Tổng hợp giáo trình Đại học")
 
 > Trạng thái: **xử lý thô đã viết** (mục 2-4: kiểm kê, trích text, làm sạch trang, `iter_records`, xuất Parquet), dựa trên khảo sát
-> ngày 30/09/2026. Chạy: `uv run python scripts/giao_trinh/extract.py --data-root <root> [--no-ocr] [--device cuda|cpu] [--limit-files N] [--retry-skipped] [--status]`
+> ngày 30/09/2026. Chạy: `uv run --no-sync python scripts/giao_trinh/extract.py --data-root <root> [--no-ocr] [--gpu G --serve --vllm-bin <vllm>] [--limit-files N] [--retry-skipped] [--multi-process] [--export-only] [--status]`; 4 GPU: `DATA_ROOT=<root> VLLM_BIN=<vllm> ./scripts/giao_trinh/run_extract_vlm.sh`
 > (xuất `processed/giao_trinh/giao_trinh.parquet` tự động ở cuối mỗi lần chạy). Code: `vi_corpus/giao_trinh/` (`extract.py`, `records.py`),
 > `vi_corpus/common/pdf_text.py` (`extract_pdf`, `clean_pages`). Đã thử E2E với dữ liệu tổng hợp (kill -9 rồi chạy lại đúng lệnh cũ);
-> **OCR thật chưa chạy** (cần GPU trên server, `uv run --group ocr`). Chưa làm (theo yêu cầu "chỉ xử lý thô"): phân loại `doc_type`/`language`
+> **Cập nhật 2026-11-20 (GT-01, GT-02)**: lượt trích lớp chữ đã chạy trên server (không OCR): 1.687 file, 1.663 nội dung duy nhất đã có checkpoint
+> (1 lỗi: PDF hỏng / tải thiếu; 20 bỏ qua: thiếu LibreOffice / djvulibre), 1.549 bản ghi trong `giao_trinh.parquet`. Trang theo method:
+> `text` 144.475, `pptx` 2.460, `tcvn3` 2.524, `empty` 294, `docx` 1, **`needs_ocr` 35.663** (chưa vào bản ghi). OCR trang scan **đã nối vào chuỗi VLM**
+> (O-20: `qwen3vl_8b_mt4k` -> `rp110` -> baseline -> bỏ trang) qua `CascadeOcrGetter`, kèm cache OCR theo trang (`interim/giao_trinh_ocr_cache/`) và
+> `scripts/giao_trinh/run_extract_vlm.sh` (4 GPU, chia file bằng khoá); **chưa chạy thật trên GPU** (việc S-30 trong `docs/project/SERVER_TASK.md`).
+> Nhận diện font TCVN3 nay quyết ở mức trang (`page_has_tcvn3_evidence`): một span `.Vn*` đạt ngưỡng thì mọi span `.Vn*` của trang được đổi; font có
+> tên `VNI-` không bật chế độ đổi cả tài liệu. Pipeline chung mới chạy thử 100 chunk (`giao_trinh_cpu100_20261119`, đến stage `quality`).
+> Chưa làm (theo yêu cầu "chỉ xử lý thô"): phân loại `doc_type`/`language`
 > (mục 5), quality, dedup ngoài sha256 file (mục 6). **2026-10-08 (D-05, R-14)**: đã thêm parser docx, doc / ppt (LibreOffice), djvu
 > (djvulibre), html, epub ở `vi_corpus/common/parsers/`, nhận định dạng theo nội dung đầu file; máy thiếu LibreOffice / djvulibre thì file bị
 > `skipped` (`needs_libreoffice` / `needs_djvulibre`), cài xong chạy lại với `--retry-skipped`. Parser mới chưa thử trên file thật của Drive.
@@ -109,4 +116,4 @@ Không dùng `get_text(sort=True)`: một số PDF là 2 trang sách trên 1 tra
 3. (Xong) Viết `vi_corpus/giao_trinh/` (inventory + extract có checkpoint + `iter_records`) và `scripts/giao_trinh/extract.py`;
    bước clean trang đặt trong `vi_corpus/common/pdf_text.py` để VISTA/VJOL dùng lại.
 4. (Xong) Thêm `giao_trinh` vào `vi_corpus/common/registry.py`.
-5. (Xong, D-05) ppt/docx qua LibreOffice, djvu, html, epub. Để sau: OCR giáo trình bằng chuỗi VLM (hiện dùng bộ OCR cũ); công thức toán (Nougat/Marker trên GPU) cho nhóm Toán nếu cần chất lượng cao.
+5. (Xong, D-05) ppt/docx qua LibreOffice, djvu, html, epub. OCR giáo trình bằng chuỗi VLM: đã code (GT-01), chờ chạy GPU (S-30). Để sau: công thức toán (Nougat/Marker trên GPU) cho nhóm Toán nếu cần chất lượng cao.
