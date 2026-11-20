@@ -70,7 +70,7 @@ Nguồn: ảnh chụp bảng chủ dự án gửi 2026-10-08 (luồng: Raw sourc
 | ≥10 nguồn giá trị cao, ≥3 domain học thuật | 🟡 | Có code và dữ liệu cho 7 nguồn (3 SEA, stbook, giáo trình 16 ngành, VJOL, VISTA); đã chọn thêm 7 nguồn chưa có code (chỉ `anle` đã tải về). Đủ ≥3 domain học thuật khi VJOL / VISTA / giáo trình / luận văn chạy xong. |
 | ≥1B raw token | 🟡 | SEA ~240 GB và VISTA ~234 GB PDF nên nhiều khả năng đạt, nhưng **chưa đo** (`tokens.py` đã đếm bằng Qwen3, chưa chạy cả kho SEA). |
 | ≥300M clean token | ⬜ | Chưa có số đo. Quy mô làm việc là hàng tỷ token (T-10), W2 chỉ là mức sàn. |
-| Parse: PDF → text | 🟡 | stbook: OCR VLM đã chạy xong cả kho. Giáo trình: lớp chữ đã trích (1.663 file, còn 35.663 trang `needs_ocr`); OCR chuỗi VLM đã nối (GT-01), chưa chạy GPU (S-30). VJOL / VISTA: lớp chữ đã trích cả kho, OCR GPU các trang `needs_ocr` chờ chạy (số trang: `make count-ocr`). |
+| Parse: PDF → text | 🟡 | stbook: OCR VLM đã chạy xong cả kho. Giáo trình: lớp chữ đã trích (1.663 file, còn 35.663 trang `needs_ocr`); OCR chuỗi VLM đã nối (GT-01), chưa chạy GPU (S-30). Pipeline chung đã chạy cả phần có lớp chữ (GT-05): giữ 38.618 chunk, 44,3 triệu token Qwen3. VJOL / VISTA: lớp chữ đã trích cả kho, OCR GPU các trang `needs_ocr` chờ chạy (số trang: `make count-ocr`). |
 | Language id | ✅ | `pipeline/language.py`: fastText `lid.176` theo đoạn, `lang_mix` (D-02). Heuristic cũ vẫn chọn được. |
 | Boilerplate | ✅ | `pipeline/lines.py`: xoá dòng lặp trong văn bản, qua trang, giữa văn bản (web); VJOL còn bỏ bìa / mục lục / tài liệu tham khảo / tiêu đề chạy (D-04, J-xx). Ngưỡng chưa chỉnh trên dữ liệu thật. |
 | Exact dedup | ✅ | sha256 text đã chuẩn hóa (`pipeline/dedup.py`), theo văn bản + theo đoạn. |

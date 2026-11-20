@@ -10,7 +10,7 @@
 > (O-20: `qwen3vl_8b_mt4k` -> `rp110` -> baseline -> bỏ trang) qua `CascadeOcrGetter`, kèm cache OCR theo trang (`interim/giao_trinh_ocr_cache/`) và
 > `scripts/giao_trinh/run_extract_vlm.sh` (4 GPU, chia file bằng khoá); **chưa chạy thật trên GPU** (việc S-30 trong `docs/project/SERVER_TASK.md`).
 > Nhận diện font TCVN3 nay quyết ở mức trang (`page_has_tcvn3_evidence`): một span `.Vn*` đạt ngưỡng thì mọi span `.Vn*` của trang được đổi; font có
-> tên `VNI-` không bật chế độ đổi cả tài liệu. Pipeline chung mới chạy thử 100 chunk (`giao_trinh_cpu100_20261119`, đến stage `quality`).
+> tên `VNI-` không bật chế độ đổi cả tài liệu. Pipeline chung đã chạy trên toàn bộ phần có lớp chữ (GT-05, run `giao_trinh_full_20261120`): 43.700 chunk, giữ 38.618 (44,3 triệu token Qwen3); chưa gồm trang `needs_ocr`.
 > Chưa làm (theo yêu cầu "chỉ xử lý thô"): phân loại `doc_type`/`language`
 > (mục 5), quality, dedup ngoài sha256 file (mục 6). **2026-10-08 (D-05, R-14)**: đã thêm parser docx, doc / ppt (LibreOffice), djvu
 > (djvulibre), html, epub ở `vi_corpus/common/parsers/`, nhận định dạng theo nội dung đầu file; máy thiếu LibreOffice / djvulibre thì file bị
