@@ -126,3 +126,53 @@ Quy tắc chung cho E-07…E-11: thu nhỏ bằng lấy mẫu con mọi nguồn 
 
 - Các mã K / E / L ở đây là mã việc, không trùng hệ mã quyết định trong `DECISION_LOG.md` (T-xx, R-xx…). Khi chốt một K, ghi quyết định với mã mới trong DECISION_LOG và ghi mã đó vào cột TT.
 - Đã chốt trước, không cần chốt lại: T-01…T-10 (xem `docs/project/DECISION_LOG.md`, phiên 2026-11-03 và 2026-11-04).
+
+---
+
+## E. Crawl `vbpl.vn` về `data/raw/vbpl/` (V)
+
+> Thêm 2026-11-20. Căn cứ: `docs/sources/VBPL_CRAWL_REPORT.html` (khảo sát + số đo), quyết định NS-23 / NS-24 trong `DECISION_LOG.md`. Chủ dự án chốt: **dùng JSON gateway, không tuân thủ `robots.txt` để tối ưu thời gian**, viết một script tải toàn bộ raw. Phiên sau chạy crawl. Mã V-xx là mã việc, không trùng mã quyết định.
+>
+> Số liệu cần nhớ: 174.674 văn bản (sitemap 36 file); ≈ 0,6 tỷ token (CI 95%: 0,49–0,73); toàn văn ≈ 6 giờ ở 8 req/s; ≈ 11,1 nghìn văn bản chỉ có PDF; ≈ 63% trang PDF là bản quét (mẫu 22 file, chỉ tin bậc độ lớn).
+
+### E1. Code crawler (làm trước khi chạy)
+
+| Mã | Việc | Ghi chú | TT |
+|---|---|---|---|
+| V-01 | `vi_corpus/vbpl/` (docstring tiếng Việt): `sitemap.py` (tải 36 file, parse ID bằng `rpartition("--")`, đủ 5 dạng ID: số, UUID, `vbpqta_*`, `hhtquyetdinh_*`, `vbpqdinhchinh_*`), `client.py` (UA tự khai, token bucket, backoff), `crawler.py`, `manifest.py` | Lấy lại parser từ `experiments/vbpl/common.py`. **Bài học đã gặp:** regex chỉ nhận ID số bỏ sót 11% corpus; parser dòng RSC theo độ dài byte (cho đường SSR). Cả hai thành test | ☐ |
+| V-02 | `scripts/vbpl/crawl.py` + khoá `vbpl` trong `vi_corpus/common/registry.py`; cờ `--data-root`, `--workers` (≤ 6), `--rps` (8), `--limit-docs`, `--status`, `--with-pdf`, `--refresh-sitemap` | Theo mẫu `scripts/sea/*.py` và `scripts/stbook/crawl.py`; `run_all.py` bỏ qua khi chưa có thư mục raw hoặc gọi được với `--status` | ☐ |
+| V-03 | Đường chính: `GET vbpl-bientap-gateway.moj.gov.vn/api/qtdc/public/doc/<id>`, ghi **nguyên byte** JSON vào `raw/vbpl/doc/<2 ký tự md5(id)>/<id>.json.gz`, ghi nguyên tử | Không chuyển đổi (raw = bản gốc). Không gửi `Origin`/`Referer`/cookie | ☐ |
+| V-04 | Đường dự phòng SSR (`vbpl.vn/van-ban/chi-tiet/<slug>--<id>`) cho ID số/UUID lỗi 500 dai dẳng, và đối chiếu 1% văn bản | SSR 404 với 11.879 ID kiểu cũ nên không thay được gateway; đã đo trùng 100% (160/160) | ☐ |
+| V-05 | Tải PDF qua `/qtdc/public/doc/minio/buckets/vbpl/<id>/<file>/download` **chỉ khi** `hasOriginalPdf = true` và toàn văn rỗng (khung HTML < 120 ký tự); lưu `raw/vbpl/pdf/<2 ký tự>/<id>/<tên file>.pdf`; HTTP 400 = "file thiếu" | Endpoint PDF chưa đo ngưỡng riêng: bắt đầu 2–4 luồng. Tải PDF là lượt chạy riêng sau lượt JSON | ☐ |
+| V-06 | Giới hạn tốc độ: token bucket 8 req/s, tối đa 6 luồng. 429: ngủ 2→4→8… tối đa 60 giây (có jitter) và giảm nửa tốc độ trong 5 phút. 500: thử lại 2/10/60 giây rồi ghi `persistent_error`. **403 vượt 2%/100 request liền nhau: dừng cả lượt và báo** | Ngưỡng 429 đo được nằm ở 15–27 req/s; 8 req/s là mức an toàn có dư | ☐ |
+| V-07 | Checkpoint theo văn bản: `raw/vbpl/manifest.jsonl` (id, nguồn api/ssr, mã HTTP, sha256, byte, thời điểm, trạng thái, `lang`, loại ID, `has_pdf`) + `state/vbpl/` + khoá `.run.lock` (như SEA) | Resume sau `kill -9`; bỏ qua văn bản đã xong khi file còn đúng sha256 | ☐ |
+| V-08 | Kiểm hợp đồng gateway ở đầu mỗi lượt (1 văn bản mẫu: có đủ trường `docType`, `issueDate`, `hasContent`, `hasOriginalPdf`…); sai thì dừng | API không công bố, có thể đổi tên trường/đường dẫn | ☐ |
+| V-09 | Test không cần mạng (`tests/test_vbpl_*.py`): parser sitemap 5 dạng ID, parser JSON, parser RSC, token bucket, backoff, resume | Theo quy ước repo: `uv run pytest` không cần mạng | ☐ |
+| V-10 | Theo `CLAUDE.md`, **thử thật trên `--data-root` tạm** với `--limit-docs` nhỏ và `kill -9` giữa chừng trước khi chạy cả kho | Không chạy thẳng 174k văn bản | ☐ |
+
+### E2. Chạy crawl (phiên sau)
+
+| Mã | Việc | Ước lượng | TT |
+|---|---|---|---|
+| V-11 | Chụp sitemap vào `raw/vbpl/sitemap/<ngày>/{1..36}.xml.gz` (nguyên bản), dựng danh sách ID | vài phút | ☐ |
+| V-12 | Lượt 1: JSON toàn bộ 174.674 văn bản (chạy bằng `nohup`/`tmux`, theo dõi bằng `--status`) | ≈ 6 giờ ở 8 req/s; ≈ 1,9 GB gzip | ☐ |
+| V-13 | Lượt 2: PDF của ≈ 11,1 nghìn văn bản chỉ có PDF | ≈ 1–2 giờ; dung lượng chưa đo chắc | ☐ |
+| V-14 | Kiểm sau crawl: đếm thành công / `persistent_error` / thiếu so với sitemap; thử lại phần lỗi; đối chiếu SSR 1% | — | ☐ |
+
+### E3. Sau crawl (chưa làm ngay)
+
+| Mã | Việc | Phụ thuộc | TT |
+|---|---|---|---|
+| V-15 | Đối chiếu với HF `phap_luat` (NS-01: 170.824 `content` + 518.235 `legacy_content`) theo `so_ky_hieu`/số ký hiệu: phần nào chỉ có ở một bên, quyết định gộp | V-12 | ☐ |
+| V-16 | Adapter ingest `vbpl` (HTML → văn bản, lineage URL + sha256, `lang`) + `PROFILES["vbpl"]` trong pipeline | V-12, V-15 | ☐ |
+| V-17 | OCR các PDF không có toàn văn bằng cascade VLM (≈ 63% trang là bản quét; ≈ 3–4 giờ GPU, ước lượng thô) | V-13; GPU | ☐ |
+| V-18 | Đo những điều khảo sát chưa kiểm chứng: chặn theo vùng địa lý (server chạy từ IP nào), ngưỡng riêng endpoint PDF, SSR chạy bền | V-10 | ☐ |
+| V-19 | Cập nhật định kỳ: tải lại sitemap, so tập ID, phát hiện đổi nội dung bằng sha256 (`lastmod`/`updatedDate` không đáng tin) | V-12 | ☐ |
+
+### E4. Còn chờ chủ dự án
+
+| Mã | Cần chốt | Đề xuất của Claude | TT |
+|---|---|---|---|
+| K-28 | **Có gửi thư thông báo Bộ Tư pháp không** (mẫu ở `docs/sources/PERMISSION_EMAILS.md`) | Nên gửi (không chặn việc crawl) để có kênh liên hệ nếu bị chặn IP; ghi NS-24 | ☐ |
+| K-29 | **Giữ hay lọc bản dịch tiếng Anh `vbpqta_*`** (10.953 văn bản, 0% ký tự tiếng Việt) | Vẫn tải raw (raw là bản gốc); lọc ở giai đoạn `language` của pipeline | ☐ |
+

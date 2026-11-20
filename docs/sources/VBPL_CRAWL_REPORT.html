@@ -1,0 +1,328 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Báo cáo chiến lược crawl vbpl.vn</title>
+<style>
+/* Báo cáo thí nghiệm crawl vbpl.vn (2026-11-20). Số liệu lấy từ experiments/vbpl/out/*.json. */
+:root{
+  color-scheme: light;
+  --bg:#f9f9f7; --surface:#fcfcfb; --ink:#0b0b0b; --ink2:#52514e; --muted:#898781;
+  --line:#e1e0d9; --axis:#c3c2b7; --ring:rgba(11,11,11,.10);
+  --s1:#2a78d6; --s2:#eb6834;
+  --good:#006300; --warn-bg:#fff4d6; --warn-ink:#6b4a00; --bad-bg:#fde8e8; --bad-ink:#8a1f1f; --ok-bg:#e6f4e6; --note-bg:#eef3fb;
+  --code-bg:#f0efec;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme: dark;
+    --bg:#0d0d0d; --surface:#1a1a19; --ink:#f0efec; --ink2:#c3c2b7; --muted:#898781;
+    --line:#2c2c2a; --axis:#383835; --ring:rgba(255,255,255,.10);
+    --s1:#3987e5; --s2:#d95926;
+    --good:#0ca30c; --warn-bg:#3a2f10; --warn-ink:#f1cf7a; --bad-bg:#3d1a1a; --bad-ink:#f0a3a3; --ok-bg:#15301a; --note-bg:#17212e;
+    --code-bg:#252523;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme: dark;
+  --bg:#0d0d0d; --surface:#1a1a19; --ink:#f0efec; --ink2:#c3c2b7; --muted:#898781;
+  --line:#2c2c2a; --axis:#383835; --ring:rgba(255,255,255,.10);
+  --s1:#3987e5; --s2:#d95926;
+  --good:#0ca30c; --warn-bg:#3a2f10; --warn-ink:#f1cf7a; --bad-bg:#3d1a1a; --bad-ink:#f0a3a3; --ok-bg:#15301a; --note-bg:#17212e;
+  --code-bg:#252523;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.6 system-ui,-apple-system,"Segoe UI",sans-serif}
+.wrap{max-width:1000px;margin:0 auto;padding:32px 20px 80px}
+h1{font-size:28px;line-height:1.25;margin:0 0 6px}
+h2{font-size:21px;margin:44px 0 10px;padding-top:6px;border-top:1px solid var(--line)}
+h3{font-size:16px;margin:24px 0 6px}
+p{margin:8px 0}
+.sub{color:var(--ink2);margin:0 0 22px}
+a{color:var(--s1)}
+code,pre{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px}
+code{background:var(--code-bg);padding:1px 5px;border-radius:4px}
+pre{background:var(--code-bg);padding:12px 14px;border-radius:8px;overflow-x:auto;line-height:1.5}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:18px 0}
+.kpi{background:var(--surface);border:1px solid var(--ring);border-radius:10px;padding:12px 14px}
+.kpi b{display:block;font-size:24px;line-height:1.2}
+.kpi span{color:var(--ink2);font-size:12.5px}
+.verdict{background:var(--surface);border:1px solid var(--ring);border-left:4px solid var(--s1);border-radius:8px;padding:6px 16px 10px;margin:14px 0}
+.verdict li{margin:5px 0}
+.note,.warn,.bad,.ok{border-radius:8px;padding:10px 14px;margin:14px 0}
+.note{background:var(--note-bg)} .warn{background:var(--warn-bg);color:var(--warn-ink)}
+.bad{background:var(--bad-bg);color:var(--bad-ink)} .ok{background:var(--ok-bg)}
+.tw{overflow-x:auto;margin:10px 0;border:1px solid var(--ring);border-radius:8px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:13.5px}
+th,td{padding:7px 10px;text-align:left;vertical-align:top;border-bottom:1px solid var(--line)}
+th{font-weight:600;color:var(--ink2);white-space:nowrap;background:var(--surface)}
+tr:last-child td{border-bottom:0}
+td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.tag{display:inline-block;padding:0 7px;border-radius:9px;font-size:12px;font-weight:600;white-space:nowrap}
+.t-ok{background:var(--ok-bg);color:var(--good)} .t-warn{background:var(--warn-bg);color:var(--warn-ink)} .t-bad{background:var(--bad-bg);color:var(--bad-ink)}
+.fig{background:var(--surface);border:1px solid var(--ring);border-radius:10px;padding:14px 14px 8px;margin:14px 0}
+.fig h4{margin:0 0 2px;font-size:14px} .fig p.cap{margin:0 0 6px;color:var(--ink2);font-size:12.5px}
+.legend{display:flex;gap:16px;flex-wrap:wrap;font-size:12.5px;color:var(--ink2);margin:4px 0 2px}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px;vertical-align:-1px}
+svg{width:100%;height:auto;display:block;overflow:visible}
+svg text{fill:var(--muted);font:11px system-ui,sans-serif}
+#tip{position:fixed;pointer-events:none;background:var(--ink);color:var(--bg);font-size:12px;padding:5px 9px;border-radius:6px;display:none;max-width:260px;z-index:9;line-height:1.4}
+.small{font-size:12.5px;color:var(--ink2)}
+ol.steps li{margin:6px 0}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>Chiến lược crawl vbpl.vn</h1>
+<p class="sub">Cơ sở dữ liệu quốc gia về pháp luật (Bộ Tư pháp) → <code>data/raw/vbpl/</code>. Báo cáo thí nghiệm ngày 2026-11-20; mã thí nghiệm và số liệu gốc ở <code>experiments/vbpl/</code> (thư mục này nằm trong <code>.gitignore</code>). Tổng khoảng 10 nghìn request đã gửi tới site trong ~1 giờ, từ một IP trong nước, bằng UA tự khai.</p>
+
+<div class="kpis">
+  <div class="kpi"><b>174.674</b><span>văn bản trong sitemap (57.989 trung ương, 116.685 địa phương)</span></div>
+  <div class="kpi"><b>≈ 0,6 tỷ</b><span>token Qwen3 (khoảng tin cậy 95%: 0,49–0,73 tỷ)</span></div>
+  <div class="kpi"><b>≈ 6 giờ</b><span>crawl toàn văn ở 8 req/s (chưa gồm PDF/OCR)</span></div>
+  <div class="kpi"><b>≈ 11,1 nghìn</b><span>văn bản không có toàn văn, chỉ có PDF (cần OCR)</span></div>
+</div>
+
+<h2>1. Kết luận</h2>
+<div class="verdict"><ul>
+  <li><b>Khả thi: có.</b> Không đăng nhập, không captcha, không thử thách JavaScript, không token. Sitemap công khai liệt kê đủ 174.674 văn bản; PDF gốc tải ẩn danh được.</li>
+  <li><b>Chiến lược tốt nhất:</b> lấy <b>JSON của gateway công khai</b> (<code>/qtdc/public/doc/&lt;id&gt;</code>) làm đường chính, giữ <b>trang SSR</b> của <code>vbpl.vn</code> làm đường dự phòng và đối chiếu; chỉ tải PDF cho văn bản không có toàn văn. Lý do: JSON phủ 100% dạng ID (SSR trả 404 cho 11.879 URL mà chính sitemap quảng bá), nhẹ hơn ~2 lần về dung lượng và nhanh hơn ~3 lần (xem mục 3).</li>
+  <li><b>Rate limit: có, ở gateway.</b> 429 xuất hiện khi dồn ~27 req/s trong vài giây; chạy bền 3 phút ở ~15 req/s không có 429 nào. Đề xuất chạy <b>8 req/s</b> (khoảng một nửa mức đã chứng minh an toàn) kèm backoff.</li>
+  <li><b>Cơ chế chống crawl:</b> (1) tường bot ở rìa CDN chặn UA mặc định của công cụ (python-requests, curl, UA rỗng → 403), (2) gateway chỉ nhận <code>Origin</code> là <code>vbpl.vn</code> hoặc không có Origin, (3) giới hạn burst 429. Không có gì khác.</li>
+  <li><b>Bypass: không cần và không khuyến nghị.</b> Mọi chặn quan sát được đều qua được bằng cách hành xử đúng (UA tự khai, không gửi Origin, giữ tốc độ vừa phải, backoff khi 429); tốc độ đó đủ cho cả kho trong một đêm. Xoay IP/proxy là né một cơ chế bảo vệ dịch vụ nhà nước, tôi không thử và không đề xuất.</li>
+  <li><b>Quy mô:</b> ≈ 0,6 tỷ token tiếng Việt (≈ 6% mức làm việc 10B token sạch của W7), nên đây là nguồn chuyên ngành pháp luật chứ không phải nguồn tạo khối lượng.</li>
+</ul></div>
+
+<div class="warn"><b>Cần chủ dự án quyết định trước khi chạy thật.</b> <code>robots.txt</code> của <code>vbpl.vn</code> cho phép trang văn bản và sitemap nhưng cấm <code>/api/</code> và <code>/Pages/</code>. Gateway <code>vbpl-bientap-gateway.moj.gov.vn</code> là host khác, không có <code>robots.txt</code> (404) và không được công bố là API cho bên ngoài; trình duyệt của chính site gọi nó. Dùng nó nằm ngoài phạm vi chữ của robots.txt nhưng không phải đường mà site mời dùng. Nếu không muốn dùng, đường A (SSR) tuân thủ robots.txt, chậm hơn khoảng 3 lần ở mỗi request và bỏ sót 11.879 URL kiểu ID cũ (xem mục 3). Trang chủ ghi đơn vị chủ quản là Bộ Tư pháp; nên gửi thông báo/xin phép (có mẫu ở <code>docs/sources/PERMISSION_EMAILS.md</code>).</div>
+
+<h2>2. Cấu trúc kỹ thuật của site</h2>
+<p>Site mới là ứng dụng Next.js (bản ASP.NET cũ với đường dẫn <code>/Pages/…</code> đã bị robots.txt cấm). Phía trước là một lớp CDN/WAF (header <code>Server: PWS/8.3.1.0.8</code>, <code>x-ws-request-id</code>, <code>Ws-Action</code>; giống họ Wangsu, đây là suy đoán từ header, chưa xác nhận).</p>
+<div class="tw"><table>
+<tr><th>Thành phần</th><th>Địa chỉ</th><th>Ghi chú</th></tr>
+<tr><td>Sitemap</td><td><code>vbpl.vn/sitemap.xml</code> → <code>sitemap/1..36.xml</code></td><td>1–12 trung ương, 13–36 địa phương; mỗi file ≤ 5.000 URL, tổng 136,6 MB, tải tuần tự mất ~20 giây</td></tr>
+<tr><td>Trang chi tiết (SSR)</td><td><code>vbpl.vn/van-ban/chi-tiet/&lt;slug&gt;--&lt;id&gt;</code></td><td>Toàn văn HTML và metadata nhúng trong luồng <code>self.__next_f</code> (không có <code>__NEXT_DATA__</code>); cần parse luồng RSC theo độ dài byte</td></tr>
+<tr><td>JSON chi tiết</td><td><code>…gateway…/api/qtdc/public/doc/&lt;id&gt;</code></td><td>Cùng object <code>initialDoc</code> + toàn văn; trả <code>{success, data, …}</code></td></tr>
+<tr><td>PDF gốc / file đính kèm</td><td><code>…/qtdc/public/doc/minio/buckets/vbpl/&lt;id&gt;/&lt;tên file&gt;/download</code></td><td>Tên file lấy từ <code>documentContentFileName</code>; tải ẩn danh</td></tr>
+<tr><td>Liệt kê / tìm kiếm</td><td>qua <code>vbpl.vn/api/…</code></td><td>Bị robots.txt cấm; không thử. Không cần vì sitemap đã có đủ ID</td></tr>
+</table></div>
+
+<h3>Bốn dạng ID trong sitemap</h3>
+<p>Một lỗi nhỏ của chính tôi lúc đầu (regex chỉ nhận ID số) làm hụt 11% corpus; đã sửa và đối chiếu lại với số đếm thủ công (174.674 = 174.674).</p>
+<div class="fig">
+  <h4>Số văn bản theo dạng ID</h4>
+  <p class="cap">Dạng ID quyết định đường lấy dữ liệu nào dùng được.</p>
+  <svg id="chartKinds" viewBox="0 0 640 190" role="img" aria-label="Số văn bản theo dạng ID"></svg>
+</div>
+<div class="tw"><table>
+<tr><th>Dạng ID</th><th class="n">Số văn bản</th><th>Nội dung</th><th>Trang SSR</th><th>JSON gateway</th></tr>
+<tr><td><code>23658</code> (số)</td><td class="n">155.450</td><td>Văn bản tiếng Việt, hầu hết là văn bản quy phạm</td><td><span class="tag t-ok">200</span></td><td><span class="tag t-ok">200</span></td></tr>
+<tr><td>UUID</td><td class="n">7.345</td><td>Văn bản mới 2026, tiếng Việt (trường <code>lang</code> = null)</td><td><span class="tag t-ok">200</span></td><td><span class="tag t-ok">200</span></td></tr>
+<tr><td><code>vbpqta_…</code></td><td class="n">10.953</td><td><b>Bản dịch tiếng Anh</b> (<code>lang=en</code>, 0% ký tự tiếng Việt)</td><td><span class="tag t-bad">404</span></td><td><span class="tag t-ok">200</span> (~2,4% lỗi 500 vĩnh viễn: 3/125 trong mẫu)</td></tr>
+<tr><td><code>hhtquyetdinh_…</code></td><td class="n">746</td><td>Hệ thống hóa văn bản; khoảng nửa không có toàn văn</td><td><span class="tag t-bad">404</span></td><td><span class="tag t-warn">~12% lỗi 500 vĩnh viễn</span></td></tr>
+<tr><td><code>vbpqdinhchinh_…</code></td><td class="n">180</td><td>Văn bản hành chính</td><td><span class="tag t-bad">404</span></td><td><span class="tag t-ok">200</span> (một số không có dữ liệu)</td></tr>
+</table></div>
+<p class="small">Cũng có 13 URL không có slug (chỉ <code>/chi-tiet/&lt;id&gt;</code>). Trường <code>lastmod</code> của sitemap vô dụng cho cập nhật gia tăng: toàn bộ nằm trong 2025–2026 (18.517 và 156.157 URL). Site không công bố tổng số văn bản nên sitemap là bản kiểm kê duy nhất.</p>
+
+<h2>3. Các chiến lược đã thử và so sánh</h2>
+<div class="tw"><table>
+<tr><th>Chiến lược</th><th>Độ phủ</th><th>Dung lượng/văn bản</th><th>Độ trễ p50</th><th>Tuân thủ robots.txt</th><th>Đánh giá</th></tr>
+<tr><td><b>A. Sitemap + trang SSR</b></td><td>93,2% (162.795 ID số/UUID); 404 cho 11.879 ID kiểu cũ</td><td>~124 KB</td><td>0,5–0,9 s</td><td><span class="tag t-ok">có</span></td><td>Dự phòng. Văn bản trùng JSON 100% (160/160)</td></tr>
+<tr><td><b>B. Sitemap + JSON gateway</b></td><td>≈ 99,8%: lỗi 500 vĩnh viễn rải rác ở ID kiểu cũ (~350 văn bản ước tính)</td><td>~60 KB (p50 13 KB)</td><td>0,17–0,24 s</td><td><span class="tag t-warn">host khác, không có robots.txt</span></td><td><b>Chính.</b> Nhẹ, sạch, phủ đủ</td></tr>
+<tr><td>C. Liệt kê/tìm kiếm qua <code>vbpl.vn/api</code></td><td>không thử</td><td>–</td><td>–</td><td><span class="tag t-bad">cấm</span></td><td>Loại: không cần, sitemap đã đủ</td></tr>
+<tr><td>D. Trình duyệt headless</td><td>không thử</td><td>–</td><td>–</td><td>–</td><td>Loại: dữ liệu đã có trong HTML, không có thử thách JS. Chậm hơn nhiều (chưa đo)</td></tr>
+<tr><td>E. Dùng lại bộ HF <code>phap_luat</code></td><td>không đo ở đây</td><td>–</td><td>–</td><td>–</td><td>Bổ sung chứ không thay thế; xem mục 8</td></tr>
+</table></div>
+<p class="small">Mẫu so sánh A/B/C: 377 văn bản phân tầng theo dạng ID × phạm vi (<code>exp2</code>). A: 160 trang 200, 217 trang 404. B: 367 lần 200, 10 lần 500. PDF: 47/47 tải được và đúng chữ ký <code>%PDF-</code>, trung bình 1,68 MB (p50 0,95 MB, p95 7,5 MB).</p>
+
+<h2>4. Rate limit</h2>
+<div class="fig">
+  <h4>Thông lượng đạt được theo số luồng song song</h4>
+  <p class="cap">Mỗi điểm là 150 request (API) hoặc 80 request (SSR) tới ID ngẫu nhiên không lặp. Điểm rỗng = có lỗi 429/500.</p>
+  <div class="legend"><span><i style="background:var(--s1)"></i>JSON gateway</span><span><i style="background:var(--s2)"></i>Trang SSR</span></div>
+  <svg id="chartRamp" viewBox="0 0 640 300" role="img" aria-label="Thông lượng theo số luồng"></svg>
+</div>
+<div class="tw"><table>
+<tr><th>Đích</th><th class="n">Luồng</th><th class="n">req/s</th><th class="n">p50 (s)</th><th class="n">p95 (s)</th><th>Mã lỗi</th></tr>
+<tr><td>Gateway</td><td class="n">1</td><td class="n">3,4</td><td class="n">0,23</td><td class="n">0,72</td><td>không</td></tr>
+<tr><td>Gateway</td><td class="n">2</td><td class="n">6,8</td><td class="n">0,23</td><td class="n">0,66</td><td>không</td></tr>
+<tr><td>Gateway</td><td class="n">4</td><td class="n">13,4</td><td class="n">0,24</td><td class="n">0,74</td><td>không</td></tr>
+<tr><td>Gateway</td><td class="n">8</td><td class="n">27,2</td><td class="n">0,22</td><td class="n">0,93</td><td><span class="tag t-bad">16 × 429, 2 × 500 (12%)</span></td></tr>
+<tr><td>SSR</td><td class="n">1</td><td class="n">1,1</td><td class="n">0,52</td><td class="n">2,64</td><td>không</td></tr>
+<tr><td>SSR</td><td class="n">4</td><td class="n">2,1</td><td class="n">0,77</td><td class="n">7,03</td><td>không</td></tr>
+<tr><td>SSR</td><td class="n">16</td><td class="n">12,8</td><td class="n">0,86</td><td class="n">2,18</td><td>không</td></tr>
+<tr><td>SSR</td><td class="n">32</td><td class="n">9,3</td><td class="n">3,16</td><td class="n">4,97</td><td><span class="tag t-warn">không lỗi nhưng quá tải: p50 ×4, thông lượng giảm</span></td></tr>
+</table></div>
+<h3>Những gì rút ra</h3>
+<ul>
+  <li><b>Gateway có giới hạn burst rõ ràng.</b> Thân 429 là <code>{"error":"rate_limit","message":"Bạn đã thao tác quá nhanh! Vui lòng thử lại sau!"}</code>, không có <code>Retry-After</code> hay <code>X-RateLimit-*</code>. Ở mức 8 luồng, 14 lần 429 dồn trong ~0,25 giây khi có ~35 request/giây. Ngưỡng nằm khoảng giữa 15 và 27 req/s; tôi không dò chính xác hơn để tránh dồn thêm tải.</li>
+  <li><b>Không có ban dài hạn.</b> Sau đợt 429, request kiểm tra sau 5 giây và 30 giây đều 200.</li>
+  <li><b>Chạy bền an toàn:</b> 3 phút ở 4 luồng, 15,2 req/s (2.749 request): 0 lần 429, thông lượng ổn định theo từng cửa sổ 30 giây (14,1–17,2 req/s), độ trễ p50 0,21 s. Có 13 lần 500 (0,47%).</li>
+  <li><b>Nhưng 429 vẫn có thể lọt ngẫu nhiên.</b> Ở mẫu 2.000 văn bản (4 luồng, ~9 req/s trung bình) vẫn dính 2 lần 429 (0,1%). Cả hai thử lại đều 200. Crawler phải xử lý 429 như một tình huống thường.</li>
+  <li><b>Lỗi 500 có hai loại.</b> Với ID số: tạm thời (5/5 thử lại thành công). Với <code>vbpqta_*</code>/<code>hhtquyetdinh_*</code>: vĩnh viễn (khuyết tật phía site; 3/4 ca <code>vbpqta_*</code> và 10/80 ca <code>hhtquyetdinh_*</code> trong mẫu), cần ghi nhận <code>persistent_error</code> thay vì thử mãi.</li>
+  <li><b>SSR không có 429 đến 32 luồng</b> nhưng điểm gãy là quá tải origin chứ không phải giới hạn tốc độ: từ 32 luồng, độ trễ p50 tăng ~4 lần và thông lượng giảm. Không nên vượt 8–16 luồng. SSR chưa được chạy bền (chỉ ramp), đây là một hạn chế.</li>
+</ul>
+
+<h2>5. Cơ chế chống crawl và có bypass không</h2>
+<div class="tw"><table>
+<tr><th>Cơ chế</th><th>Bằng chứng đã đo</th><th>Cách qua (hợp lệ)</th></tr>
+<tr><td><b>robots.txt</b></td><td><code>Allow: /</code>, <code>Disallow: /api/</code>, <code>Disallow: /Pages/</code>, khai báo sitemap. Gateway: 404</td><td>Tuân thủ; xem ghi chú ở mục 1 về host gateway</td></tr>
+<tr><td><b>Chặn bot theo UA ở CDN/WAF</b> (chỉ <code>vbpl.vn</code>)</td><td><code>python-requests/…</code>, <code>curl/…</code>, UA rỗng → <b>403</b> (trang "Sorry, you have been blocked", header <code>Ws-Action: bot</code>, 1.764 byte). UA trình duyệt → 200. <b>UA tự khai</b> <code>vi-corpus-etl-research-crawler/0.1</code> → 200 cả 3/3 lần và suốt ramp</td><td>Dùng UA tự khai trung thực. Không cần giả trình duyệt (tuy cũng qua được, tôi không dùng). Không phải ban IP: request kế tiếp với UA khác vẫn 200</td></tr>
+<tr><td><b>Danh sách Origin</b> (gateway)</td><td>Không có Origin → 200; <code>Origin: https://vbpl.vn</code> → 200; <code>Origin: https://example.org</code> → <b>403</b></td><td>Client không phải trình duyệt không gửi Origin</td></tr>
+<tr><td><b>Giới hạn burst</b> (gateway)</td><td>429 ở ~27 req/s, không ban dài hạn (mục 4)</td><td>Token bucket + backoff; không cần né</td></tr>
+<tr><td>Cookie / JS / captcha / token</td><td>Không cần: request không cookie vẫn 200; không có thử thách JS hay captcha. Không kiểm tra vân tay TLS (requests với UA trình duyệt qua được). PDF tải ẩn danh</td><td>–</td></tr>
+<tr><td>Chặn theo vùng địa lý</td><td><b>Chưa kiểm tra</b>: mọi thí nghiệm chạy từ IP trong nước</td><td>Chạy crawl từ cùng server này</td></tr>
+</table></div>
+
+<h3>Có cách bypass không?</h3>
+<p>Về kỹ thuật, các rào cản ở đây rất mỏng: tường UA đổi được bằng một header, giới hạn burst là theo IP nên phân tán qua nhiều IP sẽ vượt được. <b>Tôi không thử và không đề xuất các cách đó</b>, vì (1) không cần: ở 8 req/s, cả kho chỉ mất ~6 giờ, tức là mục tiêu đạt được hoàn toàn trong giới hạn đã đo; (2) giả danh trình duyệt hay xoay IP là né một biện pháp bảo vệ của dịch vụ nhà nước, trong khi cách đúng (tự khai UA, chạy chậm, xin phép) đã đủ. Nếu sau này site siết lại (chặn UA tự khai, hạ ngưỡng), hướng đúng là liên hệ Bộ Tư pháp xin cho phép/đưa vào danh sách trắng, không phải né.</p>
+
+<h2>6. Quy mô và tính khả thi</h2>
+<p>Ước lượng gộp ~5.600 văn bản ngẫu nhiên từ ba mẫu độc lập (trong đó mẫu tỉ lệ 2.000 văn bản), ước lượng theo tầng dạng ID × phạm vi với dân số chính xác từ sitemap, khoảng tin cậy bootstrap 95%. Token đếm bằng tokenizer Qwen3-0.6B trên văn bản tiếng Việt (0,315 token/ký tự).</p>
+<div class="tw"><table>
+<tr><th>Đại lượng</th><th class="n">Ước lượng</th><th class="n">Khoảng 95%</th></tr>
+<tr><td>Ký tự văn bản thuần (sau khi bỏ HTML)</td><td class="n">1,92 tỷ</td><td class="n">1,57–2,32 tỷ</td></tr>
+<tr><td>Token, tiếng Việt</td><td class="n">≈ 592 triệu</td><td class="n">486–717 triệu</td></tr>
+<tr><td>Token, bản dịch tiếng Anh (<code>vbpqta_*</code>)</td><td class="n">≈ 11 triệu</td><td class="n">ước thô (0,27 token/ký tự)</td></tr>
+<tr><td>Văn bản không có toàn văn (khung HTML rỗng 83 ký tự)</td><td class="n">14,8 nghìn (8,5%)</td><td class="n">12,8–16,9 nghìn</td></tr>
+<tr><td>… trong đó có PDF gốc (cần OCR)</td><td class="n">11,1 nghìn</td><td class="n">9,3–13,0 nghìn</td></tr>
+<tr><td>Văn bản có PDF gốc (tất cả)</td><td class="n">81,9 nghìn (47%)</td><td class="n">78,6–85,7 nghìn</td></tr>
+<tr><td>Dung lượng JSON thô / nén gzip</td><td class="n">10,4 GB / ≈ 1,9 GB</td><td class="n">tỉ lệ nén 0,18 (mẫu 60)</td></tr>
+<tr><td>PDF: tất cả / chỉ văn bản không có toàn văn</td><td class="n">137 GB / ≈ 24 GB</td><td class="n">dựa trên 47 và 22 PDF</td></tr>
+</table></div>
+
+<h3>PDF của văn bản không có toàn văn có cần OCR không?</h3>
+<p>Đo trên 22 PDF của nhóm này (24 thử, 1 lỗi HTTP 400 do tên file khai báo không tồn tại, 1 không đọc được): trung bình <b>8,2 trang</b> (p50 = 3, p95 = 27), 2,17 MB/file; <b>63% trang không có lớp chữ</b>, 32% văn bản không có chữ ở trang nào, 23% có lớp chữ đủ dùng. Nguồn tạo là máy quét và OmniPage (nhiều bản quét cũ). Ngoại suy: ≈ 91 nghìn trang, trong đó ≈ 57 nghìn trang cần OCR bằng chuỗi VLM của dự án; với tốc độ đã đo cho stbook (~1,55 trang/giây/GPU, 4 GPU) mất khoảng <b>2,6–4,1 giờ</b>. Cỡ mẫu nhỏ, con số này chỉ có giá trị bậc độ lớn.</p>
+
+<h3>So với mục tiêu dự án</h3>
+<p>≈ 0,6 tỷ token là cỡ 6% mức làm việc W7 (≥ 10 tỷ token sạch). Giá trị của nguồn là miền pháp luật có cấu trúc (loại văn bản, cơ quan ban hành, hiệu lực, ngày), không phải khối lượng.</p>
+
+<h2>7. Thời gian ước tính</h2>
+<p>Tính từ 174.674 request, cộng 1% thử lại. Mức đã chứng minh an toàn của gateway: ~15 req/s (bền) và ≤ 12,8 req/s với SSR.</p>
+<div class="tw"><table>
+<tr><th>Giai đoạn</th><th class="n">4 req/s</th><th class="n">6 req/s</th><th class="n">8 req/s (đề xuất)</th><th class="n">12 req/s</th></tr>
+<tr><td>Toàn văn qua JSON gateway (174.674)</td><td class="n">12,3 giờ</td><td class="n">8,2 giờ</td><td class="n"><b>6,1 giờ</b></td><td class="n">4,1 giờ</td></tr>
+<tr><td>Toàn văn qua SSR (162.795 ID số/UUID)</td><td class="n">11,4 giờ</td><td class="n">7,6 giờ</td><td class="n">5,7 giờ</td><td class="n">3,8 giờ</td></tr>
+</table></div>
+<div class="tw"><table>
+<tr><th>Giai đoạn bổ sung</th><th class="n">Ước lượng</th><th>Ghi chú</th></tr>
+<tr><td>Sitemap</td><td class="n">~20 giây</td><td>37 file, 137 MB; chạy lại mỗi lần cập nhật</td></tr>
+<tr><td>PDF của ~11,1 nghìn văn bản không có toàn văn</td><td class="n">0,8–1,6 giờ</td><td>ở 4–2 req/s; ≈ 24 GB</td></tr>
+<tr><td>OCR các PDF đó (GPU)</td><td class="n">≈ 3–4 giờ</td><td>chưa chạy; suy từ tốc độ stbook</td></tr>
+<tr><td>PDF của toàn bộ ~81,9 nghìn văn bản có PDF</td><td class="n">5,7–11,5 giờ</td><td>≈ 137 GB; <b>không đề xuất</b> (trùng với toàn văn đã có)</td></tr>
+</table></div>
+<p><b>Tổng:</b> khoảng 8 giờ chạy ban đêm cho toàn văn + PDF, cộng ~4 giờ GPU cho OCR; về công sức, khoảng 1–1,5 ngày làm việc gồm viết code, kiểm thử <code>kill -9</code> / resume theo quy ước của repo, chạy thử 1.000 văn bản rồi chạy toàn bộ.</p>
+
+<h2>8. Kế hoạch crawl đề xuất</h2>
+<h3>Cách lưu trong <code>data/raw/vbpl/</code></h3>
+<pre>data/raw/vbpl/
+├── sitemap/2026-11-20/{1..36}.xml.gz   # bản chụp sitemap, nguyên bản
+├── doc/&lt;2 ký tự đầu md5(id)&gt;/&lt;id&gt;.json.gz   # JSON gateway nguyên byte, 1 file/văn bản (≈ 1,9 GB)
+├── pdf/&lt;2 ký tự&gt;/&lt;id&gt;/&lt;tên file&gt;.pdf     # chỉ văn bản không có toàn văn
+└── manifest.jsonl     # id, nguồn (api|ssr), mã HTTP, sha256, byte, thời điểm, trạng thái
+data/state/vbpl/       # checkpoint từng văn bản, khoá chạy (.run.lock) như SEA</pre>
+<h3>Quy tắc cho crawler</h3>
+<ol class="steps">
+  <li><b>UA tự khai</b>, không gửi <code>Origin</code>/<code>Referer</code> giả, không cookie.</li>
+  <li><b>Token bucket 8 req/s</b>, tối đa 6 luồng. Mỗi văn bản ghi nguyên văn byte JSON, không chuyển đổi (raw là bản gốc chưa động).</li>
+  <li><b>429:</b> ngủ 2 → 4 → 8 … tối đa 60 giây (có jitter) và giảm một nửa tốc độ trong 5 phút. <b>500:</b> thử lại ở 2, 10, 60 giây rồi ghi <code>persistent_error</code>; văn bản ID số lỗi dai dẳng chuyển sang đường SSR.</li>
+  <li><b>403 từ WAF vượt 2% trong 100 request liền nhau:</b> dừng cả lượt và báo, không tìm cách né.</li>
+  <li><b>Checkpoint theo văn bản</b> (manifest + file đã ghi nguyên tử), khoá chạy chống chạy trùng, kiểm thử bằng <code>kill -9</code> giữa chừng.</li>
+  <li><b>Đối chiếu:</b> 1% văn bản lấy thêm bằng SSR, so văn bản HTML (thí nghiệm cho thấy trùng 100%).</li>
+  <li><b>Cập nhật:</b> tải lại sitemap, so tập ID; đổi nội dung phát hiện bằng sha256 (<code>lastmod</code> và <code>updatedDate</code> không đáng tin vì mọi thứ bị "System Scheduler" chạm vào).</li>
+  <li><b>Chỉ tải PDF</b> khi <code>hasOriginalPdf = true</code> và toàn văn rỗng (khung 83 ký tự); xử lý 400 như "file thiếu".</li>
+  <li><b>Ghi sẵn lang/loại ID</b> vào manifest: <code>vbpqta_*</code> là tiếng Anh (lọc ở giai đoạn language của pipeline hoặc giữ theo quyết định của chủ dự án).</li>
+</ol>
+<p>Cách đặt trong repo theo quy ước hiện có: <code>vi_corpus/vbpl/</code> (code, docstring tiếng Việt), <code>scripts/vbpl/crawl.py</code>, khoá <code>vbpl</code> trong <code>registry.py</code>, adapter ingest sau khi crawl xong. Tôi <b>chưa viết</b> code crawl chính thức, chờ quyết định về host gateway.</p>
+
+<h2>9. Rủi ro, hạn chế và điều chưa kiểm chứng</h2>
+<div class="tw"><table>
+<tr><th>Mục</th><th>Tình trạng</th></tr>
+<tr><td>Quan hệ với bộ HF <code>phap_luat</code> (<code>th1nhng0/vietnamese-legal-documents</code>, đã chọn ở NS-01, chưa tải)</td><td><b>Chưa đối chiếu.</b> Theo <code>docs/sources/SOURCES.md</code> bộ HF có 170.824 văn bản <code>content</code> + 518.235 <code>legacy_content</code> (trùng một phần). Site hiện chỉ liệt kê 174.674, nên rất có thể bản HF chứa văn bản không còn trên site. Việc crawl vẫn đáng làm cho: bản làm mới, nguồn truy vết (URL, sha256), ~11,1 nghìn văn bản chỉ có PDF, nhưng nên đối chiếu theo số ký hiệu trước khi quyết định bỏ phần nào</td></tr>
+<tr><td>Chặn theo vùng địa lý</td><td>Chưa kiểm tra (chỉ chạy từ IP trong nước)</td></tr>
+<tr><td>Ngưỡng 429 chính xác, và giới hạn của endpoint PDF</td><td>Chỉ biết nằm trong khoảng 15–27 req/s (JSON). Endpoint <code>/download</code> chỉ được thử ở 2–4 luồng, chưa đo ngưỡng riêng</td></tr>
+<tr><td>SSR chạy bền</td><td>Chỉ ramp 80 request/mức, chưa chạy bền</td></tr>
+<tr><td>Ước lượng OCR và kích thước PDF-only</td><td>Dựa trên 22 PDF; sai số lớn</td></tr>
+<tr><td>Ổn định của gateway</td><td>API không công bố, có thể đổi đường dẫn/tên trường; cần test hợp đồng nhỏ (một văn bản mẫu) ở đầu mỗi lượt chạy</td></tr>
+<tr><td>Quyền sử dụng</td><td>Chủ dự án đã ghi văn bản pháp luật thuộc Điều 15 Luật SHTT (không được bảo hộ) ở NS-01; không xác minh lại ở đây. Bộ sưu tập metadata/bản dịch tiếng Anh có thể có điều khoản riêng, chưa xem</td></tr>
+<tr><td>Dữ liệu chưa kiểm tra chất lượng</td><td>Đã so A/B và đếm token, chưa kiểm tra chất lượng văn bản HTML sau khi chuyển thành text, mức trùng giữa văn bản gốc và văn bản hợp nhất, hay nhiễu từ các bảng biểu</td></tr>
+</table></div>
+
+<h2>10. Phụ lục: tái lập</h2>
+<div class="tw"><table>
+<tr><th>File (<code>experiments/vbpl/</code>)</th><th>Việc</th><th>Kết quả (<code>out/</code>)</th></tr>
+<tr><td><code>common.py</code></td><td>fetch, parser sitemap, parser trang SSR (luồng RSC theo độ dài byte), parser JSON</td><td>–</td></tr>
+<tr><td><code>exp1_sitemap.py</code></td><td>gom 174.674 ID từ sitemap</td><td><code>ids.jsonl</code>, <code>exp1_sitemap.json</code></td></tr>
+<tr><td><code>exp2_compare.py</code></td><td>so A/B/PDF trên mẫu phân tầng</td><td><code>exp2_compare.json</code></td></tr>
+<tr><td><code>exp3_antibot.py</code></td><td>biến thể UA, cookie, Origin, HTTP/1.1–2</td><td><code>exp3_antibot.json</code></td></tr>
+<tr><td><code>exp4_ratelimit.py</code></td><td>ramp song song + chạy bền</td><td><code>exp4_ramp_*.json</code>, <code>exp4_sustained_*.json</code>, <code>exp4_requests.jsonl</code></td></tr>
+<tr><td><code>exp5_population.py</code></td><td>mẫu tỉ lệ 2.000 văn bản + đếm token</td><td><code>exp5_population.json</code></td></tr>
+<tr><td><code>exp6_estimate.py</code></td><td>ước lượng theo tầng, bootstrap, thời gian</td><td><code>exp6_estimate.json</code></td></tr>
+<tr><td><code>exp7_pdf_ocr.py</code></td><td>đo PDF không toàn văn (chạy bằng <code>python -I</code>)</td><td><code>exp7_pdf_ocr.json</code></td></tr>
+</table></div>
+<p class="small">Chạy lại: <code>cd experiments/vbpl &amp;&amp; uv run --no-sync python exp1_sitemap.py</code> rồi lần lượt exp2…exp6. Trang chặn 403 của WAF có in lại IP của server; IP đó không được đưa vào báo cáo này. Các lỗi tôi mắc trong lúc thử (ID không phải số bị bỏ sót, dòng RSC dính liền nhau làm hỏng parser) đã được sửa và kiểm lại bằng so sánh byte-by-byte giữa SSR và JSON; hai bài học đó nên thành test của crawler chính thức.</p>
+
+</div>
+<div id="tip"></div>
+<script>
+/* Vẽ hai biểu đồ SVG từ số liệu thí nghiệm; tooltip dùng chung. */
+(function(){
+  var NS='http://www.w3.org/2000/svg', tip=document.getElementById('tip');
+  function el(n,a,p){var e=document.createElementNS(NS,n);for(var k in a)e.setAttribute(k,a[k]);if(p)p.appendChild(e);return e;}
+  function css(v){return getComputedStyle(document.documentElement).getPropertyValue(v).trim();}
+  function bind(node,text){
+    node.addEventListener('mousemove',function(e){tip.textContent=text;tip.style.display='block';tip.style.left=(e.clientX+12)+'px';tip.style.top=(e.clientY+12)+'px';});
+    node.addEventListener('mouseleave',function(){tip.style.display='none';});
+  }
+  var fmt=function(n){return n.toLocaleString('vi-VN');};
+
+  function kinds(){
+    var svg=document.getElementById('chartKinds'); svg.innerHTML='';
+    var data=[['số (23658)',155450],['vbpqta_ (bản dịch EN)',10953],['UUID (mới 2026)',7345],['hhtquyetdinh_',746],['vbpqdinhchinh_',180]];
+    var L=150,R=620,top=6,h=26,gap=12,max=155450;
+    data.forEach(function(d,i){
+      var y=top+i*(h+gap), w=Math.max(2,(R-L)*d[1]/max);
+      el('text',{x:L-8,y:y+h/2+4,'text-anchor':'end'},svg).textContent=d[0];
+      var r=el('rect',{x:L,y:y,width:w,height:h,rx:4,fill:css('--s1')},svg);
+      bind(r,d[0]+': '+fmt(d[1])+' văn bản ('+(100*d[1]/174674).toFixed(1)+'%)');
+      var tx=el('text',{x:L+w+6,y:y+h/2+4,style:'fill:'+css('--ink2')},svg); tx.textContent=fmt(d[1]);
+      if(w>420){tx.setAttribute('x',L+w-6);tx.setAttribute('text-anchor','end');tx.style.fill='#fff';}
+    });
+  }
+
+  function ramp(){
+    var svg=document.getElementById('chartRamp'); svg.innerHTML='';
+    var W=640,H=300,L=44,R=620,T=14,B=44,xs=[1,2,4,8,16,32];
+    var api=[[1,3.42,0],[2,6.78,0],[4,13.38,0],[8,27.21,0.12]];
+    var ssr=[[1,1.13,0],[2,2.12,0],[4,2.14,0],[8,6.4,0],[16,12.8,0],[32,9.31,0]];
+    var ymax=30, X=function(c){return L+(R-L)*xs.indexOf(c)/(xs.length-1);}, Y=function(v){return T+(H-T-B)*(1-v/ymax);};
+    [0,10,20,30].forEach(function(v){
+      el('line',{x1:L,x2:R,y1:Y(v),y2:Y(v),stroke:v?css('--line'):css('--axis'),'stroke-width':1},svg);
+      el('text',{x:L-8,y:Y(v)+4,'text-anchor':'end'},svg).textContent=v;
+    });
+    xs.forEach(function(c){el('text',{x:X(c),y:H-B+18,'text-anchor':'middle'},svg).textContent=c;});
+    el('text',{x:(L+R)/2,y:H-8,'text-anchor':'middle'},svg).textContent='Số luồng song song';
+    el('text',{x:10,y:T+4},svg).textContent='req/s';
+    function series(data,color,name){
+      var d=data.map(function(p,i){return (i?'L':'M')+X(p[0])+' '+Y(p[1]);}).join(' ');
+      el('path',{d:d,fill:'none',stroke:color,'stroke-width':2,'stroke-linejoin':'round'},svg);
+      data.forEach(function(p){
+        var bad=p[2]>0;
+        var c=el('circle',{cx:X(p[0]),cy:Y(p[1]),r:5,fill:bad?css('--surface'):color,stroke:bad?css('--s1'):css('--surface'),'stroke-width':2},svg);
+        var big=el('circle',{cx:X(p[0]),cy:Y(p[1]),r:14,fill:'transparent'},svg);
+        bind(big,name+', '+p[0]+' luồng: '+p[1]+' req/s'+(bad?' ('+Math.round(p[2]*100)+'% lỗi 429/500)':''));
+      });
+    }
+    series(ssr,css('--s2'),'SSR'); series(api,css('--s1'),'JSON gateway');
+    var t=el('text',{x:X(8)-6,y:Y(27.21)-12,'text-anchor':'end',style:'fill:'+css('--ink2')},svg); t.textContent='429 từ mức này';
+    var t2=el('text',{x:X(32)+4,y:Y(9.31)+20,'text-anchor':'end',style:'fill:'+css('--ink2')},svg); t2.textContent='p50 ×4, quá tải';
+  }
+  function draw(){kinds();ramp();}
+  draw();
+  if(window.matchMedia)window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change',draw);
+  new MutationObserver(draw).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
+})();
+</script>
+</body>
+</html>

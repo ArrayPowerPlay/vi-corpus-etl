@@ -28,6 +28,7 @@ ETL xây **corpus tiếng Việt cho LLM** từ nhiều nguồn, có truy vết 
 | | [`GIAO_TRINH.md`](sources/GIAO_TRINH.md), [`VISTA.md`](sources/VISTA.md), [`LUAN_AN.md`](sources/LUAN_AN.md) | chiến lược / kế hoạch xử lý từng nguồn |
 | | [`PERMISSION_EMAILS.md`](sources/PERMISSION_EMAILS.md) | thư xin phép dữ liệu (bản nháp, chờ duyệt) |
 | | [`VJOL_PIPELINE.html`](sources/VJOL_PIPELINE.html) | trang giải thích pipeline VJOL (mở bằng trình duyệt) |
+| | [`VBPL_CRAWL_REPORT.html`](sources/VBPL_CRAWL_REPORT.html) | báo cáo thí nghiệm chiến lược crawl vbpl.vn: so sánh cách lấy dữ liệu, rate limit, chống crawl, quy mô, thời gian (NS-23; mở bằng trình duyệt) |
 | `training/` | [`SUGGESTION_v2.md`](training/SUGGESTION_v2.md) | đề xuất pipeline CPT + SFT đầy đủ (bản hiện hành, chưa phải quyết định) |
 | | [`SUGGESTION.md`](training/SUGGESTION.md) | bản đề xuất đầu tiên + thuật ngữ |
 | `diagrams/` | `*.svg` | sơ đồ luồng chính và luồng con (`scripts/draw_diagrams.py` vẽ lại 00–08, 22, 23) |
